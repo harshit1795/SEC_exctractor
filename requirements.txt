@@ -1,0 +1,7 @@
+tqdm
+lxml
+xbrlassembler
+py-xbrl
+ipywidgets
+widgetsnbextension
+boto3
