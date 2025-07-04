@@ -5,3 +5,10 @@ py-xbrl
 ipywidgets
 widgetsnbextension
 boto3
+yfinance
+pandas
+requests
+beautifulsoup4
+pyarrow
+streamlit
+altair
