@@ -12,3 +12,4 @@ beautifulsoup4
 pyarrow
 streamlit
 altair
+Pillow
