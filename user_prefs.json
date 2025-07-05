@@ -4,6 +4,11 @@
     "followers": [],
     "following": [],
     "requests": [],
-    "posts": []
+    "posts": [],
+    "health_metrics": [
+      "Total Revenue",
+      "Free Cash Flow",
+      "Net Income"
+    ]
   }
 }
