@@ -4,9 +4,38 @@ import altair as alt
 import yfinance as yf
 from functools import lru_cache
 import numpy as np
-import os, requests, json
+
+import os
+import requests
+import json
 
 st.set_page_config(page_title="FinQ Bot", layout="wide")
+
+st.markdown("""
+<style>
+.sticky-header-container {
+    position: sticky;
+    top: 0;
+    background-color: white; /* Adjust to your app's background color */
+    z-index: 999; /* Ensure it stays on top */
+    padding-top: 1rem; /* Adjust as needed */
+    padding-bottom: 1rem; /* Adjust as needed */
+    border-bottom: 1px solid #eee; /* Optional: a subtle line */
+    display: flex; /* Enable flexbox */
+    align-items: center; /* Vertically center items */
+}
+.company-info-wrapper {
+    display: flex;
+    flex-direction: column;
+    justify-content: center; /* Vertically center content within the wrapper */
+    height: 100%; /* Ensure it takes full height of the column */
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Initialize selected_ticker in session state if not already present
+if "selected_ticker" not in st.session_state:
+    st.session_state.selected_ticker = "AAPL" # Default value
 
 PARQUET_PATH = "fundamentals_tall.parquet"
 
@@ -41,24 +70,8 @@ def ticker_info(ticker: str) -> dict:
 
 @st.cache_data(show_spinner=False)
 def _get_logo_path(ticker: str) -> str | None:
-    """Return local path to cached company logo, downloading once via yfinance if needed."""
-    local_dir = "assets/logos"
-    os.makedirs(local_dir, exist_ok=True)
-    local_path = f"{local_dir}/{ticker}.png"
-    if os.path.exists(local_path):
-        return local_path
-    # Try to fetch from Yahoo once
-    try:
-        logo_url = yf.Ticker(ticker).info.get("logo_url")
-        if logo_url:
-            resp = requests.get(logo_url, timeout=10)
-            if resp.status_code == 200:
-                with open(local_path, "wb") as f:
-                    f.write(resp.content)
-                return local_path
-    except Exception:
-        pass
-    return None
+    """Return URL to company logo from Parqet assets."""
+    return f"https://assets.parqet.com/logos/symbol/{ticker}?format=png"
 
 @st.cache_data(show_spinner=False)
 def get_ticker_earnings_data(ticker_symbol):
@@ -213,12 +226,22 @@ if not st.session_state.get("authenticated", False):
 
 # Display application logo
 st.markdown("<style> .css-1d3f8as { display: flex; flex-direction: column; align-items: center; } </style>", unsafe_allow_html=True)
-st.image("FInQLogo.png", use_column_width=False, width=80)
+
+
+# Display company logo in sidebar
+selected_ticker_for_sidebar = st.session_state.get("selected_ticker", "AAPL")
+st.sidebar.markdown(f"**{selected_ticker_for_sidebar}**") # Display ticker if no logo
 
 # ------------------------- Page Navigation ------------------------- #
 
 st.markdown("<style>div.stRadio > label { text-align: center; }</style>", unsafe_allow_html=True)
+
+# ------------------------- Page Navigation ------------------------- #
+
 page = st.sidebar.radio("Navigate", ["Dashboard", "Financial Health Monitoring", "Nexus"], key="main_nav")
+
+
+
 
 # Add a logout button to the sidebar
 if st.sidebar.button("Log Out"):
@@ -268,6 +291,7 @@ if page == "Dashboard":
 
         default_ix = filtered_tickers.index("AAPL") if "AAPL" in filtered_tickers else 0
         selected_ticker = st.selectbox("Company (Ticker)", filtered_tickers, index=default_ix, key="ticker_select")
+        st.session_state.selected_ticker = selected_ticker # Update session state
 
         # Statement / metric category filter
         categories_available = sorted(df[df["Ticker"] == selected_ticker]["Category"].unique())
@@ -280,15 +304,20 @@ if page == "Dashboard":
         ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
 
         # ---------- Company Header ---------- #
+        st.markdown("<div class='sticky-header-container'>", unsafe_allow_html=True)
         tinfo = ticker_info(selected_ticker)
         logo_path = _get_logo_path(selected_ticker)
-        hcols = st.columns([1,4])
+        
+        hcols = st.columns([1,3])
         with hcols[0]:
             if logo_path:
-                st.image(logo_path, width=90)
+                st.image(logo_path)
         with hcols[1]:
+            st.markdown("<div class='company-info-wrapper'>", unsafe_allow_html=True)
             st.markdown(f"## {selected_ticker} – {tinfo['name']}")
             st.caption(f"Sector: {tinfo['sector']} • Industry: {tinfo['industry']}")
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
         # Compute universe of metrics for the selected ticker
         all_metrics = sorted(ticker_df["Metric"].unique())
