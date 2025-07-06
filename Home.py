@@ -4,7 +4,8 @@ import streamlit as st
 st.set_page_config(page_title="FinQ", page_icon="📈")
 
 st.markdown("<style> .css-1d3f8as { display: flex; flex-direction: column; align-items: center; } </style>", unsafe_allow_html=True)
-st.image("FInQLogo.png", use_container_width=True)
+st.markdown("<style> img { display: block; margin-left: auto; margin-right: auto; } </style>", unsafe_allow_html=True)
+st.image("FInQLogo.png", width=200)
 st.title("Welcome to FinQ! 👋")
 
 st.markdown(
