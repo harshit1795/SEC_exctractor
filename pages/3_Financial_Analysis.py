@@ -4,10 +4,18 @@ import altair as alt
 import yfinance as yf
 from functools import lru_cache
 import numpy as np
+import google.generativeai as genai
 
 import os
 import requests
 import json
+
+# Configure the Gemini API key
+try:
+    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+except Exception as e:
+    st.error("Please set the GEMINI_API_KEY environment variable.")
+    st.stop()
 
 st.set_page_config(page_title="FinQ Bot", layout="wide")
 
@@ -302,6 +310,14 @@ if page == "Dashboard":
 
     with content_col:
         ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
+        st.session_state.ticker_df = ticker_df
+
+        wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+        if wide.empty:
+            st.warning("No data available for this ticker.")
+            st.stop()
+        latest_period = wide.index.max()
+        latest_vals = wide.loc[latest_period]
 
         # ---------- Company Header ---------- #
         st.markdown("<div class='sticky-header-container'>", unsafe_allow_html=True)
@@ -323,7 +339,67 @@ if page == "Dashboard":
         all_metrics = sorted(ticker_df["Metric"].unique())
 
         # ------------------------- Tabs ------------------------- #
-        trend_tab, snapshot_tab, earnings_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary"])
+        trend_tab, snapshot_tab, earnings_tab, chatbot_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary", "🤖 FinQ Bot"])
+
+        # ------------------------- Chatbot Tab ------------------------- #
+        with chatbot_tab:
+            st.markdown("### FinQ Bot")
+
+            # Initialize chat history
+            if "messages" not in st.session_state:
+                st.session_state.messages = []
+
+            # Display chat messages from history on app rerun
+            for message in st.session_state.messages:
+                with st.chat_message(message["role"]):
+                    st.markdown(message["content"])
+
+            # Accept user input
+            if prompt := st.chat_input("What is your question?"):
+                # Add user message to chat history
+                st.session_state.messages.append({"role": "user", "content": prompt})
+                # Display user message in chat message container
+                with st.chat_message("user"):
+                    st.markdown(prompt)
+
+                # Generate response from Gemini API
+                try:
+                    model = genai.GenerativeModel('models/gemma-3-4b-it')
+
+                    # System instruction for the financial analyst AI
+                    system_instruction = """You are a highly skilled financial analyst AI. Your primary goal is to provide insightful and accurate financial analysis based on the provided data.
+You should:
+- Analyze trends and patterns.
+- Identify key financial metrics and their implications.
+- Highlight potential risks or opportunities.
+- Answer questions directly related to the financial data provided.
+- If a question cannot be answered from the provided data, state that clearly.
+- Do not make up information or provide analysis beyond the scope of the given data.
+- Present your analysis in a clear, concise, and professional manner.
+- Use consistent financial currency notations (e.g., $1.2B, $500M, $25M) instead of scientific notation for all monetary values.-
+"""
+                    
+                    # Get the financial data from session state
+                    current_ticker_df = st.session_state.get("ticker_df")
+                    if current_ticker_df is not None and not current_ticker_df.empty:
+                        financial_data_str = current_ticker_df.to_markdown(index=False)
+                    else:
+                        financial_data_str = "No specific financial data available for analysis in the current context."
+
+                    # Construct the full prompt
+                    full_prompt = f"""{system_instruction}
+
+Here is the financial data for the selected company and category:
+{financial_data_str}
+
+User's question: {prompt}
+"""
+                    response = model.generate_content(full_prompt)
+                    with st.chat_message("assistant"):
+                        st.markdown(response.text)
+                    st.session_state.messages.append({"role": "assistant", "content": response.text})
+                except Exception as e:
+                    st.error(f"An error occurred: {e}")
 
         # ------------------------- Trend Analysis ------------------------- #
         with trend_tab:
@@ -387,7 +463,7 @@ if page == "Dashboard":
         # ------------------------- Snapshot & Changes ------------------------- #
         with snapshot_tab:
             st.markdown("### Snapshot & Changes")
-            mode = st.radio("Display", ["Latest", "QoQ Δ", "YoY Δ"], horizontal=True)
+            mode = st.radio(f"Display (Period: {latest_period})", ["Latest", "QoQ Δ", "YoY Δ"], horizontal=True)
 
             # ---------------- Default metrics (use user prefs if available) ---------------- #
 
