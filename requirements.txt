@@ -14,3 +14,4 @@ streamlit
 altair
 Pillow
 fredapi
+google-generativeai
