@@ -1,4 +1,5 @@
 
+
 import streamlit as st
 import google.generativeai as genai
 import os
@@ -25,57 +26,64 @@ def load_data(path: str = PARQUET_PATH) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 # Initialize the model
-model = genai.GenerativeModel('gemini-pro')
+model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 # Initialize chat history in session state
-if "chat" not in st.session_state:
-    st.session_state.chat = model.start_chat(history=[])
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# Get the ticker and category from the session state
-ticker = st.session_state.get("selected_ticker", "AAPL")
-category = st.session_state.get("stmt_cat", "Income Statement")
+# --- UI for selecting context ---
+st.sidebar.header("Context Selection")
+all_tickers = sorted(load_data()["Ticker"].unique())
+selected_ticker = st.sidebar.selectbox("Select Ticker", all_tickers, index=all_tickers.index(st.session_state.get("selected_ticker", "AAPL")))
+st.session_state.selected_ticker = selected_ticker
 
-# Always load the full data and filter it to ensure it's fresh and relevant
+data_sources = st.sidebar.multiselect(
+    "Select Data Sources",
+    ["Company Financials", "Macroeconomic Data"],
+    default=["Company Financials", "Macroeconomic Data"]
+)
+
+# --- Data Loading ---
+
+# Load company financial data
 with st.spinner("Loading financial data..."):
     df = load_data()
-    # Filter the DataFrame for the selected ticker and category
-    ticker_df = df[(df["Ticker"] == ticker) & (df["Category"] == category)]
+    category = st.session_state.get("stmt_cat", "Income Statement")
+    ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == category)]
 
 # Fetch FRED data
-INDICATORS = {
-    "GDP": "GDP",
-    "Real GDP": "GDPC1",
-    "Inflation (CPI)": "CPIAUCSL",
-    "Unemployment Rate": "UNRATE",
-    "10-Year Treasury Yield": "DGS10",
-    "Federal Funds Rate": "FEDFUNDS",
-}
-series_to_fetch = list(INDICATORS.values())
-today = pd.to_datetime("today")
-start_date = (today - pd.DateOffset(years=5)).strftime('%Y-%m-%d')
-end_date = today.strftime('%Y-%m-%d')
-fred_df = get_multiple_fred_series(series_to_fetch, start_date, end_date)
+if "Macroeconomic Data" in data_sources:
+    INDICATORS = {
+        "GDP": "GDP",
+        "Real GDP": "GDPC1",
+        "Inflation (CPI)": "CPIAUCSL",
+        "Unemployment Rate": "UNRATE",
+        "10-Year Treasury Yield": "DGS10",
+        "Federal Funds Rate": "FEDFUNDS",
+    }
+    series_to_fetch = list(INDICATORS.values())
+    today = pd.to_datetime("today")
+    start_date = (today - pd.DateOffset(years=5)).strftime('%Y-%m-%d')
+    end_date = today.strftime('%Y-%m-%d')
+    fred_df = get_multiple_fred_series(series_to_fetch, start_date, end_date)
+else:
+    fred_df = pd.DataFrame()
 
-# Initial prompt for analysis
-initial_prompt = f"""
-You are a financial analyst AI. Your task is to provide a detailed analysis of the financial data for {ticker} in the {category} category, considering the broader economic context.
+# --- Prompt Building ---
 
-Here is the company's financial data:
-{ticker_df.to_markdown()}
+def build_prompt_with_context(chat_history):
+    context_parts = ["You are a financial analyst AI. Your task is to provide a detailed analysis based on the provided data."]
 
-Here is the macroeconomic data from FRED:
-{fred_df.to_markdown()}
+    if "Company Financials" in data_sources:
+        context_parts.append(f"\nHere is the company's financial data for {selected_ticker} in the {category} category:\n{ticker_df.to_markdown()}")
 
-Please provide a detailed analysis of the company's financial data, including any trends, insights, or red flags that you identify. Also, analyze how the macroeconomic data might be impacting the company's performance and outlook. After your analysis, ask the user if they have any specific questions.
-"""
-
-# If chat is empty, start with an analysis
-if not st.session_state.messages:
-    with st.spinner("Analyzing..."):
-        response = st.session_state.chat.send_message(initial_prompt)
-        st.session_state.messages.append({"role": "assistant", "content": response.text})
+    if "Macroeconomic Data" in data_sources and not fred_df.empty:
+        context_parts.append(f"\nHere is the macroeconomic data from FRED:\n{fred_df.to_markdown()}")
+    
+    # Combine context with chat history
+    full_prompt = "\n".join(context_parts) + "\n\n---\n\n" + "\n".join([f"{m['role']}: {m['content']}" for m in chat_history])
+    return full_prompt
 
 # Display chat messages from history
 for message in st.session_state.messages:
@@ -92,7 +100,8 @@ if prompt := st.chat_input("What is your question?"):
 
     # Get assistant response
     with st.spinner("Thinking..."):
-        response = st.session_state.chat.send_message(prompt)
+        full_prompt = build_prompt_with_context(st.session_state.messages)
+        response = model.generate_content(full_prompt)
         # Display assistant response
         with st.chat_message("assistant"):
             st.markdown(response.text)

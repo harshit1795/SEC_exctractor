@@ -1,3 +1,4 @@
+
 import pandas as pd
 import streamlit as st
 import altair as alt
@@ -85,6 +86,11 @@ def _get_logo_path(ticker: str) -> str | None:
 def get_ticker_earnings_data(ticker_symbol):
     ticker_yf = yf.Ticker(ticker_symbol)
     return ticker_yf.earnings_dates, ticker_yf.info
+
+@st.cache_data(show_spinner=True)
+def get_price_history(ticker: str, start_date, end_date) -> pd.DataFrame:
+    """Get historical price data from yfinance."""
+    return yf.download(ticker, start=start_date, end=end_date)
 
 def human_format(num):
     """Convert a number to human-readable USD (e.g. $3.4B, $120M, $950)."""
@@ -338,7 +344,7 @@ if page == "Dashboard":
         all_metrics = sorted(ticker_df["Metric"].unique())
 
         # ------------------------- Tabs ------------------------- #
-        trend_tab, snapshot_tab, earnings_tab, fred_tab, chatbot_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary", "📉 Macroeconomic Data", "🤖 FinQ Bot"])
+        trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary", "💹 Price Chart", "📉 Macroeconomic Data", "🤖 FinQ Bot"])
 
         # ------------------------- Chatbot Tab ------------------------- #
         with chatbot_tab:
@@ -363,7 +369,7 @@ if page == "Dashboard":
 
                 # Generate response from Gemini API
                 try:
-                    model = genai.GenerativeModel('models/gemini-pro')
+                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
                     # System instruction for the financial analyst AI
                     system_instruction = """You are a highly skilled financial analyst AI. Your primary goal is to provide insightful and accurate financial analysis based on the provided data.
@@ -688,6 +694,50 @@ User's question: {prompt}
                             st.markdown(f"**{col}** - {selected_indicators[series_to_fetch.index(col)]}")
                     else:
                         st.warning("No data returned. Please check the series IDs and date range.")
+
+        # ------------------------- Price Chart Tab ------------------------- #
+        with price_tab:
+            st.markdown("### Price Chart")
+
+            # Date range selection
+            today = pd.to_datetime("today")
+            start_date = st.date_input("Start date", today - pd.DateOffset(years=1), key="price_start")
+            end_date = st.date_input("End date", today, key="price_end")
+
+            # Fetch price data
+            price_df = get_price_history(selected_ticker, start_date, end_date)
+
+            if not price_df.empty:
+                price_df = price_df.reset_index()
+                if isinstance(price_df.columns, pd.MultiIndex):
+                    price_df.columns = price_df.columns.get_level_values(1)
+                price_df.columns = [str(col).lower() for col in price_df.columns] # Standardize column names
+                if 'date' in price_df.columns:
+                    price_df['date'] = pd.to_datetime(price_df['date'])
+
+                    # Candlestick chart
+                    base = alt.Chart(price_df).encode(
+                        x='date:T',
+                        color=alt.condition("datum.open <= datum.close", alt.value("#06982d"), alt.value("#ae1325")),
+                        tooltip=['date', 'open', 'high', 'low', 'close', 'volume']
+                    )
+
+                    chart = alt.layer(
+                        base.mark_rule().encode(
+                            y='low:Q',
+                            y2='high:Q'
+                        ),
+                        base.mark_bar().encode(
+                            y='open:Q',
+                            y2='close:Q'
+                        )
+                    ).interactive()
+
+                    st.altair_chart(chart, use_container_width=True)
+                else:
+                    st.warning("Date column not found in price data.")
+            else:
+                st.warning("Could not retrieve price data for the selected ticker and date range.")
 
 # ------------------------- Financial Health Monitoring Page ------------------------- #
 
