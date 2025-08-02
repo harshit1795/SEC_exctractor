@@ -5,10 +5,10 @@ import yfinance as yf
 from functools import lru_cache
 import numpy as np
 import google.generativeai as genai
-
 import os
 import requests
 import json
+from fred_data import get_multiple_fred_series
 
 # Configure the Gemini API key
 try:
@@ -183,7 +183,6 @@ def _save_nexus(data: dict):
     except Exception:
         pass
 
-
 def login_page():
     st.markdown("## 🔐 FinQ Bot Login")
     tab1, tab2 = st.tabs(["Login", "Register"])
@@ -339,7 +338,7 @@ if page == "Dashboard":
         all_metrics = sorted(ticker_df["Metric"].unique())
 
         # ------------------------- Tabs ------------------------- #
-        trend_tab, snapshot_tab, earnings_tab, chatbot_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary", "🤖 FinQ Bot"])
+        trend_tab, snapshot_tab, earnings_tab, fred_tab, chatbot_tab = st.tabs(["📈 Metrics Trend Analysis", "📊 Snapshot & Changes", "💰 Earning Summary", "📉 Macroeconomic Data", "🤖 FinQ Bot"])
 
         # ------------------------- Chatbot Tab ------------------------- #
         with chatbot_tab:
@@ -364,7 +363,7 @@ if page == "Dashboard":
 
                 # Generate response from Gemini API
                 try:
-                    model = genai.GenerativeModel('models/gemma-3-4b-it')
+                    model = genai.GenerativeModel('models/gemini-pro')
 
                     # System instruction for the financial analyst AI
                     system_instruction = """You are a highly skilled financial analyst AI. Your primary goal is to provide insightful and accurate financial analysis based on the provided data.
@@ -649,6 +648,46 @@ User's question: {prompt}
                 st.caption("Prediction based on the average of the last 4 reported EPS values.")
             else:
                 st.info("Not enough historical data to make a prediction (need at least 4 reported EPS values).")
+
+        # ------------------------- Macroeconomic Data Tab ------------------------- #
+        with fred_tab:
+            st.markdown("### Macroeconomic Data")
+
+            INDICATORS = {
+                "GDP": "GDP",
+                "Real GDP": "GDPC1",
+                "Inflation (CPI)": "CPIAUCSL",
+                "Unemployment Rate": "UNRATE",
+                "10-Year Treasury Yield": "DGS10",
+                "Federal Funds Rate": "FEDFUNDS",
+            }
+
+            selected_indicators = st.multiselect(
+                "Select economic indicators to display:",
+                options=list(INDICATORS.keys()),
+                default=["Real GDP", "Inflation (CPI)", "Unemployment Rate"]
+            )
+
+            if selected_indicators:
+                series_to_fetch = [INDICATORS[key] for key in selected_indicators]
+                
+                today = pd.to_datetime("today")
+                start = st.date_input("Start date", today - pd.DateOffset(years=10), key="fred_start")
+                end = st.date_input("End date", today, key="fred_end")
+
+                if st.button("Fetch FRED Data"):
+                    fred_df = get_multiple_fred_series(series_to_fetch, start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+                    
+                    if not fred_df.empty:
+                        st.subheader("Data Preview")
+                        st.dataframe(fred_df.head())
+
+                        st.subheader("Charts")
+                        for col in fred_df.columns:
+                            st.line_chart(fred_df[col].dropna(), use_container_width=True)
+                            st.markdown(f"**{col}** - {selected_indicators[series_to_fetch.index(col)]}")
+                    else:
+                        st.warning("No data returned. Please check the series IDs and date range.")
 
 # ------------------------- Financial Health Monitoring Page ------------------------- #
 
@@ -1037,4 +1076,4 @@ if page == "Nexus":
             if st.button("Comment", key=comment_key+"btn") and new_c.strip():
                 p["comments"].append({"user":user, "text":new_c})
                 _save_nexus(nx)
-                st.experimental_rerun() 
+                st.experimental_rerun()
