@@ -5,3 +5,16 @@
    
 >
    By developing an automated system that efficiently extracts financial statement data from SEC reports, I've made it easier for businesses and analysts to access and analyze crucial financial information.
+
+## Getting Started
+
+**Important:** You must run the `settoken.sh` script before each session.
+
+1.  **Set the token:**
+    ```bash
+    source settoken.sh
+    ```
+2.  **Run the app:**
+    ```bash
+    streamlit run Home.py
+    ```
