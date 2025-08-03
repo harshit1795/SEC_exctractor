@@ -1,5 +1,10 @@
 
 import streamlit as st
+import os
+from auth import load_api_keys
+
+# Load API keys using the new auth module
+load_api_keys()
 
 st.set_page_config(page_title="FinQ", page_icon="📈")
 
