@@ -1,3 +1,4 @@
+
 import pandas as pd
 import streamlit as st
 import altair as alt
@@ -9,18 +10,10 @@ import os
 import requests
 import json
 from fred_data import get_multiple_fred_series
+from auth import load_api_keys, _load_user_prefs, _save_user_prefs
 
-# Configure the Gemini API key
-try:
-    # Attempt to configure from user preferences first
-    user_prefs = _load_user_prefs().get(st.session_state.get("user"), {})
-    if "GEMINI_API_KEY" in user_prefs:
-        genai.configure(api_key=user_prefs["GEMINI_API_KEY"])
-    else:
-        genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-except Exception as e:
-    st.error("Please set the GEMINI_API_KEY environment variable or in the user settings.")
-    st.stop()
+# Load API keys using the new auth module
+load_api_keys()
 
 st.set_page_config(page_title="FinQ Bot", layout="wide")
 
@@ -135,24 +128,6 @@ if "authenticated" not in st.session_state:
 # ------------------------- User Preferences ------------------------- #
 
 PREFS_PATH = "user_prefs.json"
-
-def _load_user_prefs() -> dict:
-    """Load all users' saved metric preferences from disk."""
-    if os.path.exists(PREFS_PATH):
-        try:
-            with open(PREFS_PATH, "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def _save_user_prefs(pref_dict: dict):
-    """Persist full preferences dict to disk."""
-    try:
-        with open(PREFS_PATH, "w") as f:
-            json.dump(pref_dict, f, indent=2)
-    except Exception:
-        pass
 
 # ------------------------- Nexus Community Data Helpers ------------------------- #
 
@@ -1036,7 +1011,7 @@ if page == "Nexus":
     with tab_people:
         st.subheader("Community Members")
         search_term = st.text_input("Search users", "", key="user_search")
-        others_all = [u for u in nx.keys() if u != user]
+        others_all = [u for u in nx.keys() if u != user and u != "_messages"]
         if search_term:
             term = search_term.lower()
             others = [u for u in others_all if term in u.lower()]
