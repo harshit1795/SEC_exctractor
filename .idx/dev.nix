@@ -25,7 +25,6 @@
       google-generativeai
       tabulate
       firebase-admin
-      google-cloud-storage
     ]))
   ];
 

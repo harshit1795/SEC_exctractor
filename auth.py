@@ -4,9 +4,8 @@ import json
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
-from google.cloud import storage
 
-# --- Firebase & Google Cloud Initialization ---
+# --- Firebase Initialization ---
 
 # Check if Firebase app is already initialized
 if not firebase_admin._apps:
@@ -25,84 +24,54 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- User Authentication ---
+# --- User Authentication (OAuth) ---
 
-def create_user(email, password):
-    """Create a new user in Firebase Authentication."""
+def verify_id_token(id_token):
+    """Verify the ID token and get the user's UID."""
     try:
-        user = auth.create_user(email=email, password=password)
-        st.success(f"Successfully created user: {user.uid}")
-        return user
-    except Exception as e:
-        st.error(f"Error creating user: {e}")
-        return None
-
-def login_user(email, password):
-    """Login a user with email and password."""
-    try:
-        # This is a simplified example. In a real app, you'd handle this securely.
-        # Firebase Admin SDK doesn't directly handle password verification.
-        # This is typically done on the client-side with the Firebase Auth client SDK.
-        # For this backend-only example, we'll assume a custom token approach or similar.
-        # A simple placeholder for the login logic:
-        user = auth.get_user_by_email(email)
-        st.session_state["user"] = user.uid
+        decoded_token = auth.verify_id_token(id_token)
+        uid = decoded_token['uid']
+        st.session_state["user"] = uid
         st.session_state["logged_in"] = True
-        return user
+        
+        # Check if user has a preferences document, if not create one
+        doc_ref = db.collection("user_prefs").document(uid)
+        if not doc_ref.get().exists:
+            doc_ref.set({})
+            
+        return uid
+    except auth.InvalidIdTokenError:
+        st.error("Invalid ID token. Please try signing in again.")
+        st.session_state["logged_in"] = False
+        return None
     except Exception as e:
-        st.error(f"Error logging in: {e}")
+        st.error(f"Error during token verification: {e}")
         st.session_state["logged_in"] = False
         return None
 
-def reset_password(email):
-    """Send a password reset email."""
-    try:
-        link = auth.generate_password_reset_link(email)
-        st.success(f"Password reset link sent to {email}")
-        # You would typically email this link to the user.
-        print(f"Password reset link: {link}")
-    except Exception as e:
-        st.error(f"Error sending password reset email: {e}")
-
-# --- User Preferences (Cloud Storage) ---
-
-BUCKET_NAME = "REPLACE_WITH_YOUR_BUCKET_NAME"  # <-- IMPORTANT: Replace with your bucket name
-
-def _get_user_prefs_blob():
-    """Get the GCS blob for the current user's preferences."""
-    if "user" not in st.session_state:
-        return None
-    
-    if BUCKET_NAME == "REPLACE_WITH_YOUR_BUCKET_NAME":
-        st.error("Google Cloud Storage bucket name is not configured. Please update it in `auth.py`.")
-        st.stop()
-        
-    user_uid = st.session_state["user"]
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NAME)
-    return bucket.blob(f"user_prefs/{user_uid}.json")
+# --- User Preferences (Firestore) ---
 
 def _load_user_prefs() -> dict:
-    """Load user preferences from Google Cloud Storage."""
-    blob = _get_user_prefs_blob()
-    if blob and blob.exists():
-        try:
-            return json.loads(blob.download_as_string())
-        except (IOError, json.JSONDecodeError):
-            return {}
+    """Load user preferences from Firestore."""
+    if "user" not in st.session_state:
+        return {}
+        
+    user_uid = st.session_state["user"]
+    doc_ref = db.collection("user_prefs").document(user_uid)
+    doc = doc_ref.get()
+    
+    if doc.exists:
+        return doc.to_dict()
     return {}
 
 def _save_user_prefs(prefs: dict):
-    """Save user preferences to Google Cloud Storage."""
-    blob = _get_user_prefs_blob()
-    if blob:
-        try:
-            blob.upload_from_string(
-                json.dumps(prefs, indent=2),
-                content_type="application/json"
-            )
-        except Exception as e:
-            st.error(f"Failed to save user preferences: {e}")
+    """Save user preferences to Firestore."""
+    if "user" not in st.session_state:
+        return
+        
+    user_uid = st.session_state["user"]
+    doc_ref = db.collection("user_prefs").document(user_uid)
+    doc_ref.set(prefs)
 
 # --- API Key Management ---
 
@@ -132,39 +101,17 @@ def load_api_keys():
         st.warning("GEMINI_API_KEY is not set. Please add it in the Settings page.")
         return False
 
-# --- Nexus Community Feed (Cloud Storage) ---
+# --- Nexus Community Feed (Firestore) ---
 
-NEXUS_FEED_BLOB = "nexus_feed/feed.json"
-
-def load_nexus_feed():
-    """Load the Nexus community feed from Google Cloud Storage."""
-    if BUCKET_NAME == "REPLACE_WITH_YOUR_BUCKET_NAME":
-        st.error("Google Cloud Storage bucket name is not configured. Please update it in `auth.py`.")
-        st.stop()
-        
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NEXUS_FEED_BLOB)
-    blob = bucket.blob(NEXUS_FEED_BLOB)
-    if blob.exists():
-        try:
-            return json.loads(blob.download_as_string())
-        except (IOError, json.JSONDecodeError):
-            return []
+def load_nexus_feed() -> list:
+    """Load the Nexus community feed from Firestore."""
+    doc_ref = db.collection("nexus_data").document("feed")
+    doc = doc_ref.get()
+    if doc.exists:
+        return doc.to_dict().get("items", [])
     return []
 
-def save_nexus_feed(feed_data):
-    """Save the Nexus community feed to Google Cloud Storage."""
-    if BUCKET_NAME == "REPLACE_WITH_YOUR_BUCKET_NAME":
-        st.error("Google Cloud Storage bucket name is not configured. Please update it in `auth.py`.")
-        st.stop()
-        
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(NEXUS_FEED_BLOB)
-    try:
-        blob.upload_from_string(
-            json.dumps(feed_data, indent=2),
-            content_type="application/json"
-        )
-    except Exception as e:
-        st.error(f"Failed to save Nexus feed: {e}")
+def save_nexus_feed(feed_data: list):
+    """Save the Nexus community feed to Firestore."""
+    doc_ref = db.collection("nexus_data").document("feed")
+    doc_ref.set({"items": feed_.items})
