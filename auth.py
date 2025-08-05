@@ -24,30 +24,29 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# --- User Authentication (OAuth) ---
+# --- User Authentication ---
 
-def verify_id_token(id_token):
-    """Verify the ID token and get the user's UID."""
+def get_or_create_user(email):
+    """Get a user by email, or create a new one if they don't exist."""
     try:
-        decoded_token = auth.verify_id_token(id_token)
-        uid = decoded_token['uid']
-        st.session_state["user"] = uid
-        st.session_state["logged_in"] = True
-        
-        # Check if user has a preferences document, if not create one
-        doc_ref = db.collection("user_prefs").document(uid)
-        if not doc_ref.get().exists:
-            doc_ref.set({})
-            
-        return uid
-    except auth.InvalidIdTokenError:
-        st.error("Invalid ID token. Please try signing in again.")
-        st.session_state["logged_in"] = False
-        return None
+        user = auth.get_user_by_email(email)
+        return user
+    except auth.UserNotFoundError:
+        user = auth.create_user(email=email)
+        # Create an empty preferences document for the new user
+        db.collection("user_prefs").document(user.uid).set({})
+        return user
     except Exception as e:
-        st.error(f"Error during token verification: {e}")
-        st.session_state["logged_in"] = False
+        st.error(f"Error getting or creating user: {e}")
         return None
+
+def login_user(email):
+    """Logs in a user by setting the session state."""
+    user = get_or_create_user(email)
+    if user:
+        st.session_state["user"] = user.uid
+        st.session_state["logged_in"] = True
+    return user
 
 # --- User Preferences (Firestore) ---
 
@@ -114,4 +113,4 @@ def load_nexus_feed() -> list:
 def save_nexus_feed(feed_data: list):
     """Save the Nexus community feed to Firestore."""
     doc_ref = db.collection("nexus_data").document("feed")
-    doc_ref.set({"items": feed_.items})
+    doc_ref.set({"items": feed_data})
