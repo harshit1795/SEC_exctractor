@@ -1,8 +1,7 @@
 
 import streamlit as st
-import streamlit.components.v1 as components
-import os
-from auth import verify_id_token, load_api_keys
+from auth import login_user, load_api_keys
+import webbrowser
 
 st.set_page_config(page_title="FinQ", page_icon="📈")
 
@@ -15,17 +14,21 @@ if not st.session_state["logged_in"]:
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ! 👋")
 
-    # Load the FirebaseUI HTML file
-    with open("firebase_ui_auth.html", "r") as f:
-        firebase_ui_html = f.read()
+    # This is a placeholder for the Google Sign-In button.
+    # In a real app, this would be a more sophisticated implementation.
+    st.write("Please sign in with your Google account.")
+    
+    # We will use a simple text input for the user to enter their email.
+    # This simulates getting the user's email from the OAuth provider.
+    email = st.text_input("Enter your Google email to sign in:")
+    
+    if st.button("Sign in with Google"):
+        if email:
+            login_user(email)
+            st.experimental_rerun()
+        else:
+            st.warning("Please enter your email.")
 
-    # Render the FirebaseUI component
-    auth_response = components.html(firebase_ui_html, height=400)
-
-    if auth_response and "id_token" in auth_response:
-        id_token = auth_response["id_token"]
-        if verify_id_token(id_token):
-            st.experimental_rerun() # Rerun the app to show the main content
 else:
     # --- Main Application ---
     
