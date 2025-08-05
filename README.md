@@ -10,19 +10,22 @@
 
 ### For Firebase Studio Workspace
 
-1. **Firebase and Google Cloud Setup:**
+1. **Firebase Setup:**
    - Create a Firebase project in the [Firebase console](https://console.firebase.google.com/).
-   - Create a Google Cloud Storage bucket in the [Google Cloud console](https://console.cloud.google.com/storage).
-   - Generate a private key file for your service account in your Firebase project settings.
-   - Rename the downloaded JSON file to `firebase-credentials.json` and place it in the root of this project.
-   - In `auth.py`, replace `"your-bucket-name"` with your actual Google Cloud Storage bucket name.
+   - In your Firebase project, go to **Authentication** > **Sign-in method** and enable the **Google** and **Facebook** providers.
+   - For Facebook, you will need to provide your App ID and App Secret from your Facebook for Developers app.
+   - Go to your Firebase project settings and create a **Web App**. Copy the `firebaseConfig` object.
+   - In your Firebase project settings, go to the **Service accounts** tab and generate a private key file. Rename it to `firebase-credentials.json` and place it in the root of this project.
 
-2. **First time setup:**
+2. **Configuration:**
+   - In `firebase_ui_auth.html`, replace the placeholder `firebaseConfig` object with the one you copied from your Firebase project.
+
+3. **First time setup:**
    ```bash
    nix-shell -p python311 --run "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
    ```
 
-3. **Run the app:**
+4. **Run the app:**
    ```bash
    nix-shell -p python311 --run "source venv/bin/activate && streamlit run Home.py --server.headless true --server.enableCORS false"
    ```
