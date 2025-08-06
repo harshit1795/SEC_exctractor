@@ -12,13 +12,12 @@
 
 1. **Firebase Setup:**
    - Create a Firebase project in the [Firebase console](https://console.firebase.google.com/).
-   - In your Firebase project, go to **Authentication** > **Sign-in method** and enable the **Google** and **Facebook** providers.
-   - For Facebook, you will need to provide your App ID and App Secret from your Facebook for Developers app.
+   - In your Firebase project, go to **Authentication** > **Sign-in method** and enable the **Google** provider.
    - Go to your Firebase project settings and create a **Web App**. Copy the `firebaseConfig` object.
    - In your Firebase project settings, go to the **Service accounts** tab and generate a private key file. Rename it to `firebase-credentials.json` and place it in the root of this project.
 
 2. **Configuration:**
-   - In `firebase_ui_auth.html`, replace the placeholder `firebaseConfig` object with the one you copied from your Firebase project.
+   - In `firebase-config.json`, replace the placeholder values with the `firebaseConfig` object you copied from your Firebase project.
 
 3. **First time setup:**
    ```bash
