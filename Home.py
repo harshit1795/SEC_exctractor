@@ -1,29 +1,119 @@
 
 import streamlit as st
-import os
-from auth import load_api_keys
+import firebase_admin
+from firebase_admin import credentials
+from auth import verify_google_token
+import json
 
-# Load API keys using the new auth module
-load_api_keys()
+# --- Page Configuration ---
+st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
 
-st.set_page_config(page_title="FinQ", page_icon="📈")
+# --- Firebase Initialization ---
+if not firebase_admin._apps:
+    try:
+        cred = credentials.Certificate(st.secrets["firebase_credentials"])
+    except (KeyError, FileNotFoundError):
+        cred = credentials.Certificate("firebase-credentials.json")
+    firebase_admin.initialize_app(cred)
+    
+# Get Firebase config from secrets
+firebase_config = st.secrets.get("firebase_config", {})
 
-st.markdown("<style> .css-1d3f8as { display: flex; flex-direction: column; align-items: center; } </style>", unsafe_allow_html=True)
-st.markdown("<style> img { display: block; margin-left: auto; margin-right: auto; } </style>", unsafe_allow_html=True)
-st.image("FInQLogo.png", width=200)
-st.title("Welcome to FinQ! 👋")
+# --- Session State ---
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
-st.markdown(
+def display_splash_screen():
+    """Displays the splash screen with a Google Sign-In button."""
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebar"] {
+                display: none
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    st.image("FInQLogo.png", width=200)
+    st.title("Welcome to FinQ")
+
+    # Embedded HTML and Javascript for Google Sign-In
+    html_string = f"""
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = {json.dumps(firebase_config)};
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        function signInWithGoogle() {{
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider)
+                .then((result) => {{
+                    const idToken = result.credential.idToken;
+                    window.parent.postMessage({{
+                        'type': 'streamlit:setComponentValue',
+                        'value': idToken
+                    }}, '*')
+                }})
+                .catch((error) => {{
+                    console.error("Error during sign-in:", error);
+                }});
+        }}
+    </script>
+    <button onclick="signInWithGoogle()">Sign in with Google</button>
     """
-    **FinQ is your personal financial analysis assistant.**
+    
+    id_token = st.html(html_string, height=100)
+    
+    if id_token:
+        decoded_token = verify_google_token(id_token)
+        if decoded_token:
+            st.session_state["user"] = decoded_token['uid']
+            st.session_state["logged_in"] = True
+            st.rerun()
 
-    This application allows you to explore and analyze financial data for S&P 500 companies.
+def display_main_app():
+    """Displays the main application interface after login."""
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebar"] {
+                display: block
+            }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    ### Key Features:
-    *   **Latest Financial Metric Analysis:** Dive deep into the latest financial metrics of your chosen companies.
-    *   **Financial Health Monitoring:** Keep a close eye on the financial health of your portfolio.
-    *   **Nexus (Community):** Connect with other investors and share your insights.
+    st.sidebar.image("FInQLogo.png", width=100)
+    st.sidebar.title("FinQ Modules")
 
-    **👈 Select 'Financial Analysis' from the sidebar to get started!**
-    """
-)
+    page = st.sidebar.radio(
+        "Navigation",
+        options=["Dashboard", "Financial Health Monitoring", "Nexus", "Settings"],
+        key="navigation_page",
+    )
+
+    if st.sidebar.button("Log Out"):
+        st.session_state["logged_in"] = False
+        st.session_state["user"] = None
+        st.rerun()
+
+    # --- Page Content ---
+    if page == "Dashboard":
+        st.switch_page("pages/0_Dashboard.py")
+    elif page == "Financial Health Monitoring":
+        st.switch_page("pages/1_Financial_Health_Monitoring.py")
+    elif page == "Nexus":
+        st.switch_page("pages/2_Nexus.py")
+    elif page == "Settings":
+        st.switch_page("pages/4_Settings.py")
+
+# --- Main Application Logic ---
+if st.session_state.get("logged_in"):
+    display_main_app()
+else:
+    display_splash_screen()
