@@ -1,9 +1,9 @@
-
 import os
 import json
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
+import streamlit.components.v1 as components
 
 # --- Firebase Initialization ---
 
@@ -23,6 +23,18 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
+
+def get_firebase_config():
+    """Loads Firebase config from secrets or a local file."""
+    try:
+        return st.secrets["firebase_config"]
+    except (KeyError, FileNotFoundError):
+        if os.path.exists("firebase-config.json"):
+            with open("firebase-config.json") as f:
+                return json.load(f)
+        else:
+            st.error("Firebase config not found. Please add it to your Streamlit secrets or create a 'firebase-config.json' file.")
+            st.stop()
 
 # --- User Authentication ---
 
@@ -48,12 +60,68 @@ def login_user(email):
         st.session_state["logged_in"] = True
     return user
 
+def show_login_ui():
+    """Displays the Firebase login UI and handles the authentication flow."""
+    st.markdown("<style>[data-testid='stSidebar'] { display: none; }</style>", unsafe_allow_html=True)
+
+    st.image("FInQLogo.png", width=200)
+    st.title("Welcome to FinQ! 👋")
+
+    firebase_config = get_firebase_config()
+
+    html = f"""
+        <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
+        <script src="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.js"></script>
+        <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.css" />
+
+        <div id="firebaseui-auth-container"></div>
+
+        <script>
+            const firebaseConfig = {json.dumps(firebase_config)};
+            // Check if Firebase app is already initialized
+            if (!firebase.apps.length) {{
+                firebase.initializeApp(firebaseConfig);
+            }}
+
+            var uiConfig = {{
+                callbacks: {{
+                    signInSuccessWithAuthResult: function(authResult, redirectUrl) {{
+                        if (authResult.user) {{
+                            const email = authResult.user.email;
+                            const url = new URL(window.location.href);
+                            url.searchParams.set('email', email);
+                            window.location.href = url.href;
+                        }}
+                        return false;
+                    }}
+                }},
+                signInOptions: [
+                    firebase.auth.GoogleAuthProvider.PROVIDER_ID
+                ],
+                signInFlow: 'popup'
+            }};
+
+            var ui = firebaseui.auth.AuthUI.getInstance() || new firebaseui.auth.AuthUI(firebase.auth());
+            ui.start('#firebaseui-auth-container', uiConfig);
+        </script>
+    """
+
+    components.html(html, height=500)
+
+    query_params = st.experimental_get_query_params()
+    if "email" in query_params:
+        email = query_params["email"][0]
+        login_user(email)
+        st.experimental_set_query_params() # Clear the query params
+        st.experimental_rerun()
+
 # --- User Preferences (Firestore) ---
 
 def _load_user_prefs() -> dict:
     """Load user preferences from Firestore."""
     if "user" not in st.session_state:
-        return {}
+        return {{}}
         
     user_uid = st.session_state["user"]
     doc_ref = db.collection("user_prefs").document(user_uid)
@@ -61,7 +129,7 @@ def _load_user_prefs() -> dict:
     
     if doc.exists:
         return doc.to_dict()
-    return {}
+    return {{}}
 
 def _save_user_prefs(prefs: dict):
     """Save user preferences to Firestore."""
