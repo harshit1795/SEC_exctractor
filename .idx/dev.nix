@@ -21,7 +21,7 @@
       streamlit
       altair
       pillow
-      fredapi
+      afredapi
       google-generativeai
       tabulate
       firebase-admin
