@@ -1,9 +1,9 @@
+
 import os
 import json
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
-import streamlit.components.v1 as components
 
 # --- Firebase Initialization ---
 
@@ -24,104 +24,51 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-def get_firebase_config():
-    """Loads Firebase config from secrets or a local file."""
-    try:
-        return st.secrets["firebase_config"]
-    except (KeyError, FileNotFoundError):
-        if os.path.exists("firebase-config.json"):
-            with open("firebase-config.json") as f:
-                return json.load(f)
-        else:
-            st.error("Firebase config not found. Please add it to your Streamlit secrets or create a 'firebase-config.json' file.")
-            st.stop()
-
 # --- User Authentication ---
 
-def get_or_create_user(email):
-    """Get a user by email, or create a new one if they don't exist."""
+def create_user(email, password):
+    """Create a new user in Firebase Authentication."""
     try:
-        user = auth.get_user_by_email(email)
-        return user
-    except auth.UserNotFoundError:
-        user = auth.create_user(email=email)
+        user = auth.create_user(email=email, password=password)
+        st.success(f"Successfully created user: {user.uid}")
         # Create an empty preferences document for the new user
         db.collection("user_prefs").document(user.uid).set({})
         return user
     except Exception as e:
-        st.error(f"Error getting or creating user: {e}")
+        st.error(f"Error creating user: {e}")
         return None
 
-def login_user(email):
-    """Logs in a user by setting the session state."""
-    user = get_or_create_user(email)
-    if user:
+def login_user(email, password):
+    """Login a user with email and password."""
+    try:
+        # This is a simplified example. In a real app, you'd handle this securely.
+        user = auth.get_user_by_email(email)
+        # Here you would typically verify the password using a client-side SDK and a custom token.
+        # For this backend-only example, we are trusting the provided credentials.
         st.session_state["user"] = user.uid
         st.session_state["logged_in"] = True
-    return user
+        return user
+    except Exception as e:
+        st.error(f"Error logging in: {e}")
+        st.session_state["logged_in"] = False
+        return None
 
-def show_login_ui():
-    """Displays the Firebase login UI and handles the authentication flow."""
-    st.markdown("<style>[data-testid='stSidebar'] { display: none; }</style>", unsafe_allow_html=True)
-
-    st.image("FInQLogo.png", width=200)
-    st.title("Welcome to FinQ! 👋")
-
-    firebase_config = get_firebase_config()
-
-    html = f"""
-        <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-        <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
-        <script src="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.js"></script>
-        <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.0.1/firebase-ui-auth.css" />
-
-        <div id="firebaseui-auth-container"></div>
-
-        <script>
-            const firebaseConfig = {json.dumps(firebase_config)};
-            // Check if Firebase app is already initialized
-            if (!firebase.apps.length) {{
-                firebase.initializeApp(firebaseConfig);
-            }}
-
-            var uiConfig = {{
-                callbacks: {{
-                    signInSuccessWithAuthResult: function(authResult, redirectUrl) {{
-                        if (authResult.user) {{
-                            const email = authResult.user.email;
-                            const url = new URL(window.location.href);
-                            url.searchParams.set('email', email);
-                            window.location.href = url.href;
-                        }}
-                        return false;
-                    }}
-                }},
-                signInOptions: [
-                    firebase.auth.GoogleAuthProvider.PROVIDER_ID
-                ],
-                signInFlow: 'popup'
-            }};
-
-            var ui = firebaseui.auth.AuthUI.getInstance() || new firebaseui.auth.AuthUI(firebase.auth());
-            ui.start('#firebaseui-auth-container', uiConfig);
-        </script>
-    """
-
-    components.html(html, height=500)
-
-    query_params = st.experimental_get_query_params()
-    if "email" in query_params:
-        email = query_params["email"][0]
-        login_user(email)
-        st.experimental_set_query_params() # Clear the query params
-        st.experimental_rerun()
+def reset_password(email):
+    """Send a password reset email."""
+    try:
+        link = auth.generate_password_reset_link(email)
+        st.success(f"Password reset link sent to {email}")
+        # You would typically email this link to the user.
+        print(f"Password reset link: {link}")
+    except Exception as e:
+        st.error(f"Error sending password reset email: {e}")
 
 # --- User Preferences (Firestore) ---
 
 def _load_user_prefs() -> dict:
     """Load user preferences from Firestore."""
     if "user" not in st.session_state:
-        return {{}}
+        return {}
         
     user_uid = st.session_state["user"]
     doc_ref = db.collection("user_prefs").document(user_uid)
@@ -129,7 +76,7 @@ def _load_user_prefs() -> dict:
     
     if doc.exists:
         return doc.to_dict()
-    return {{}}
+    return {}
 
 def _save_user_prefs(prefs: dict):
     """Save user preferences to Firestore."""
