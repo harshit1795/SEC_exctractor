@@ -2,7 +2,7 @@ import streamlit as st
 import firebase_admin
 from firebase_admin import credentials
 from auth import verify_google_token
-from google_auth_oauthlib.flow import Flow
+import json
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
@@ -10,74 +10,90 @@ st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
 # --- Firebase Initialization ---
 if not firebase_admin._apps:
     try:
-        cred = credentials.Certificate(st.secrets["firebase_credentials"])
+        firebase_creds = st.secrets["firebase_credentials"]
     except (KeyError, FileNotFoundError):
-        cred = credentials.Certificate("firebase-credentials.json")
+        if os.path.exists("firebase-credentials.json"):
+            with open("firebase-credentials.json") as f:
+                firebase_creds = json.load(f)
+        else:
+            st.error("Firebase credentials not found.")
+            st.stop()
+            
+    cred = credentials.Certificate(firebase_creds)
     firebase_admin.initialize_app(cred)
     
-# Get Firebase config from secrets
-firebase_config = st.secrets.get("firebase_config", {})
+try:
+    with open("firebase-config.json") as f:
+        firebase_config = json.load(f)
+except (KeyError, FileNotFoundError):
+    firebase_config = st.secrets["firebase_config"]
 
-# --- Session State ---
+
+# --- Session State Initialization ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
+if "user" not in st.session_state:
+    st.session_state["user"] = None
 
 def display_splash_screen():
-    """Displays the splash screen with a Google Sign-In link via OAuth."""
-    st.markdown("<style>[data-testid='stSidebar'] { display: none }</style>", unsafe_allow_html=True)
-    st.image("FInQLogo.png", width=200)
-    st.title("Welcome to FinQ")
-    st.info("🔍 Click the link below to sign in with Google.")
-
-    # OAuth client config from Streamlit secrets
-    oauth_cfg = st.secrets.get("oauth", {}).get("client_config", {})
-    if not oauth_cfg:
-        st.error("OAuth client configuration not found in secrets.")
-        return
-    redirect_uri = oauth_cfg.get("web", {}).get("redirect_uris", [None])[0]
-    if not redirect_uri:
-        st.error("Redirect URI not configured for OAuth flow.")
-        return
-
-    params = st.experimental_get_query_params()
-    flow = Flow.from_client_config(
-        oauth_cfg,
-        scopes=["openid", "email", "profile"],
-        redirect_uri=redirect_uri,
-    )
-
-    # After user consents, Google redirects back with ?code=...
-    if "code" in params:
-        code = params.get("code")[0]
-        try:
-            flow.fetch_token(code=code)
-            id_token = flow.credentials.id_token
-        except Exception as e:
-            st.error(f"Error fetching token: {e}")
-            return
-        # Clear query params to avoid loops
-        st.experimental_set_query_params()
-
-        if id_token:
-            decoded_token = verify_google_token(id_token)
-            if decoded_token:
-                st.session_state["user"] = decoded_token["uid"]
-                st.session_state["logged_in"] = True
-                st.rerun()
-        else:
-            st.error("Failed to retrieve ID token.")
-    else:
-        auth_url, _ = flow.authorization_url(prompt="consent")
-        st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
-
-def display_main_app():
-    """Displays the main application interface after login."""
+    """Displays the splash screen with a Google Sign-In button."""
     st.markdown(
         """
         <style>
             [data-testid="stSidebar"] {
-                display: block
+                display: none
             }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    
+    st.image("FInQLogo.png", width=200)
+    st.title("Welcome to FinQ")
+
+    # Embedded HTML and Javascript for Google Sign-In
+    html_string = f"""
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = {json.dumps(firebase_config)};
+        const app = firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        function signInWithGoogle() {{
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider)
+                .then((result) => {{
+                    const idToken = result.credential.idToken;
+                    window.parent.postMessage({{
+                        'type': 'streamlit:setComponentValue',
+                        'value': idToken
+                    }}, '*')
+                }})
+                .catch((error) => {{
+                    console.error("Error during sign-in:", error);
+                }});
+        }}
+    </script>
+    <button onclick="signInWithGoogle()">Sign in with Google</button>
+    """
+    
+    id_token = st.html(html_string, height=100)
+    
+    if id_token:
+        decoded_token = verify_google_token(id_token)
+        if decoded_token:
+            st.session_state["user"] = decoded_token['uid']
+            st.session_state["logged_in"] = True
+            st.rerun()
+
+def display_main_app():
+    # ... (rest of the function remains the same) ...
+    st.markdown(
+        """
+        <style>
+            [data-testid="stSidebar"] { display: block }
+            [data-testid="stHeader"] { display: block }
         </style>
         """,
         unsafe_allow_html=True,
@@ -89,7 +105,7 @@ def display_main_app():
     page = st.sidebar.radio(
         "Navigation",
         options=["Dashboard", "Financial Health Monitoring", "Nexus", "Settings"],
-        key="navigation_page",
+        key="navigation_main"
     )
 
     if st.sidebar.button("Log Out"):
@@ -97,7 +113,6 @@ def display_main_app():
         st.session_state["user"] = None
         st.rerun()
 
-    # --- Page Content ---
     if page == "Dashboard":
         st.switch_page("pages/0_Dashboard.py")
     elif page == "Financial Health Monitoring":
@@ -106,6 +121,7 @@ def display_main_app():
         st.switch_page("pages/2_Nexus.py")
     elif page == "Settings":
         st.switch_page("pages/4_Settings.py")
+
 
 # --- Main Application Logic ---
 if st.session_state.get("logged_in"):
