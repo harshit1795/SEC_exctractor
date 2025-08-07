@@ -20,12 +20,27 @@ if not firebase_admin._apps:
     cred = credentials.Certificate(firebase_creds_dict)
     firebase_admin.initialize_app(cred)
 
+try:
+    with open("firebase-config.json") as f:
+        firebase_config = json.load(f)
+except (KeyError, FileNotFoundError):
+    firebase_config = st.secrets["firebase_config"]
+
 st.set_page_config(page_title="FinQ Login", page_icon="📈", layout="centered")
 
 st.image("FInQLogo.png", width=200)
 st.title("Welcome to FinQ")
 
-user = fb_streamlit_auth()
+user = fb_streamlit_auth(
+    apiKey=firebase_config["apiKey"],
+    authDomain=firebase_config["authDomain"],
+    databaseURL=firebase_config.get("databaseURL", ""),
+    projectId=firebase_config["projectId"],
+    storageBucket=firebase_config["storageBucket"],
+    messagingSenderId=firebase_config["messagingSenderId"],
+    appId=firebase_config["appId"],
+    measurementId=firebase_config.get("measurementId", ""),
+)
 
 if user:
     st.session_state["user"] = user['uid']
