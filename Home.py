@@ -51,14 +51,24 @@ def display_splash_screen():
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ")
 
-    login_button = sfa.login_button(
-        firebase_config=firebase_config,
-    )
-    
-    if login_button:
-        st.session_state["user"] = login_button['uid']
-        st.session_state["logged_in"] = True
-        st.rerun()
+    choice = st.selectbox("Login/Signup", ["Login", "Signup"])
+
+    if choice == "Login":
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            user = sfa.login(email, password, firebase_config)
+            if user:
+                st.session_state["user"] = user['uid']
+                st.session_state["logged_in"] = True
+                st.rerun()
+    else:
+        email = st.text_input("Email")
+        password = st.text_input("Password", type="password")
+        if st.button("Signup"):
+            user = sfa.signup(email, password, firebase_config)
+            if user:
+                st.success("Signup successful! Please login.")
 
 def display_main_app():
     # ... (rest of the function remains the same) ...
@@ -84,7 +94,6 @@ def display_main_app():
     if st.sidebar.button("Log Out"):
         st.session_state["logged_in"] = False
         st.session_state["user"] = None
-        sfa.logout_button()
         st.rerun()
 
     if page == "Dashboard":
