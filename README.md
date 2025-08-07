@@ -17,11 +17,40 @@
    - In your Firebase project settings, go to the **Service accounts** tab and generate a private key file. Rename it to `firebase-credentials.json` and place it in the root of this project.
 
 2. **Configuration:**
-   - In `firebase-config.json`, replace the placeholder values with the `firebaseConfig` object you copied from your Firebase project.
+   - Create or update your Streamlit secrets in `.streamlit/secrets.toml` with your Firebase settings:
+
+```toml
+# Service account credentials for Firebase Admin SDK
+firebase_credentials = { /* paste the JSON object from your Firebase service account private key */ }
+
+# Firebase Web App config for Firebase JS SDK
+firebase_config = {
+  apiKey = "...",
+  authDomain = "...",
+  projectId = "...",
+  storageBucket = "...",
+  messagingSenderId = "...",
+  appId = "..."
+}
+
+## OAuth Python Flow Configuration
+
+In your `.streamlit/secrets.toml`, add your Google OAuth client config under `[oauth.client_config]`:
+
+```toml
+[oauth]
+[oauth.client_config.web]
+client_id = "<YOUR_WEB_CLIENT_ID>"
+client_secret = "<YOUR_WEB_CLIENT_SECRET>"
+auth_uri = "https://accounts.google.com/o/oauth2/auth"
+token_uri = "https://oauth2.googleapis.com/token"
+redirect_uris = ["http://localhost:8501"]
+```
+```
 
 3. **First time setup:**
    ```bash
-   nix-shell -p python311 --run "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
+  nix-shell -p python311 --run "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
    ```
 
 4. **Run the app:**

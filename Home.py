@@ -1,9 +1,8 @@
-
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials
 from auth import verify_google_token
-import json
+from google_auth_oauthlib.flow import Flow
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
@@ -24,56 +23,52 @@ if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
 def display_splash_screen():
-    """Displays the splash screen with a Google Sign-In button."""
-    st.markdown(
-        """
-        <style>
-            [data-testid="stSidebar"] {
-                display: none
-            }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
-    
+    """Displays the splash screen with a Google Sign-In link via OAuth."""
+    st.markdown("<style>[data-testid='stSidebar'] { display: none }</style>", unsafe_allow_html=True)
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ")
+    st.info("🔍 Click the link below to sign in with Google.")
 
-    # Embedded HTML and Javascript for Google Sign-In
-    html_string = f"""
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
-    <script>
-        const firebaseConfig = {json.dumps(firebase_config)};
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
+    # OAuth client config from Streamlit secrets
+    oauth_cfg = st.secrets.get("oauth", {}).get("client_config", {})
+    if not oauth_cfg:
+        st.error("OAuth client configuration not found in secrets.")
+        return
+    redirect_uri = oauth_cfg.get("web", {}).get("redirect_uris", [None])[0]
+    if not redirect_uri:
+        st.error("Redirect URI not configured for OAuth flow.")
+        return
 
-        function signInWithGoogle() {{
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider)
-                .then((result) => {{
-                    const idToken = result.credential.idToken;
-                    window.parent.postMessage({{
-                        'type': 'streamlit:setComponentValue',
-                        'value': idToken
-                    }}, '*')
-                }})
-                .catch((error) => {{
-                    console.error("Error during sign-in:", error);
-                }});
-        }}
-    </script>
-    <button onclick="signInWithGoogle()">Sign in with Google</button>
-    """
-    
-    id_token = st.html(html_string, height=100)
-    
-    if id_token:
-        decoded_token = verify_google_token(id_token)
-        if decoded_token:
-            st.session_state["user"] = decoded_token['uid']
-            st.session_state["logged_in"] = True
-            st.rerun()
+    params = st.experimental_get_query_params()
+    flow = Flow.from_client_config(
+        oauth_cfg,
+        scopes=["openid", "email", "profile"],
+        redirect_uri=redirect_uri,
+    )
+
+    # After user consents, Google redirects back with ?code=...
+    if "code" in params:
+        code = params.get("code")[0]
+        try:
+            flow.fetch_token(code=code)
+            id_token = flow.credentials.id_token
+        except Exception as e:
+            st.error(f"Error fetching token: {e}")
+            return
+        # Clear query params to avoid loops
+        st.experimental_set_query_params()
+
+        if id_token:
+            decoded_token = verify_google_token(id_token)
+            if decoded_token:
+                st.session_state["user"] = decoded_token["uid"]
+                st.session_state["logged_in"] = True
+                st.rerun()
+        else:
+            st.error("Failed to retrieve ID token.")
+    else:
+        auth_url, _ = flow.authorization_url(prompt="consent")
+        st.markdown(f"[Sign in with Google]({auth_url})", unsafe_allow_html=True)
 
 def display_main_app():
     """Displays the main application interface after login."""

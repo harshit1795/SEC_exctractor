@@ -1,7 +1,7 @@
-
 import os
 import json
 import streamlit as st
+import logging
 import firebase_admin
 from firebase_admin import credentials, auth, firestore
 
@@ -19,19 +19,25 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
+logger = logging.getLogger(__name__)
+
 # --- User Authentication ---
 
 def verify_google_token(id_token):
     """Verify Google ID token and return user info."""
     try:
+        logger.info("Verifying Google ID token.")
         decoded_token = auth.verify_id_token(id_token)
-        uid = decoded_token['uid']
+        uid = decoded_token.get('uid')
+        logger.info("ID token verified successfully for uid: %s", uid)
         # Check if user exists in Firestore, if not, create a new record
         user_ref = db.collection("user_prefs").document(uid)
         if not user_ref.get().exists:
+            logger.info("Creating new Firestore record for uid: %s", uid)
             user_ref.set({})
         return decoded_token
     except Exception as e:
+        logger.error("Error verifying Google token: %s", e)
         st.error(f"Error verifying Google token: {e}")
         return None
 
