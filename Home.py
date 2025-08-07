@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials
 from auth import verify_google_token
 import json
+import streamlit.components.v1 as components
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
@@ -53,35 +54,37 @@ def display_splash_screen():
 
     # Embedded HTML and Javascript for Google Sign-In
     html_string = f"""
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js"></script>
-    <script>
-        const firebaseConfig = {json.dumps(firebase_config)};
-        const app = firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
+        <script type="module">
+            import {{ initializeApp }} from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
+            import {{ getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }} from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
+            
+            const firebaseConfig = {json.dumps(firebase_config)};
+            const app = initializeApp(firebaseConfig);
+            const auth = getAuth(app);
 
-        function signInWithGoogle() {{
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider)
-                .then((result) => {{
-                    const idToken = result.credential.idToken;
-                    window.parent.postMessage({{
-                        'type': 'streamlit:setComponentValue',
-                        'value': idToken
-                    }}, '*')
-                }})
-                .catch((error) => {{
-                    console.error("Error during sign-in:", error);
-                }});
-        }}
-    </script>
-    <button onclick="signInWithGoogle()">Sign in with Google</button>
+            window.signInWithGoogle = function() {{
+                const provider = new GoogleAuthProvider();
+                signInWithPopup(auth, provider)
+                    .then((result) => {{
+                        result.user.getIdToken().then(idToken => {{
+                            window.parent.postMessage({{
+                                'type': 'streamlit:setComponentValue',
+                                'value': idToken
+                            }}, '*')
+                        }})
+                    }})
+                    .catch((error) => {{
+                        console.error("Error during sign-in:", error);
+                    }});
+            }}
+        </script>
+        <button onclick="signInWithGoogle()">Sign in with Google</button>
     """
     
-    id_token = st.html(html_string, height=100)
+    token_response = components.html(html_string, height=100)
     
-    if id_token:
-        decoded_token = verify_google_token(id_token)
+    if isinstance(token_response, str) and token_response:
+        decoded_token = verify_google_token(token_response)
         if decoded_token:
             st.session_state["user"] = decoded_token['uid']
             st.session_state["logged_in"] = True
