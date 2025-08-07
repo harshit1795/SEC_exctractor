@@ -1,0 +1,33 @@
+import streamlit as st
+from fb_streamlit_auth import fb_streamlit_auth
+import json
+import os
+import firebase_admin
+from firebase_admin import credentials
+
+# --- Firebase Initialization ---
+if not firebase_admin._apps:
+    try:
+        firebase_creds_dict = st.secrets["firebase_credentials"]
+    except (KeyError, FileNotFoundError):
+        if os.path.exists("firebase-credentials.json"):
+            with open("firebase-credentials.json") as f:
+                firebase_creds_dict = json.load(f)
+        else:
+            st.error("Firebase credentials not found.")
+            st.stop()
+            
+    cred = credentials.Certificate(firebase_creds_dict)
+    firebase_admin.initialize_app(cred)
+
+st.set_page_config(page_title="FinQ Login", page_icon="📈", layout="centered")
+
+st.image("FInQLogo.png", width=200)
+st.title("Welcome to FinQ")
+
+user = fb_streamlit_auth()
+
+if user:
+    st.session_state["user"] = user['uid']
+    st.session_state["logged_in"] = True
+    st.switch_page("pages/0_Dashboard.py")
