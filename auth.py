@@ -21,66 +21,6 @@ db = firestore.client()
 
 logger = logging.getLogger(__name__)
 
-# --- User Authentication ---
-
-def verify_google_token(id_token):
-    """Verify Google ID token and return user info."""
-    try:
-        logger.info("Verifying Google ID token.")
-        decoded_token = auth.verify_id_token(id_token)
-        uid = decoded_token.get('uid')
-        logger.info("ID token verified successfully for uid: %s", uid)
-        # Check if user exists in Firestore, if not, create a new record
-        user_ref = db.collection("user_prefs").document(uid)
-        if not user_ref.get().exists:
-            logger.info("Creating new Firestore record for uid: %s", uid)
-            user_ref.set({})
-        return decoded_token
-    except Exception as e:
-        logger.error("Error verifying Google token: %s", e)
-        st.error(f"Error verifying Google token: {e}")
-        return None
-
-def create_user(email, password):
-    """Create a new user in Firebase Authentication."""
-    try:
-        user = auth.create_user(email=email, password=password)
-        st.success(f"Successfully created user: {user.uid}")
-        db.collection("user_prefs").document(user.uid).set({})
-        return user
-    except Exception as e:
-        st.error(f"Error creating user: {e}")
-        return None
-
-def login_user(email=None, password=None, id_token=None):
-    """Login a user with email/password or Google ID token."""
-    if id_token:
-        decoded_token = verify_google_token(id_token)
-        if decoded_token:
-            st.session_state["user"] = decoded_token['uid']
-            st.session_state["logged_in"] = True
-            return decoded_token
-    elif email and password:
-        try:
-            user = auth.get_user_by_email(email)
-            st.session_state["user"] = user.uid
-            st.session_state["logged_in"] = True
-            return user
-        except Exception as e:
-            st.error(f"Error logging in: {e}")
-            st.session_state["logged_in"] = False
-            return None
-    return None
-
-def reset_password(email):
-    """Send a password reset email."""
-    try:
-        link = auth.generate_password_reset_link(email)
-        st.success(f"Password reset link sent to {email}")
-        print(f"Password reset link: {link}")
-    except Exception as e:
-        st.error(f"Error sending password reset email: {e}")
-
 # --- User Preferences (Firestore) ---
 def _load_user_prefs() -> dict:
     if "user" not in st.session_state:
