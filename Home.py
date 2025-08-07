@@ -1,9 +1,8 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import credentials
-from auth import verify_google_token
 import json
-import streamlit.components.v1 as components
+import streamlit_firebase_auth as sfa
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
@@ -11,24 +10,26 @@ st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
 # --- Firebase Initialization ---
 if not firebase_admin._apps:
     try:
-        firebase_creds = st.secrets["firebase_credentials"]
+        firebase_creds_dict = st.secrets["firebase_credentials"]
     except (KeyError, FileNotFoundError):
         if os.path.exists("firebase-credentials.json"):
             with open("firebase-credentials.json") as f:
-                firebase_creds = json.load(f)
+                firebase_creds_dict = json.load(f)
         else:
             st.error("Firebase credentials not found.")
             st.stop()
             
-    cred = credentials.Certificate(firebase_creds)
+    cred = credentials.Certificate(firebase_creds_dict)
     firebase_admin.initialize_app(cred)
-    
+
 try:
     with open("firebase-config.json") as f:
         firebase_config = json.load(f)
 except (KeyError, FileNotFoundError):
     firebase_config = st.secrets["firebase_config"]
 
+# --- Authentication ---
+auth = sfa.StreamlitFirebaseAuth(firebase_config)
 
 # --- Session State Initialization ---
 if "logged_in" not in st.session_state:
@@ -52,43 +53,12 @@ def display_splash_screen():
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ")
 
-    # Embedded HTML and Javascript for Google Sign-In
-    html_string = f"""
-        <script type="module">
-            import {{ initializeApp }} from "https://www.gstatic.com/firebasejs/9.6.1/firebase-app.js";
-            import {{ getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged }} from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
-            
-            const firebaseConfig = {json.dumps(firebase_config)};
-            const app = initializeApp(firebaseConfig);
-            const auth = getAuth(app);
-
-            window.signInWithGoogle = function() {{
-                const provider = new GoogleAuthProvider();
-                signInWithPopup(auth, provider)
-                    .then((result) => {{
-                        result.user.getIdToken().then(idToken => {{
-                            window.parent.postMessage({{
-                                'type': 'streamlit:setComponentValue',
-                                'value': idToken
-                            }}, '*')
-                        }})
-                    }})
-                    .catch((error) => {{
-                        console.error("Error during sign-in:", error);
-                    }});
-            }}
-        </script>
-        <button onclick="signInWithGoogle()">Sign in with Google</button>
-    """
+    user = auth.login()
     
-    token_response = components.html(html_string, height=100)
-    
-    if isinstance(token_response, str) and token_response:
-        decoded_token = verify_google_token(token_response)
-        if decoded_token:
-            st.session_state["user"] = decoded_token['uid']
-            st.session_state["logged_in"] = True
-            st.rerun()
+    if user:
+        st.session_state["user"] = user['uid']
+        st.session_state["logged_in"] = True
+        st.rerun()
 
 def display_main_app():
     # ... (rest of the function remains the same) ...
@@ -114,6 +84,7 @@ def display_main_app():
     if st.sidebar.button("Log Out"):
         st.session_state["logged_in"] = False
         st.session_state["user"] = None
+        auth.logout()
         st.rerun()
 
     if page == "Dashboard":
