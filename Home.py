@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials
 import json
 import streamlit_firebase_auth as sfa
+import os
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
@@ -28,9 +29,6 @@ try:
 except (KeyError, FileNotFoundError):
     firebase_config = st.secrets["firebase_config"]
 
-# --- Authentication ---
-auth = sfa.StreamlitFirebaseAuth(firebase_config)
-
 # --- Session State Initialization ---
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
@@ -53,10 +51,12 @@ def display_splash_screen():
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ")
 
-    user = auth.login()
+    login_button = sfa.login_button(
+        firebase_config=firebase_config,
+    )
     
-    if user:
-        st.session_state["user"] = user['uid']
+    if login_button:
+        st.session_state["user"] = login_button['uid']
         st.session_state["logged_in"] = True
         st.rerun()
 
@@ -84,7 +84,7 @@ def display_main_app():
     if st.sidebar.button("Log Out"):
         st.session_state["logged_in"] = False
         st.session_state["user"] = None
-        auth.logout()
+        sfa.logout_button()
         st.rerun()
 
     if page == "Dashboard":
