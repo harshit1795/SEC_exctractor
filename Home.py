@@ -1,49 +1,35 @@
 import streamlit as st
+from components.shared import render_sidebar
+from pages import Dashboard, Financial_Health_Monitoring, Nexus, Settings
+from login import init_firebase, render_login_form
 
 # --- Page Configuration ---
-st.set_page_config(page_title="FinQ", page_icon="📈", layout="centered")
+st.set_page_config(page_title="FinQ", page_icon="📈", layout="wide")
 
-# --- Authentication Check ---
-if not st.session_state.get("logged_in"):
-    st.switch_page("login.py")
+# --- Firebase Initialization ---
+firebase_config = init_firebase()
 
-def display_main_app():
-    st.markdown(
-        """
-        <style>
-            [data-testid="stSidebar"] { display: block }
-            [data-testid="stHeader"] { display: block }
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+# --- Authentication ---
+if 'logged_in' not in st.session_state:
+    st.session_state['logged_in'] = False
 
-    st.sidebar.image("FInQLogo.png", width=100)
-    st.sidebar.title("FinQ Modules")
+if not st.session_state['logged_in']:
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        render_login_form(firebase_config)
+else:
+    # --- Page Navigation ---
+    PAGES = {
+        "Dashboard": Dashboard,
+        "Financial Health Monitoring": Financial_Health_Monitoring,
+        "Nexus": Nexus,
+        "Settings": Settings,
+    }
 
-    page = st.sidebar.radio(
-        "Navigation",
-        options=["Dashboard", "Financial Health Monitoring", "Nexus", "About", "Contact", "Settings"],
-        key="navigation_main"
-    )
+    # --- Render Sidebar and Page ---
+    selected_page = render_sidebar()
 
-    if st.sidebar.button("Log Out"):
-        st.session_state["logged_in"] = False
-        st.session_state["user"] = None
-        st.switch_page("login.py")
-
-    if page == "Dashboard":
-        st.switch_page("pages/0_Dashboard.py")
-    elif page == "Financial Health Monitoring":
-        st.switch_page("pages/1_Financial_Health_Monitoring.py")
-    elif page == "Nexus":
-        st.switch_page("pages/2_Nexus.py")
-    elif page == "About":
-        st.switch_page("pages/3_About.py")
-    elif page == "Contact":
-        st.switch_page("pages/5_Contact.py")
-    elif page == "Settings":
-        st.switch_page("pages/4_Settings.py")
-
-# --- Main Application Logic ---
-display_main_app()
+    if selected_page in PAGES:
+        PAGES[selected_page].render()
+    else:
+        st.error("Page not found!")

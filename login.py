@@ -5,44 +5,45 @@ import os
 import firebase_admin
 from firebase_admin import credentials
 
-# --- Firebase Initialization ---
-if not firebase_admin._apps:
+def init_firebase():
+    if not firebase_admin._apps:
+        try:
+            firebase_creds_dict = st.secrets["firebase_credentials"]
+        except (KeyError, FileNotFoundError):
+            if os.path.exists("firebase-credentials.json"):
+                with open("firebase-credentials.json") as f:
+                    firebase_creds_dict = json.load(f)
+            else:
+                st.error("Firebase credentials not found.")
+                st.stop()
+                
+        cred = credentials.Certificate(firebase_creds_dict)
+        firebase_admin.initialize_app(cred)
+
     try:
-        firebase_creds_dict = st.secrets["firebase_credentials"]
+        with open("firebase-config.json") as f:
+            firebase_config = json.load(f)
     except (KeyError, FileNotFoundError):
-        if os.path.exists("firebase-credentials.json"):
-            with open("firebase-credentials.json") as f:
-                firebase_creds_dict = json.load(f)
-        else:
-            st.error("Firebase credentials not found.")
-            st.stop()
-            
-    cred = credentials.Certificate(firebase_creds_dict)
-    firebase_admin.initialize_app(cred)
+        firebase_config = st.secrets["firebase_config"]
+        
+    return firebase_config
 
-try:
-    with open("firebase-config.json") as f:
-        firebase_config = json.load(f)
-except (KeyError, FileNotFoundError):
-    firebase_config = st.secrets["firebase_config"]
+def render_login_form(firebase_config):
+    st.image("FInQLogo.png", width=200)
+    st.title("Welcome to FinQ")
 
-st.set_page_config(page_title="FinQ Login", page_icon="📈", layout="centered")
+    user = fb_streamlit_auth(
+        apiKey=firebase_config["apiKey"],
+        authDomain=firebase_config["authDomain"],
+        databaseURL=firebase_config.get("databaseURL", ""),
+        projectId=firebase_config["projectId"],
+        storageBucket=firebase_config["storageBucket"],
+        messagingSenderId=firebase_config["messagingSenderId"],
+        appId=firebase_config["appId"],
+        measurementId=firebase_config.get("measurementId", ""),
+    )
 
-st.image("FInQLogo.png", width=200)
-st.title("Welcome to FinQ")
-
-user = fb_streamlit_auth(
-    apiKey=firebase_config["apiKey"],
-    authDomain=firebase_config["authDomain"],
-    databaseURL=firebase_config.get("databaseURL", ""),
-    projectId=firebase_config["projectId"],
-    storageBucket=firebase_config["storageBucket"],
-    messagingSenderId=firebase_config["messagingSenderId"],
-    appId=firebase_config["appId"],
-    measurementId=firebase_config.get("measurementId", ""),
-)
-
-if user:
-    st.session_state["user"] = user['uid']
-    st.session_state["logged_in"] = True
-    st.switch_page("pages/0_Dashboard.py")
+    if user:
+        st.session_state["user"] = user['uid']
+        st.session_state["logged_in"] = True
+        st.rerun()
