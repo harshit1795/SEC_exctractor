@@ -1,15 +1,2 @@
-[themes.light_theme]
-base="light"
-primaryColor="#6d6d6d"
-backgroundColor="#ffffff"
-secondaryBackgroundColor="#f0f2f6"
-textColor="#31333F"
-font="sans serif"
-
-[themes.dark_theme]
-base="dark"
-primaryColor="#6d6d6d"
-backgroundColor="#0e1117"
-secondaryBackgroundColor="#262730"
-textColor="#fafafa"
-font="sans serif"
+[ui]
+hideSidebarNav = true
