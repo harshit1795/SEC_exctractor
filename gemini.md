@@ -77,3 +77,51 @@ The application is deployed using Firebase Hosting. The deployment process is no
 *   `requirements.txt`: Python dependencies.
 *   `Home.py`: The main Streamlit application file.
 *   `settoken.sh`: Script for local development session setup.
+
+## Memory and Session Log
+
+This section is a living memory to speed up future sessions. Append new entries at the top with date/time and concise notes on what changed or what to try next.
+
+### 2025-08-11
+
+- Repo scan summary
+  - Entry point: Home.py (Streamlit multi-page app). Pages under pages/ include Dashboard, Financial_Health_Monitoring, Nexus, Settings. Common sidebar logic in components/shared.py. Auth/init in login.py and auth.py.
+  - Data assets expected locally: fundamentals_tall.parquet, sp500_fundamentals.csv, assets/logos/{TICKER}.png.
+  - External services: Firebase Admin (service account) and Firebase Web App config (firebase-config.json or Streamlit secrets). Optional OAuth client config in .streamlit/secrets.toml.
+  - API usage: yfinance, FRED (via fred_data.py), Google Generative AI (google-generativeai). API keys can be loaded from .streamlit/secrets.toml by auth.load_api_keys().
+  - Important: settoken.sh contains hard-coded API keys for OpenRouter, Gemini, and FRED. Prefer moving these into .streamlit/secrets.toml and removing secrets from VCS.
+
+- Run notes
+  - Local quick start (assuming Python env ready):
+    1) Optional: source settoken.sh (or set env vars via secrets).
+    2) pip install -r requirements.txt
+    3) streamlit run Home.py
+  - Firebase requirements: Place firebase-credentials.json and firebase-config.json in repo root OR configure .streamlit/secrets.toml with firebase_credentials and firebase_config blocks, plus oauth.client_config if needed.
+  - Verified dependencies import in this environment (pandas, streamlit, firebase_admin, yfinance, altair, google-generativeai, google-auth-oauthlib): all OK.
+  - Attempted headless run: streamlit run Home.py --server.headless true --server.port 8888. Observed warning "ui.hideSidebarNav is not a valid config option" from .streamlit/config.toml. App otherwise started without immediate errors before timeout.
+
+- Observations for Dashboard page
+  - Loads fundamentals_tall.parquet and sp500_fundamentals.csv; provides filters and basic header UI. Tabs are defined but content is not implemented yet (up to tab creation as of line ~115). Add tab bodies in a later iteration.
+
+- Next steps
+  - Implement tab contents in pages/Dashboard.py (metrics trend charts, snapshot KPIs, earnings summary, price chart with Altair, FRED macro overlays, and a simple chat using google-generativeai if API key present).
+  - Harden secrets management: remove plaintext keys from settoken.sh and rely on Streamlit secrets and/or environment variables. Audit README for formatting and completeness (code block fencing) and add Firebase Hosting deployment steps.
+  - Add a .streamlit/secrets.toml.example template showing required keys.
+  - Update .streamlit/config.toml to remove deprecated [ui] hideSidebarNav config; use CSS-based hiding already implemented in components.shared.hide_default_sidebar().
+
+## Practical Runbook
+
+- One-time setup
+  - python3 -m venv venv && source venv/bin/activate
+  - pip install -r requirements.txt
+  - Provide credentials: either add .streamlit/secrets.toml or drop firebase-credentials.json and firebase-config.json in repo root.
+
+- Daily workflow
+  - source venv/bin/activate
+  - Optional: source settoken.sh (only if not using secrets.toml)
+  - streamlit run Home.py
+
+- Troubleshooting tips
+  - If Streamlit shows Firebase credential errors, verify .streamlit/secrets.toml or the firebase-credentials.json file exists and is valid.
+  - If no logos appear, ensure assets/logos/{TICKER}.png exists or adjust get_logo_path in Dashboard.
+  - If data files are missing, regenerate fundamentals_tall.parquet and sp500_fundamentals.csv or point to correct paths.
