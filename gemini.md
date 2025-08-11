@@ -35,7 +35,7 @@ The SEC Extractor is a tool designed to automate the extraction of financial sta
 
 4.  **Run the app:**
     ```bash
-    nix-shell -p python311 --run "source venv/bin/activate && streamlit run login.py --server.headless true --server.enableCORS false"
+    nix-shell -p python311 --run "source venv/bin/activate && streamlit run Home.py --server.headless true --server.enableCORS false"
     ```
 
 ### Local Setup
@@ -44,7 +44,7 @@ The SEC Extractor is a tool designed to automate the extraction of financial sta
     To ensure only one instance of the app is running, use the following command to kill all existing Streamlit processes:
     ```bash
     pkill -f streamlit
-    source settoken.sh && streamlit run login.py &
+    source settoken.sh && streamlit run Home.py &
     ```
 
 ## Architectural Principles

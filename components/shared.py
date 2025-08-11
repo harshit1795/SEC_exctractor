@@ -1,5 +1,14 @@
 import streamlit as st
 
+def hide_default_sidebar():
+    st.markdown("""
+        <style>
+            div[data-testid="stSidebarNav"] {
+                display: none;
+            }
+        </style>
+    """, unsafe_allow_html=True)
+
 def render_sidebar():
     """Renders the sidebar navigation."""
     with st.sidebar:
@@ -15,6 +24,6 @@ def render_sidebar():
         if st.button("Log Out"):
             st.session_state["logged_in"] = False
             st.session_state["user"] = None
-            st.switch_page("login.py")
+            st.rerun()
     
     return page
