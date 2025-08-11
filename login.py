@@ -6,6 +6,7 @@ import os
 import firebase_admin
 from firebase_admin import credentials
 from components.shared import hide_default_sidebar
+import time
 
 def init_firebase():
     if not firebase_admin._apps:
@@ -47,7 +48,10 @@ def render_login_form(firebase_config):
     )
 
     if user:
-        st.session_state["user"] = user['uid']
-        st.session_state["logged_in"] = True
-        st.rerun()
+        with st.spinner("Loading application... Please wait."):
+            st.session_state["user"] = user['uid']
+            st.session_state["logged_in"] = True
+            # Simulate loading time for demonstration. Remove in production if not needed.
+            time.sleep(2)
+            st.rerun()
 
