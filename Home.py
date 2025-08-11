@@ -1,5 +1,5 @@
 import streamlit as st
-from components.shared import render_sidebar
+from components.shared import render_sidebar, hide_default_sidebar
 from pages import Dashboard, Financial_Health_Monitoring, Nexus, Settings
 from login import init_firebase, render_login_form
 
@@ -18,6 +18,9 @@ if not st.session_state['logged_in']:
     with col2:
         render_login_form(firebase_config)
 else:
+    # --- Hide Default Sidebar ---
+    hide_default_sidebar()
+
     # --- Page Navigation ---
     PAGES = {
         "Dashboard": Dashboard,

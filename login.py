@@ -4,6 +4,7 @@ import json
 import os
 import firebase_admin
 from firebase_admin import credentials
+from components.shared import hide_default_sidebar
 
 def init_firebase():
     if not firebase_admin._apps:
@@ -29,6 +30,7 @@ def init_firebase():
     return firebase_config
 
 def render_login_form(firebase_config):
+    hide_default_sidebar()
     st.image("FInQLogo.png", width=200)
     st.title("Welcome to FinQ")
 
@@ -47,3 +49,12 @@ def render_login_form(firebase_config):
         st.session_state["user"] = user['uid']
         st.session_state["logged_in"] = True
         st.rerun()
+
+
+def main():
+    st.set_page_config(page_title="FinQ", page_icon="📈", layout="wide")
+    firebase_config = init_firebase()
+    render_login_form(firebase_config)
+
+if __name__ == "__main__":
+    main()
