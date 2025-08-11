@@ -1,4 +1,6 @@
 import streamlit as st
+import firebase_admin
+from firebase_admin import auth
 
 def hide_default_sidebar():
     st.markdown("""
@@ -22,6 +24,11 @@ def render_sidebar():
         )
 
         if st.button("Log Out"):
+            if st.session_state.get("user"):
+                try:
+                    auth.revoke_refresh_tokens(st.session_state["user"])
+                except Exception as e:
+                    st.error(f"Error logging out: {e}")
             st.session_state["logged_in"] = False
             st.session_state["user"] = None
             st.rerun()
