@@ -1,3 +1,4 @@
+
 import streamlit as st
 from fb_streamlit_auth import fb_streamlit_auth
 import json
@@ -50,11 +51,3 @@ def render_login_form(firebase_config):
         st.session_state["logged_in"] = True
         st.rerun()
 
-
-def main():
-    st.set_page_config(page_title="FinQ", page_icon="📈", layout="wide")
-    firebase_config = init_firebase()
-    render_login_form(firebase_config)
-
-if __name__ == "__main__":
-    main()
