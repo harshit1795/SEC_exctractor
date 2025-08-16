@@ -8,3 +8,6 @@ fb-streamlit-auth
 yfinance
 google-auth-oauthlib
 fredapi
+tabulate
+lxml
+html5lib
