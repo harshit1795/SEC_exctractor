@@ -1,39 +1,29 @@
+
 import streamlit as st
-from components.shared import render_sidebar, hide_default_sidebar
-from pages import Dashboard, Financial_Health_Monitoring, Nexus, Settings
-from login import init_firebase, render_login_form
+import os
+from auth import load_api_keys
 
-# --- Page Configuration ---
-st.set_page_config(page_title="FinQ", page_icon="📈", layout="wide")
-st.markdown('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" integrity="sha512-xh6O/CkQoPOWDdYTDqeRdPCVd1SpvCA9XXcUnZS2FmJNp1coAFzvtCN9BmamE+4aHK8yyUHUSCcJHgXloTyT2A==" crossorigin="anonymous" referrerpolicy="no-referrer" />', unsafe_allow_html=True)
+# Load API keys using the new auth module
+load_api_keys()
 
-# --- Firebase Initialization ---
-firebase_config = init_firebase()
+st.set_page_config(page_title="FinQ", page_icon="📈")
 
-# --- Authentication ---
-if 'logged_in' not in st.session_state:
-    st.session_state['logged_in'] = False
+st.markdown("<style> .css-1d3f8as { display: flex; flex-direction: column; align-items: center; } </style>", unsafe_allow_html=True)
+st.markdown("<style> img { display: block; margin-left: auto; margin-right: auto; } </style>", unsafe_allow_html=True)
+st.image("FInQLogo.png", width=200)
+st.title("Welcome to FinQ! 👋")
 
-if not st.session_state['logged_in']:
-    col1, col2, col3 = st.columns([1,2,1])
-    with col2:
-        render_login_form(firebase_config)
-else:
-    # --- Hide Default Sidebar ---
-    hide_default_sidebar()
+st.markdown(
+    """
+    **FinQ is your personal financial analysis assistant.**
 
-    # --- Page Navigation ---
-    PAGES = {
-        "Dashboard": Dashboard,
-        "Financial Health Monitoring": Financial_Health_Monitoring,
-        "Nexus": Nexus,
-        "Settings": Settings,
-    }
+    This application allows you to explore and analyze financial data for S&P 500 companies.
 
-    # --- Render Sidebar and Page ---
-    selected_page = render_sidebar()
+    ### Key Features:
+    *   **Latest Financial Metric Analysis:** Dive deep into the latest financial metrics of your chosen companies.
+    *   **Financial Health Monitoring:** Keep a close eye on the financial health of your portfolio.
+    *   **Nexus (Community):** Connect with other investors and share your insights.
 
-    if selected_page in PAGES:
-        PAGES[selected_page].render()
-    else:
-        st.error("Page not found!")
+    **👈 Select 'Financial Analysis' from the sidebar to get started!**
+    """
+)

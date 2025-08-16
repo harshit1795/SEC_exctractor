@@ -1,43 +1,67 @@
+
 import os
 import json
-import toml
 import streamlit as st
-from firebase_admin import credentials
 
-def get_firebase_creds():
-    creds_json_str = os.environ.get("FIREBASE_CREDENTIALS_JSON")
-    if creds_json_str:
-        return credentials.Certificate(json.loads(creds_json_str))
-    
-    # Fallback to secrets.toml if running locally
-    try:
-        return credentials.Certificate(st.secrets["firebase"]["service_account"])
-    except (KeyError, FileNotFoundError):
-        # Fallback to local file if secrets don't work
-        if os.path.exists("firebase-credentials.json"):
-            return credentials.Certificate("firebase-credentials.json")
-        else:
-            st.error("Firebase credentials not found.")
-            st.stop()
+PREFS_PATH = "user_prefs.json"
 
-def load_api_keys():
-    """Loads API keys from Streamlit secrets and sets them as environment variables."""
-    try:
-        if os.path.exists(".streamlit/secrets.toml"):
-            secrets = toml.load(".streamlit/secrets.toml")
-            for key, value in secrets.get("secrets", {}).items():
-                os.environ[key] = str(value) # Ensure value is a string
-    except Exception as e:
-        st.error(f"Error loading API keys from secrets.toml: {e}")
-
-def _load_user_prefs():
-    """Loads user preferences from a local JSON file."""
-    if os.path.exists("user_prefs.json"):
-        with open("user_prefs.json", "r") as f:
-            return json.load(f)
+def _load_user_prefs() -> dict:
+    if os.path.exists(PREFS_PATH):
+        try:
+            with open(PREFS_PATH, "r") as f:
+                return json.load(f)
+        except (IOError, json.JSONDecodeError):
+            return {}
     return {}
 
-def _save_user_prefs(prefs):
-    """Saves user preferences to a local JSON file."""
-    with open("user_prefs.json", "w") as f:
-        json.dump(prefs, f, indent=4)
+def _save_user_prefs(prefs: dict):
+    try:
+        with open(PREFS_PATH, "w") as f:
+            json.dump(prefs, f, indent=2)
+    except Exception:
+        pass
+
+def load_api_keys():
+    """Load API keys from user preferences or settoken.sh and configure services."""
+    user = st.session_state.get("user", "default")
+    all_prefs = _load_user_prefs()
+    user_prefs = all_prefs.get(user, {})
+
+    # Load from user preferences first
+    gemini_key = user_prefs.get("GEMINI_API_KEY")
+    fred_key = user_prefs.get("FRED_API_KEY")
+
+    # Fallback to settoken.sh if not in user prefs
+    if not gemini_key or not fred_key:
+        try:
+            with open("settoken.sh", 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('export') and '=' in line:
+                        key, value = line.replace('export ', '').split('=', 1)
+                        value = value.strip('"')
+                        if key == "GEMINI_API_KEY" and not gemini_key:
+                            gemini_key = value
+                        elif key == "FRED_API_KEY" and not fred_key:
+                            fred_key = value
+        except FileNotFoundError:
+            pass # It's okay if the file doesn't exist
+
+    # Set environment variables for other modules to use
+    if gemini_key:
+        os.environ["GEMINI_API_KEY"] = gemini_key
+    if fred_key:
+        os.environ["FRED_API_KEY"] = fred_key
+
+    # Configure Gemini
+    if os.environ.get("GEMINI_API_KEY"):
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=os.environ["GEMINI_API_KEY"])
+            return True
+        except Exception as e:
+            st.error(f"Failed to configure Gemini: {e}")
+            return False
+    else:
+        st.warning("GEMINI_API_KEY is not set. Please add it in the Settings page.")
+        return False
