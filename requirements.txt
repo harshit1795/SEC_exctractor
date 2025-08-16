@@ -7,4 +7,3 @@ streamlit
 fb-streamlit-auth
 yfinance
 google-auth-oauthlib
-fredapi
