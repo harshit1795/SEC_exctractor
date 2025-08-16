@@ -5,6 +5,7 @@ from login import init_firebase, render_login_form
 
 # --- Page Configuration ---
 st.set_page_config(page_title="FinQ", page_icon="📈", layout="wide")
+st.markdown('<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" integrity="sha512-xh6O/CkQoPOWDdYTDqeRdPCVd1SpvCA9XXcUnZS2FmJNp1coAFzvtCN9BmamE+4aHK8yyUHUSCcJHgXloTyT2A==" crossorigin="anonymous" referrerpolicy="no-referrer" />', unsafe_allow_html=True)
 
 # --- Firebase Initialization ---
 firebase_config = init_firebase()

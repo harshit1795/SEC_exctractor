@@ -29,3 +29,15 @@ def load_api_keys():
                 os.environ[key] = str(value) # Ensure value is a string
     except Exception as e:
         st.error(f"Error loading API keys from secrets.toml: {e}")
+
+def _load_user_prefs():
+    """Loads user preferences from a local JSON file."""
+    if os.path.exists("user_prefs.json"):
+        with open("user_prefs.json", "r") as f:
+            return json.load(f)
+    return {}
+
+def _save_user_prefs(prefs):
+    """Saves user preferences to a local JSON file."""
+    with open("user_prefs.json", "w") as f:
+        json.dump(prefs, f, indent=4)
