@@ -4,7 +4,7 @@ google-generativeai
 numpy
 pandas
 streamlit
-fb-streamlit-auth
+streamlit-authenticator
 yfinance
 google-auth-oauthlib
 fredapi
