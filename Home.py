@@ -1,5 +1,6 @@
 import streamlit as st
-from components.shared import render_sidebar, hide_default_sidebar
+from components.shared import render_sidebar
+from components.utils import hide_default_sidebar
 from pages import Dashboard, Financial_Health_Monitoring, Nexus, Settings
 from login import init_firebase, render_login_form
 
@@ -31,7 +32,7 @@ else:
     }
 
     # --- Render Sidebar and Page ---
-    selected_page = render_sidebar()
+    selected_page = render_sidebar(firebase_config)
 
     if selected_page in PAGES:
         PAGES[selected_page].render()
