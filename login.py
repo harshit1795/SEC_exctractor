@@ -3,8 +3,8 @@ from fb_streamlit_auth import fb_streamlit_auth
 import json
 import os
 import firebase_admin
-from firebase_admin import credentials
-from components.shared import hide_default_sidebar
+from firebase_admin import credentials, auth
+from components.utils import hide_default_sidebar
 import time
 
 def init_firebase():
@@ -48,6 +48,28 @@ def init_firebase():
         firebase_admin.initialize_app(cred)
         
     return firebase_config
+
+def render_logout_js(firebase_config):
+    # This function injects JavaScript to perform a client-side logout
+    # It uses the Firebase JS SDK to sign out the user and then reloads the page
+    config_json = json.dumps(firebase_config)
+    js_template = f'''
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script>
+        const firebaseConfig = {config_json};
+        if (!firebase.apps.length) {{
+            firebase.initializeApp(firebaseConfig);
+        }}
+        firebase.auth().signOut().then(() => {{
+            // Force a reload of the page to clear all state and show the login form
+            window.parent.location.reload();
+        }}).catch((error) => {{
+            console.error("Sign out error", error);
+        }});
+    </script>
+    '''
+    st.components.v1.html(js_template, height=0)
 
 def render_login_form(firebase_config):
     hide_default_sidebar()
@@ -136,3 +158,16 @@ def render_login_form(firebase_config):
     - Check that pop-ups are enabled in your browser
     - Contact support if issues persist
     """)
+
+def logout(firebase_config):
+    st.info(f"Logging you out..")
+    if st.session_state.get("user"):
+        try:
+            auth.revoke_refresh_tokens(st.session_state["user"])
+        except Exception as e:
+            st.error(f"Logout Error.. {e}")
+    st.session_state['logged_in'] = False
+    st.session_state.pop('user', None)
+    st.session_state.pop('user_email', None)
+    st.session_state.pop('user_name', None)
+    render_logout_js(firebase_config)
