@@ -59,7 +59,8 @@ def render_login_form(firebase_config):
         st.title("📈 FinQ")
     
     st.title("Welcome to FinQ")
-    st.markdown("### Financial Intelligence & Analytics Platform")
+    st.markdown("### Personal Financial Intelligence & Analytics / AI Platform ###")
+    st.markdown("### Leverage and Connect with Leading Financial Information enhanced for use through AI ###")
     
     # Add some styling for better appearance
     st.markdown("""
