@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -16,12 +15,10 @@ def render(selected_ticker):
     earnings_dates, ticker_info_yf = get_ticker_earnings_data(selected_ticker)
 
     if not earnings_dates.empty:
-        # Last Quarter's Earnings
-        st.subheader("Last Quarter's Earnings")
-        # Ensure the index is a datetime object for comparison
         earnings_dates.index = pd.to_datetime(earnings_dates.index)
         
-        # Get the most recent past earnings date
+        # Last Quarter's Earnings
+        st.subheader("Last Quarter's Earnings")
         past_earnings = earnings_dates[
             (earnings_dates.index < pd.Timestamp.now(tz='America/New_York')) &
             (earnings_dates['Event Type'] == 'Earnings') &
@@ -37,11 +34,7 @@ def render(selected_ticker):
         else:
             st.info("No past earnings data available.")
 
-        # Next Earnings Prediction (from yfinance)
-        # This section is now integrated with the simple prediction model below
-        # so we remove the redundant subheader here.
-        # st.subheader("Next Earnings Prediction")
-        # Find the next earnings date that is in the future and is an 'Earnings' event
+        # Next Earnings Prediction
         next_earnings = earnings_dates[
             (earnings_dates.index > pd.Timestamp.now(tz='America/New_York')) &
             (earnings_dates['Event Type'] == 'Earnings') &
@@ -49,19 +42,11 @@ def render(selected_ticker):
         ].sort_index()
 
         if not next_earnings.empty:
-            next_earnings = next_earnings.iloc[0]
-            st.write(f"**Next Earnings Date:** {next_earnings.name.strftime('%Y-%m-%d')}")
-            st.write(f"**Estimated EPS:** {next_earnings.get('EPS Estimate', 'N/A')}")
-            # You can add more predictions if available in ticker_info_yf
-            if ticker_info_yf and 'earningsHigh' in ticker_info_yf:
-                st.write(f"**High Estimate:** {ticker_info_yf['earningsHigh']}")
-            if ticker_info_yf and 'earningsLow' in ticker_info_yf:
-                st.write(f"**Low Estimate:** {ticker_info_yf['earningsLow']}")
-            if ticker_info_yf and 'earningsAvg' in ticker_info_yf:
-                st.write(f"**Average Estimate:** {ticker_info_yf['earningsAvg']}")
+            next_earnings_date = next_earnings.iloc[0]
+            st.write(f"**Next Earnings Date:** {next_earnings_date.name.strftime('%Y-%m-%d')}")
+            st.write(f"**Estimated EPS:** {next_earnings_date.get('EPS Estimate', 'N/A')}")
 
     st.subheader("Historical EPS Trend")
-    # Filter for earnings events and valid EPS data
     historical_eps_df = earnings_dates[
         (earnings_dates['Event Type'] == 'Earnings') &
         (earnings_dates['Reported EPS'].notna()) &
@@ -69,45 +54,79 @@ def render(selected_ticker):
     ].reset_index().rename(columns={'Earnings Date': 'Date'})
 
     if not historical_eps_df.empty:
-        # Melt the DataFrame for Altair
-        melted_eps_df = historical_eps_df.melt(
-            id_vars=['Date'], 
-            value_vars=['Reported EPS', 'EPS Estimate'], 
-            var_name='EPS Type', 
-            value_name='EPS Value'
-        )
+        # --- FILTERS ---
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            start_date = st.date_input("Start date", historical_eps_df['Date'].min(), key="earnings_start")
+        with c2:
+            end_date = st.date_input("End date", historical_eps_df['Date'].max(), key="earnings_end")
+        with c3:
+            aggregation_period = st.selectbox(
+                "Aggregation Period:",
+                options=['Quarterly', 'Yearly'],
+                index=0,
+                key="earnings_agg_period"
+            )
+        with c4:
+            chart_type = st.radio("Chart Type:", ["Line", "Bar"], key="earnings_chart_type")
 
-        chart = alt.Chart(melted_eps_df).mark_line(point=True).encode(
-            x=alt.X('Date', type='temporal', title='Earnings Date', axis=alt.Axis(format='%b %Y', labelAngle=-90)),
-            y=alt.Y('EPS Value', title='EPS'),
-            color='EPS Type',
-            tooltip=[
-                alt.Tooltip('Date', title='Period'),
-                alt.Tooltip('EPS Type', title='Type'),
-                alt.Tooltip('EPS Value', title='EPS')
-            ]
-        ).properties(
-            title=f'{selected_ticker} Historical EPS Trend'
-        ).interactive()
-        st.altair_chart(chart, use_container_width=True)
+        # --- PROCESS DATA ---
+        mask = (historical_eps_df['Date'] >= pd.to_datetime(start_date, utc=True)) & (historical_eps_df['Date'] <= pd.to_datetime(end_date, utc=True))
+        filtered_df = historical_eps_df.loc[mask]
+
+        if aggregation_period == 'Yearly':
+            agg_df = filtered_df.set_index('Date').resample('A').sum(numeric_only=True).reset_index()
+        else:
+            agg_df = filtered_df
+
+        if not agg_df.empty:
+            melted_df = agg_df.melt(
+                id_vars=['Date'], 
+                value_vars=['Reported EPS', 'EPS Estimate'], 
+                var_name='EPS Type', 
+                value_name='EPS Value'
+            )
+
+            # --- CREATE CHART ---
+            # Manually format the date label to prevent repetition
+            if aggregation_period == 'Yearly':
+                melted_df['Label'] = melted_df['Date'].dt.strftime('%Y')
+                x_title = 'Year'
+            else: # Quarterly
+                melted_df['Label'] = melted_df['Date'].dt.to_period('Q').astype(str)
+                x_title = 'Quarter'
+            
+            x_axis = alt.X('Label:O', title=x_title, sort=None) # Use formatted label, disable sorting
+
+            base = alt.Chart(melted_df).encode(
+                x=x_axis,
+                y=alt.Y('EPS Value', title='EPS'),
+                color='EPS Type:N',
+                tooltip=['Label', 'EPS Type', 'EPS Value']
+            )
+
+            if chart_type == "Line":
+                chart = base.mark_line(point=True).interactive()
+            else: # Bar
+                chart = base.mark_bar().encode(xOffset='EPS Type:N').interactive()
+
+            st.altair_chart(chart.properties(title=f'{selected_ticker} Historical EPS Trend'), use_container_width=True)
+        else:
+            st.info("No data available for the selected filters.")
     else:
         st.info("No sufficient historical EPS data available for charting.")
 
     # --- Simple EPS Prediction Model --- #
     st.subheader("Next Earning Prediction")
-    
-    # Get reported EPS data for prediction
     reported_eps_data = earnings_dates[
         (earnings_dates['Event Type'] == 'Earnings') &
         (earnings_dates['Reported EPS'].notna())
-    ].sort_index(ascending=False) # Sort to get most recent first
+    ].sort_index(ascending=False)
 
-    if not reported_eps_data.empty and len(reported_eps_data) >= 4: # Need at least 4 quarters for a basic trend
-        # Take the last 4 reported EPS values
+    if not reported_eps_data.empty and len(reported_eps_data) >= 4:
         eps_values = reported_eps_data['Reported EPS'].head(4).values
-        
         predicted_eps = np.mean(eps_values)
         st.write(f"**Predicted EPS for Next Quarter:** {predicted_eps:.2f}")
         st.caption("Prediction based on the average of the last 4 reported EPS values.")
     else:
-        st.info("Not enough historical data to make a prediction (need at least 4 reported EPS values).")
+        st.info("Not enough historical data to make a prediction.")
