@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import altair as alt
@@ -48,6 +47,8 @@ def render(ticker_df, all_metrics):
     default_trend = [m for m in saved_trend if m in all_metrics] or [m for m in important_mets if m in all_metrics][:5]
     selected_metrics_trend = st.multiselect("Metrics to plot", all_metrics, default=default_trend or all_metrics[:5], key="trend_met")
 
+    chart_type_trend = st.radio("Chart Type:", ["Line", "Bar"], key="trend_chart_type", horizontal=True)
+
     # Save preference button (placed right below selector)
     if st.button(" Save these as my default metrics", key="save_trend_btn"):
         all_prefs = _load_user_prefs()
@@ -83,7 +84,12 @@ def render(ticker_df, all_metrics):
                 tooltip=[alt.Tooltip("FiscalPeriod", title="Period"), alt.Tooltip("Label", title="Value")]
             )
         )
-        line = base.mark_line(point=True)
+        
+        if chart_type_trend == "Line":
+            chart_mark = base.mark_line(point=True)
+        else: # Bar
+            chart_mark = base.mark_bar()
+
         text = base.mark_text(dy=-10, align="left").encode(text="Label")
-        chart = alt.layer(line, text).properties(height=300, width=900, title=metric)
+        chart = alt.layer(chart_mark, text).properties(height=300, width=900, title=metric)
         st.altair_chart(chart, use_container_width=True)
