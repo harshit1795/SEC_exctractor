@@ -31,6 +31,7 @@ def human_format_for_axis(num):
 
 def render(ticker_df, all_metrics):
     st.markdown("### Metrics Trend Analysis")
+    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
 
     # ---------------- Default metrics (use user prefs if available) ---------------- #
 

@@ -88,21 +88,23 @@ def render_login_form(firebase_config):
     st.markdown("""
     <style>
     .login-container {
-        background-color: #f0f2f6;
+        background-color: var(--secondary-background-color);
         padding: 2rem;
         border-radius: 10px;
         margin: 2rem 0;
     }
-    .login-button {
-        background-color: #ff4b4b;
-        color: white;
-        padding: 0.5rem 1rem;
-        border: none;
-        border-radius: 5px;
-        cursor: pointer;
+    /* More forceful selector for the third-party component's button */
+    .login-container button {
+        background-color: var(--primary-color) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 5px !important;
+        padding: 0.5rem 1rem !important;
+        cursor: pointer !important;
     }
     </style>
     """, unsafe_allow_html=True)
+    
     
     with st.container():
         st.markdown('<div class="login-container">', unsafe_allow_html=True)
