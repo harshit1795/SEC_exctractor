@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 import numpy as np
 import yfinance as yf
+from .charting_utils import render_filter_bar
 
 @st.cache_data(show_spinner=False)
 def get_ticker_earnings_data(ticker_symbol):
@@ -47,6 +48,7 @@ def render(selected_ticker):
             st.write(f"**Estimated EPS:** {next_earnings_date.get('EPS Estimate', 'N/A')}")
 
     st.subheader("Historical EPS Trend")
+    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
     historical_eps_df = earnings_dates[
         (earnings_dates['Event Type'] == 'Earnings') &
         (earnings_dates['Reported EPS'].notna()) &
@@ -55,62 +57,79 @@ def render(selected_ticker):
 
     if not historical_eps_df.empty:
         # --- FILTERS ---
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            start_date = st.date_input("Start date", historical_eps_df['Date'].min(), key="earnings_start")
-        with c2:
-            end_date = st.date_input("End date", historical_eps_df['Date'].max(), key="earnings_end")
-        with c3:
-            aggregation_period = st.selectbox(
-                "Aggregation Period:",
-                options=['Quarterly', 'Yearly'],
-                index=0,
-                key="earnings_agg_period"
-            )
-        with c4:
-            chart_type = st.radio("Chart Type:", ["Line", "Bar"], key="earnings_chart_type")
+        agg_options = ['Quarterly', 'Yearly']
+        chart_type_options = ["Line", "Bar"]
+        df_for_filters = historical_eps_df.set_index('Date')
+        start_date, end_date, aggregation_period, chart_type, chart_view = render_filter_bar(df_for_filters, "earnings", agg_options, chart_type_options)
 
         # --- PROCESS DATA ---
         mask = (historical_eps_df['Date'] >= pd.to_datetime(start_date, utc=True)) & (historical_eps_df['Date'] <= pd.to_datetime(end_date, utc=True))
         filtered_df = historical_eps_df.loc[mask]
 
+        processing_df = filtered_df.set_index('Date')
+
         if aggregation_period == 'Yearly':
-            agg_df = filtered_df.set_index('Date').resample('A').sum(numeric_only=True).reset_index()
-        else:
-            agg_df = filtered_df
+            agg_df = processing_df.resample('A').sum(numeric_only=True)
+        else: # Quarterly
+            agg_df = processing_df
+        
+        agg_df = agg_df.reset_index()
 
         if not agg_df.empty:
-            melted_df = agg_df.melt(
-                id_vars=['Date'], 
-                value_vars=['Reported EPS', 'EPS Estimate'], 
-                var_name='EPS Type', 
-                value_name='EPS Value'
-            )
+            # --- CREATE CHART (Specific to this tab) ---
+            if chart_view == 'Combined':
+                melted_df = agg_df.melt(
+                    id_vars=['Date'], 
+                    value_vars=['Reported EPS', 'EPS Estimate'], 
+                    var_name='EPS Type', 
+                    value_name='EPS Value'
+                )
+                if aggregation_period == 'Yearly':
+                    x_axis = alt.X('Date:O', timeUnit='year', title='Year', axis=alt.Axis(labelAngle=0))
+                else: # Quarterly
+                    x_axis = alt.X('Date:O', timeUnit='yearquarter', title='Quarter')
 
-            # --- CREATE CHART ---
-            # Manually format the date label to prevent repetition
-            if aggregation_period == 'Yearly':
-                melted_df['Label'] = melted_df['Date'].dt.strftime('%Y')
-                x_title = 'Year'
-            else: # Quarterly
-                melted_df['Label'] = melted_df['Date'].dt.to_period('Q').astype(str)
-                x_title = 'Quarter'
+                base = alt.Chart(melted_df).encode(
+                    x=x_axis,
+                    y=alt.Y('EPS Value', title='EPS'),
+                    color='EPS Type:N',
+                    tooltip=['Date', 'EPS Type', 'EPS Value']
+                )
+
+                if chart_type == "Line":
+                    chart = base.mark_line(point=True).interactive()
+                else: # Bar
+                    chart = base.mark_bar().encode(xOffset='EPS Type:N').interactive()
+
+                st.altair_chart(chart.properties(title=f'{selected_ticker} Historical EPS Trend'), use_container_width=True)
             
-            x_axis = alt.X('Label:O', title=x_title, sort=None) # Use formatted label, disable sorting
+            else: # Individual View
+                for metric in ['Reported EPS', 'EPS Estimate']:
+                    chart_df = agg_df[['Date', metric]].copy()
+                    chart_df.rename(columns={metric: 'Value'}, inplace=True)
+                    
+                    if aggregation_period == 'Yearly':
+                        chart_df['Label'] = chart_df['Date'].dt.strftime('%Y')
+                        x_title = 'Year'
+                    else: # Quarterly
+                        chart_df['Label'] = chart_df['Date'].dt.to_period('Q').astype(str)
+                        x_title = 'Quarter'
+                    
+                    x_axis = alt.X('Label:O', title=x_title, sort=None)
 
-            base = alt.Chart(melted_df).encode(
-                x=x_axis,
-                y=alt.Y('EPS Value', title='EPS'),
-                color='EPS Type:N',
-                tooltip=['Label', 'EPS Type', 'EPS Value']
-            )
+                    base = alt.Chart(chart_df).encode(
+                        x=x_axis,
+                        y=alt.Y('Value', title=metric, scale=alt.Scale(zero=False)),
+                        tooltip=['Label', 'Value']
+                    ).properties(
+                        title=f'{selected_ticker} - {metric}'
+                    )
 
-            if chart_type == "Line":
-                chart = base.mark_line(point=True).interactive()
-            else: # Bar
-                chart = base.mark_bar().encode(xOffset='EPS Type:N').interactive()
-
-            st.altair_chart(chart.properties(title=f'{selected_ticker} Historical EPS Trend'), use_container_width=True)
+                    if chart_type == "Line":
+                        chart = base.mark_line(point=True).interactive()
+                    else: # Bar
+                        chart = base.mark_bar().interactive()
+                    st.altair_chart(chart, use_container_width=True)
         else:
             st.info("No data available for the selected filters.")
     else:

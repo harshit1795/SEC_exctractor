@@ -3,6 +3,7 @@ import pandas as pd
 import altair as alt
 import yfinance as yf
 from fred_data import get_multiple_fred_series
+from .charting_utils import render_filter_bar, render_altair_chart
 
 @st.cache_data
 def get_earnings_data(ticker_symbol):
@@ -83,22 +84,20 @@ def render(ticker_df, selected_ticker):
         fred_df.columns = [key for key, val in INDICATORS.items() if val['id'] in fred_df.columns]
 
     combined_df = pd.concat([fundamentals_df[selected_fundamentals], earnings_df[selected_earnings], fred_df], axis=1).sort_index()
+    combined_df.dropna(how='all', inplace=True)
+
+    if combined_df.empty:
+        st.warning("No data available for the selected metrics.")
+        return
 
     # --- 4. Filters ---
     st.markdown("#### 2. Customize Chart")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        start_date = st.date_input("Start date", combined_df.index.min(), key="360_start")
-    with c2:
-        end_date = st.date_input("End date", combined_df.index.max(), key="360_end")
-    with c3:
-        aggregation_period = st.selectbox("Aggregation:", options=['Monthly', 'Quarterly', 'Yearly'], index=1, key="360_agg")
-    
-    chart_type = st.radio("Chart Type:", ["Line", "Bar", "Scatter"], key="360_chart_type", horizontal=True)
+    agg_options = ['Monthly', 'Quarterly', 'Yearly']
+    chart_type_options = ["Line", "Bar", "Scatter"]
+    start_date, end_date, aggregation_period, chart_type, chart_view = render_filter_bar(combined_df, "360", agg_options, chart_type_options, default_agg_index=1)
 
     # --- 5. Process Data for Charting ---
     filtered_df = combined_df[(combined_df.index >= pd.to_datetime(start_date, utc=True)) & (combined_df.index <= pd.to_datetime(end_date, utc=True))]
-    
     period_map = {'Monthly': 'M', 'Quarterly': 'Q', 'Yearly': 'A'}
     agg_df = filtered_df.resample(period_map[aggregation_period]).mean(numeric_only=True)
 
@@ -108,12 +107,13 @@ def render(ticker_df, selected_ticker):
 
     # --- 6. Render Chart ---
     st.markdown(f"#### {aggregation_period} Chart")
+    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
 
     if chart_type == "Scatter":
         if len(all_selected_metrics) != 2:
             st.warning("Please select exactly two metrics for a scatter plot.")
         else:
-            scatter_df = agg_df.dropna()
+            scatter_df = agg_df[all_selected_metrics].dropna()
             chart = alt.Chart(scatter_df).mark_point().encode(
                 x=alt.X(all_selected_metrics[0], type='quantitative'),
                 y=alt.Y(all_selected_metrics[1], type='quantitative'),
@@ -123,29 +123,13 @@ def render(ticker_df, selected_ticker):
     else:
         agg_df.index.name = 'Date'
         melted_df = agg_df.reset_index().melt(id_vars='Date', var_name='Metric', value_name='Value')
-        
-        if aggregation_period == 'Yearly':
-            melted_df['Label'] = melted_df['Date'].dt.strftime('%Y')
-            x_title = 'Year'
-        elif aggregation_period == 'Quarterly':
-            melted_df['Label'] = melted_df['Date'].dt.to_period('Q').astype(str)
-            x_title = 'Quarter'
-        else: # Monthly
-            melted_df['Label'] = melted_df['Date'].dt.strftime('%b %Y')
-            x_title = 'Month'
-
-        x_axis = alt.X('Label:O', title=x_title, sort=None)
-
-        base = alt.Chart(melted_df).encode(
-            x=x_axis,
-            y=alt.Y('Value:Q', title='Value'),
-            color=alt.Color('Metric:N', title='Metric'),
-            tooltip=['Label', 'Metric', 'Value']
+        render_altair_chart(
+            df=melted_df,
+            aggregation_period=aggregation_period,
+            chart_type=chart_type,
+            chart_view=chart_view,
+            x_col='Date',
+            y_col='Value',
+            color_col='Metric',
+            chart_title="Combined Metric Analysis"
         )
-
-        if chart_type == "Line":
-            chart = base.mark_line().interactive()
-        else: # Bar
-            chart = base.mark_bar().interactive()
-        
-        st.altair_chart(chart, use_container_width=True)
