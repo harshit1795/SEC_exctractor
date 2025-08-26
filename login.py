@@ -84,31 +84,7 @@ def render_login_form(firebase_config):
     st.markdown("### Personal Financial Intelligence & Analytics / AI Platform ###")
     st.markdown("### Leverage and Connect with Leading Financial Information enhanced for use through AI ###")
     
-    # Add some styling for better appearance
-    st.markdown("""
-    <style>
-    .login-container {
-        background-color: var(--secondary-background-color);
-        padding: 2rem;
-        border-radius: 10px;
-        margin: 2rem 0;
-    }
-    /* More forceful selector for the third-party component's button */
-    .login-container button {
-        background-color: var(--primary-color) !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 5px !important;
-        padding: 0.5rem 1rem !important;
-        cursor: pointer !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    
     with st.container():
-        st.markdown('<div class="login-container">', unsafe_allow_html=True)
-        
         # Firebase Authentication
         try:
             user = fb_streamlit_auth(
@@ -140,18 +116,6 @@ def render_login_form(firebase_config):
             st.error(f"Authentication error: {str(e)}")
             st.info("Please check your Firebase configuration and try again.")
             
-            # Fallback login option
-            st.markdown("---")
-            st.markdown("### Alternative Login")
-            if st.button("Continue as Guest (Demo Mode)"):
-                st.session_state["user"] = "demo_user"
-                st.session_state["logged_in"] = True
-                st.session_state["user_email"] = "demo@finq.com"
-                st.session_state["user_name"] = "Demo User"
-                st.rerun()
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-    
     # Add helpful information
     st.markdown("---")
     st.markdown("""
