@@ -16,3 +16,4 @@ Pillow
 fredapi
 google-generativeai
 tabulate
+firebase-admin
