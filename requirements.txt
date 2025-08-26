@@ -17,3 +17,4 @@ fredapi
 google-generativeai
 tabulate
 firebase-admin
+fb-streamlit-auth
