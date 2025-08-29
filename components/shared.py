@@ -1,17 +1,9 @@
 import streamlit as st
 import firebase_admin
 from firebase_admin import auth
+from login import logout
 
-def hide_default_sidebar():
-    st.markdown("""
-        <style>
-            div[data-testid="stSidebarNav"] {
-                display: none;
-            }
-        </style>
-    """, unsafe_allow_html=True)
-
-def render_sidebar():
+def render_sidebar(firebase_config):
     """Renders the sidebar navigation."""
     with st.sidebar:
         st.image("FInQLogo.png", width=100)
@@ -35,13 +27,6 @@ def render_sidebar():
                 st.rerun()
 
         if st.button("Log Out"):
-            if st.session_state.get("user"):
-                try:
-                    auth.revoke_refresh_tokens(st.session_state["user"])
-                except Exception as e:
-                    st.error(f"Error logging out: {e}")
-            st.session_state["logged_in"] = False
-            st.session_state["user"] = None
-            st.rerun()
+            logout(firebase_config)
     
     return st.session_state.active_page

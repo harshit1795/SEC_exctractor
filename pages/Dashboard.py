@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 
 from auth import load_api_keys
-from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab
+from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab, finq_360_tab
 
 def render():
     load_api_keys()
@@ -116,6 +116,7 @@ def render():
             "Earning Summary": "fa-file-invoice-dollar",
             "Price Chart": "fa-chart-area",
             "Macroeconomic Data": "fa-globe",
+            "FinQ 360": "fa-magnifying-glass-chart",
             "FinQ Bot": "fa-robot"
         }
 
@@ -134,15 +135,17 @@ def render():
         st.markdown("---") # Add a separator
 
         # Render content based on active tab
-        if st.session_state.active_tab == list(tab_options.keys())[0]:
+        if st.session_state.active_tab == "Metrics Trend Analysis":
             trend_tab.render(ticker_df, all_metrics)
-        elif st.session_state.active_tab == list(tab_options.keys())[1]:
+        elif st.session_state.active_tab == "Snapshot & Changes":
             snapshot_tab.render(ticker_df, all_metrics)
-        elif st.session_state.active_tab == list(tab_options.keys())[2]:
+        elif st.session_state.active_tab == "Earning Summary":
             earnings_tab.render(selected_ticker)
-        elif st.session_state.active_tab == list(tab_options.keys())[3]:
+        elif st.session_state.active_tab == "Price Chart":
             price_tab.render(selected_ticker)
-        elif st.session_state.active_tab == list(tab_options.keys())[4]:
+        elif st.session_state.active_tab == "Macroeconomic Data":
             fred_tab.render()
-        elif st.session_state.active_tab == list(tab_options.keys())[5]:
+        elif st.session_state.active_tab == "FinQ 360":
+            finq_360_tab.render(ticker_df, selected_ticker)
+        elif st.session_state.active_tab == "FinQ Bot":
             chatbot_tab.render()
