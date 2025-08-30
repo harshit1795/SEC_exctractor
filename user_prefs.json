@@ -1,5 +1,25 @@
 {
     "5wrniLVB0STl0WY8LdlkM7Y3pTH3": {
-        "GEMINI_API_KEY": "AIzaSyD8eb-1RM0h31QlByNIFanEbzyc7WjaShU"
+        "GEMINI_API_KEY": "AIzaSyD8eb-1RM0h31QlByNIFanEbzyc7WjaShU",
+        "snapshot_metrics": [
+            "Total Assets",
+            "Current Liabilities",
+            "Total Liabilities Net Minority Interest",
+            "Net Debt",
+            "Total Debt",
+            "Working Capital"
+        ],
+        "fred_tab": {
+            "selected_indicators": [
+                "Real GDP",
+                "Inflation (CPI)",
+                "Unemployment Rate"
+            ],
+            "aggregation_period": "Quarterly",
+            "chart_type": "Line",
+            "chart_view": "Combined",
+            "start_date": "2020-01-01",
+            "end_date": "2025-07-01"
+        }
     }
 }
