@@ -45,12 +45,8 @@ def render():
         """Return URL to company logo from Parqet assets."""
         return f"https://assets.parqet.com/logos/symbol/{ticker}?format=png"
 
-    # Layout: filters at left within the page
-    filter_col, content_col = st.columns([1, 4], gap="large")
-
-    with filter_col:
-        st.subheader("Filters")
-
+    # --- Filters Expander ---
+    with st.expander("🔍 **Filters**", expanded=True):
         # --- Company search & selection --- #
         search_text = st.text_input("Search company or ticker", "", key="search_company")
         all_tickers = sorted(df["Ticker"].unique())
@@ -70,82 +66,84 @@ def render():
             st.warning("No company matches search.")
             st.stop()
 
-        default_ix = filtered_tickers.index("AAPL") if "AAPL" in filtered_tickers else 0
-        selected_ticker = st.selectbox("Company (Ticker)", filtered_tickers, index=default_ix, key="ticker_select")
-        st.session_state.selected_ticker = selected_ticker # Update session state
-
-        # Statement / metric category filter
-        categories_available = sorted(df[df["Ticker"] == selected_ticker]["Category"].unique())
-        stmt_selected = st.selectbox("Metric Category", categories_available, key="stmt_cat")
+        c1, c2 = st.columns(2)
+        with c1:
+            default_ix = filtered_tickers.index("AAPL") if "AAPL" in filtered_tickers else 0
+            selected_ticker = st.selectbox("Company (Ticker)", filtered_tickers, index=default_ix, key="ticker_select")
+            st.session_state.selected_ticker = selected_ticker # Update session state
+        
+        with c2:
+            # Statement / metric category filter
+            categories_available = sorted(df[df["Ticker"] == selected_ticker]["Category"].unique())
+            stmt_selected = st.selectbox("Metric Category", categories_available, key="stmt_cat")
 
     # safe category fetch
     sel_cat = df[df["Ticker"] == selected_ticker]["Category"].iloc[0] if "Category" in df.columns else "N/A"
 
-    with content_col:
-        ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
-        st.session_state.ticker_df = ticker_df
+    ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
+    st.session_state.ticker_df = ticker_df
 
-        wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
-        if wide.empty:
-            st.warning("No data available for this ticker.")
-            st.stop()
+    wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+    if wide.empty:
+        st.warning("No data available for this ticker.")
+        st.stop()
 
-        # ---------- Company Header ---------- #
-        st.markdown("<div class='sticky-header-container'>", unsafe_allow_html=True)
-        tinfo = ticker_info(selected_ticker)
-        logo_path = _get_logo_path(selected_ticker)
-        
-        hcols = st.columns([1,3])
-        with hcols[0]:
-            if logo_path:
-                st.image(logo_path)
-        with hcols[1]:
-            st.markdown("<div class='company-info-wrapper'>", unsafe_allow_html=True)
-            st.markdown(f"## {selected_ticker} – {tinfo['name']}")
-            st.caption(f"Sector: {tinfo['sector']} • Industry: {tinfo['industry']}")
-            st.markdown("</div>", unsafe_allow_html=True)
+    # ---------- Company Header ---------- #
+    st.markdown("<div class='sticky-header-container'>", unsafe_allow_html=True)
+    tinfo = ticker_info(selected_ticker)
+    logo_path = _get_logo_path(selected_ticker)
+    
+    hcols = st.columns([1,3])
+    with hcols[0]:
+        if logo_path:
+            st.image(logo_path)
+    with hcols[1]:
+        st.markdown("<div class='company-info-wrapper'>", unsafe_allow_html=True)
+        st.markdown(f"## {selected_ticker} – {tinfo['name']}")
+        st.caption(f"Sector: {tinfo['sector']} • Industry: {tinfo['industry']}")
         st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-        # Compute universe of metrics for the selected ticker
-        all_metrics = sorted(ticker_df["Metric"].unique())
+    # Compute universe of metrics for the selected ticker
+    all_metrics = sorted(ticker_df["Metric"].unique())
 
-        # ------------------------- Tabs ------------------------- #
-        tab_options = {
-            "Metrics Trend Analysis": "fa-chart-line",
-            "Snapshot & Changes": "fa-camera",
-            "Earning Summary": "fa-file-invoice-dollar",
-            "Price Chart": "fa-chart-area",
-            "Macroeconomic Data": "fa-globe",
-            "FinQ 360": "fa-magnifying-glass-chart",
-            "FinQ Bot": "fa-robot"
-        }
+    # ------------------------- Tabs ------------------------- #
+    tab_options = {
+        "Metrics Trend Analysis": "fa-chart-line",
+        "Snapshot & Changes": "fa-camera",
+        "Earning Summary": "fa-file-invoice-dollar",
+        "Price Chart": "fa-chart-area",
+        "Macroeconomic Data": "fa-globe",
+        "FinQ 360": "fa-magnifying-glass-chart",
+        "FinQ Bot": "fa-robot"
+    }
 
-        if 'active_tab' not in st.session_state:
-            st.session_state.active_tab = list(tab_options.keys())[0]
+    if 'active_tab' not in st.session_state:
+        st.session_state.active_tab = list(tab_options.keys())[0]
 
-        cols = st.columns(len(tab_options))
-        for i, (tab_name, icon) in enumerate(tab_options.items()):
-            with cols[i]:
-                is_active = (tab_name == st.session_state.active_tab)
-                st.markdown(f'<div style="text-align: center;"><i class="fa-solid {icon}"></i></div>', unsafe_allow_html=True)
-                if st.button(tab_name, key=f"tab_{i}", type="primary" if is_active else "secondary", use_container_width=True):
-                    st.session_state.active_tab = tab_name
-                    st.rerun()
-        
-        st.markdown("---") # Add a separator
+    cols = st.columns(len(tab_options))
+    for i, (tab_name, icon) in enumerate(tab_options.items()):
+        with cols[i]:
+            is_active = (tab_name == st.session_state.active_tab)
+            st.markdown(f'<div style="text-align: center;"><i class="fa-solid {icon}"></i></div>', unsafe_allow_html=True)
+            if st.button(tab_name, key=f"tab_{i}", type="primary" if is_active else "secondary", use_container_width=True):
+                st.session_state.active_tab = tab_name
+                st.rerun()
+    
+    st.markdown("---") # Add a separator
 
-        # Render content based on active tab
-        if st.session_state.active_tab == "Metrics Trend Analysis":
-            trend_tab.render(ticker_df, all_metrics)
-        elif st.session_state.active_tab == "Snapshot & Changes":
-            snapshot_tab.render(ticker_df, all_metrics)
-        elif st.session_state.active_tab == "Earning Summary":
-            earnings_tab.render(selected_ticker)
-        elif st.session_state.active_tab == "Price Chart":
-            price_tab.render(selected_ticker)
-        elif st.session_state.active_tab == "Macroeconomic Data":
-            fred_tab.render()
-        elif st.session_state.active_tab == "FinQ 360":
-            finq_360_tab.render(ticker_df, selected_ticker)
-        elif st.session_state.active_tab == "FinQ Bot":
-            chatbot_tab.render()
+    # Render content based on active tab
+    if st.session_state.active_tab == "Metrics Trend Analysis":
+        trend_tab.render(ticker_df, all_metrics)
+    elif st.session_state.active_tab == "Snapshot & Changes":
+        snapshot_tab.render(ticker_df, all_metrics)
+    elif st.session_state.active_tab == "Earning Summary":
+        earnings_tab.render(selected_ticker)
+    elif st.session_state.active_tab == "Price Chart":
+        price_tab.render(selected_ticker)
+    elif st.session_state.active_tab == "Macroeconomic Data":
+        fred_tab.render()
+    elif st.session_state.active_tab == "FinQ 360":
+        finq_360_tab.render(ticker_df, selected_ticker)
+    elif st.session_state.active_tab == "FinQ Bot":
+        chatbot_tab.render()
