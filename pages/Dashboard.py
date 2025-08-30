@@ -45,67 +45,19 @@ def render():
         """Return URL to company logo from Parqet assets."""
         return f"https://assets.parqet.com/logos/symbol/{ticker}?format=png"
 
-    # --- Filters Expander ---
-    with st.expander("🔍 **Filters**", expanded=True):
-        # --- Company search & selection --- #
-        search_text = st.text_input("Search company or ticker", "", key="search_company")
-        all_tickers = sorted(df["Ticker"].unique())
-
-        def matches(term: str, ticker: str) -> bool:
-            meta = ticker_info(ticker)
-            name = meta["name"].lower() if meta else ""
-            return term in ticker.lower() or term in name
-
-        if search_text:
-            term = search_text.lower()
-            filtered_tickers = [t for t in all_tickers if matches(term, t)]
-        else:
-            filtered_tickers = all_tickers
-
-        if not filtered_tickers:
-            st.warning("No company matches search.")
-            st.stop()
-
-        c1, c2 = st.columns(2)
-        with c1:
-            default_ix = filtered_tickers.index("AAPL") if "AAPL" in filtered_tickers else 0
-            selected_ticker = st.selectbox("Company (Ticker)", filtered_tickers, index=default_ix, key="ticker_select")
-            st.session_state.selected_ticker = selected_ticker # Update session state
-        
-        with c2:
-            # Statement / metric category filter
-            categories_available = sorted(df[df["Ticker"] == selected_ticker]["Category"].unique())
-            stmt_selected = st.selectbox("Metric Category", categories_available, key="stmt_cat")
-
-    # safe category fetch
-    sel_cat = df[df["Ticker"] == selected_ticker]["Category"].iloc[0] if "Category" in df.columns else "N/A"
-
-    ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
-    st.session_state.ticker_df = ticker_df
-
-    wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
-    if wide.empty:
-        st.warning("No data available for this ticker.")
-        st.stop()
-
     # ---------- Company Header ---------- #
-    st.markdown("<div class='sticky-header-container'>", unsafe_allow_html=True)
-    tinfo = ticker_info(selected_ticker)
-    logo_path = _get_logo_path(selected_ticker)
+    tinfo = ticker_info(st.session_state.get("selected_ticker", "AAPL"))
+    logo_path = _get_logo_path(st.session_state.get("selected_ticker", "AAPL"))
     
-    hcols = st.columns([1,3])
-    with hcols[0]:
-        if logo_path:
-            st.image(logo_path)
-    with hcols[1]:
-        st.markdown("<div class='company-info-wrapper'>", unsafe_allow_html=True)
-        st.markdown(f"## {selected_ticker} – {tinfo['name']}")
-        st.caption(f"Sector: {tinfo['sector']} • Industry: {tinfo['industry']}")
-        st.markdown("</div>", unsafe_allow_html=True)
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Compute universe of metrics for the selected ticker
-    all_metrics = sorted(ticker_df["Metric"].unique())
+    _, col2 = st.columns([2, 3])
+    with col2:
+        l, r = st.columns([1, 3])
+        with l:
+            if logo_path:
+                st.image(logo_path, width=100)
+        with r:
+            st.markdown(f"<div style='text-align: right;'><h2>{st.session_state.get('selected_ticker', 'AAPL')} – {tinfo['name']}</h2></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='text-align: right;'>{tinfo['sector']} • {tinfo['industry']}</div>", unsafe_allow_html=True)
 
     # ------------------------- Tabs ------------------------- #
     tab_options = {
@@ -130,20 +82,91 @@ def render():
                 st.session_state.active_tab = tab_name
                 st.rerun()
     
-    st.markdown("---") # Add a separator
+    st.markdown("---")
 
-    # Render content based on active tab
-    if st.session_state.active_tab == "Metrics Trend Analysis":
-        trend_tab.render(ticker_df, all_metrics)
-    elif st.session_state.active_tab == "Snapshot & Changes":
-        snapshot_tab.render(ticker_df, all_metrics)
-    elif st.session_state.active_tab == "Earning Summary":
-        earnings_tab.render(selected_ticker)
-    elif st.session_state.active_tab == "Price Chart":
-        price_tab.render(selected_ticker)
-    elif st.session_state.active_tab == "Macroeconomic Data":
-        fred_tab.render()
-    elif st.session_state.active_tab == "FinQ 360":
-        finq_360_tab.render(ticker_df, selected_ticker)
-    elif st.session_state.active_tab == "FinQ Bot":
-        chatbot_tab.render()
+    # --- Main Content Area with Chart and Filters ---
+    chart_col, filter_col = st.columns([3, 1], gap="large")
+
+    with filter_col:
+        with st.expander("Filters", expanded=True):
+            st.markdown("#### Global Filters")
+            search_text = st.text_input("Search company or ticker", "", key="search_company")
+            all_tickers = sorted(df["Ticker"].unique())
+
+            def matches(term: str, ticker: str) -> bool:
+                meta = ticker_info(ticker)
+                name = meta["name"].lower() if meta else ""
+                return term in ticker.lower() or term in name
+
+            if search_text:
+                term = search_text.lower()
+                filtered_tickers = [t for t in all_tickers if matches(term, t)]
+            else:
+                filtered_tickers = all_tickers
+
+            if not filtered_tickers:
+                st.warning("No company matches search.")
+                st.stop()
+
+            default_ix = filtered_tickers.index("AAPL") if "AAPL" in filtered_tickers else 0
+            selected_ticker = st.selectbox("Company (Ticker)", filtered_tickers, index=default_ix, key="ticker_select")
+            st.session_state.selected_ticker = selected_ticker
+
+            categories_available = sorted(df[df["Ticker"] == selected_ticker]["Category"].unique())
+            stmt_selected = st.selectbox("Metric Category", categories_available, key="stmt_cat")
+            st.session_state.stmt_selected = stmt_selected
+
+            st.markdown("#### Tab-Specific Options")
+            active_tab = st.session_state.get('active_tab', "Metrics Trend Analysis")
+            filters = {}
+
+            ticker_df = df[(df["Ticker"] == selected_ticker) & (df["Category"] == stmt_selected)]
+            all_metrics = sorted(ticker_df["Metric"].unique())
+
+            if active_tab == "Metrics Trend Analysis":
+                filters = trend_tab.render_filters(all_metrics)
+            elif active_tab == "Snapshot & Changes":
+                wide_df_for_filters = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+                if not wide_df_for_filters.empty:
+                    filters = snapshot_tab.render_filters(all_metrics, wide_df_for_filters)
+            elif active_tab == "Price Chart":
+                filters = price_tab.render_filters()
+            elif active_tab == "Earning Summary":
+                earnings_dates, _ = earnings_tab.get_ticker_earnings_data(selected_ticker)
+                if earnings_dates is not None and not earnings_dates.empty:
+                    earnings_dates_df = earnings_dates.reset_index().rename(columns={'Earnings Date': 'Date'})
+                    filters = earnings_tab.render_filters(earnings_dates_df)
+            elif active_tab == "Macroeconomic Data":
+                filters = fred_tab.render_filters()
+            elif active_tab == "FinQ 360":
+                filters = finq_360_tab.render_filters(ticker_df, selected_ticker)
+            elif active_tab == "FinQ Bot":
+                if 'chatbot_interface' not in st.session_state:
+                    st.session_state.chatbot_interface = chatbot_tab.ChatbotInterface()
+                st.session_state.chatbot_interface.render_filters()
+
+    with chart_col:
+        ticker_df = df[(df["Ticker"] == st.session_state.selected_ticker) & (df["Category"] == st.session_state.stmt_selected)]
+        wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+        all_metrics = sorted(ticker_df["Metric"].unique())
+
+        if wide.empty:
+            st.warning("No data available for this ticker.")
+            st.stop()
+
+        if st.session_state.active_tab == "Metrics Trend Analysis":
+            trend_tab.render(ticker_df, all_metrics, filters)
+        elif st.session_state.active_tab == "Snapshot & Changes":
+            if filters:
+                snapshot_tab.render(ticker_df, all_metrics, filters)
+        elif st.session_state.active_tab == "Earning Summary":
+            if filters:
+                earnings_tab.render(selected_ticker, filters)
+        elif st.session_state.active_tab == "Price Chart":
+            price_tab.render(selected_ticker, filters)
+        elif st.session_state.active_tab == "Macroeconomic Data":
+            fred_tab.render(filters)
+        elif st.session_state.active_tab == "FinQ 360":
+            finq_360_tab.render(ticker_df, selected_ticker, filters)
+        elif st.session_state.active_tab == "FinQ Bot":
+            st.session_state.chatbot_interface.render_content()
