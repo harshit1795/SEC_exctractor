@@ -29,9 +29,12 @@ def human_format_for_axis(num):
         return num / 1_000, "K"
     return num, ""
 
-def render_filters(all_metrics):
-    st.markdown("#### Trend Options")
-    
+def render(ticker_df, all_metrics):
+    st.markdown("### Metrics Trend Analysis")
+    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
+
+    # ---------------- Default metrics (use user prefs if available) ---------------- #
+
     important_mets = [
         "Total Revenue", "Net Income", "Operating Income", "EBIT", "EBITDA", "Operating Cash Flow", "Free Cash Flow",
         "EPS", "Diluted EPS", "Total Assets", "Total Liabilities", "Shareholder Equity",
@@ -43,27 +46,19 @@ def render_filters(all_metrics):
     user_defaults = st.session_state.get("user_prefs", {})
     saved_trend = user_defaults.get("trend_metrics", [])
     default_trend = [m for m in saved_trend if m in all_metrics] or [m for m in important_mets if m in all_metrics][:5]
-    selected_metrics = st.multiselect("Metrics to plot", all_metrics, default=default_trend or all_metrics[:5], key="trend_met")
+    selected_metrics_trend = st.multiselect("Metrics to plot", all_metrics, default=default_trend or all_metrics[:5], key="trend_met")
 
-    chart_type = st.radio("Chart Type:", ["Line", "Bar"], key="trend_chart_type", horizontal=True)
+    chart_type_trend = st.radio("Chart Type:", ["Line", "Bar"], key="trend_chart_type", horizontal=True)
 
-    if st.button("Save as default metrics", key="save_trend_btn"):
+    # Save preference button (placed right below selector)
+    if st.button(" Save these as my default metrics", key="save_trend_btn"):
         all_prefs = _load_user_prefs()
         user = st.session_state.get("user")
         if user:
-            all_prefs.setdefault(user, {})["trend_metrics"] = selected_metrics
+            all_prefs.setdefault(user, {})["trend_metrics"] = selected_metrics_trend
             _save_user_prefs(all_prefs)
             st.session_state.user_prefs = all_prefs[user]
-            st.success("Preferences saved!")
-            
-    return {"selected_metrics": selected_metrics, "chart_type": chart_type}
-
-def render(ticker_df, all_metrics, filters):
-    st.markdown("### Metrics Trend Analysis")
-    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
-
-    selected_metrics_trend = filters["selected_metrics"]
-    chart_type_trend = filters["chart_type"]
+            st.success("Preferences saved! They will load automatically next time you sign in.")
 
     plot_df = ticker_df[ticker_df["Metric"].isin(selected_metrics_trend)].copy()
     plot_df["FiscalPeriod"] = pd.Categorical(plot_df["FiscalPeriod"], ordered=True,
@@ -76,7 +71,9 @@ def render(ticker_df, all_metrics, filters):
         mdf = mdf.copy()
         mdf["Label"] = mdf["Value"].apply(human_format)
 
+        # Apply custom scaling for axis
         mdf[["Value_Scaled", "Unit"]] = mdf["Value"].apply(lambda x: pd.Series(human_format_for_axis(x)))
+        # Determine the most common unit for the current metric
         common_unit = mdf["Unit"].mode()[0] if not mdf["Unit"].empty else ""
         y_axis_title = f"Value ({common_unit})" if common_unit else "Value"
 
@@ -97,5 +94,3 @@ def render(ticker_df, all_metrics, filters):
         text = base.mark_text(dy=-10, align="left").encode(text="Label")
         chart = alt.layer(chart_mark, text).properties(height=300, width=900, title=metric)
         st.altair_chart(chart, use_container_width=True)
-
-    st.caption("Data source: Yahoo Finance via yfinance • App generated automatically")
