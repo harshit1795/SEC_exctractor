@@ -4,66 +4,36 @@ import altair as alt
 import yfinance as yf
 from datetime import datetime, timedelta
 
-def render_kpi_chart(main_value, comparison_value, history_df, title):
-    col1, col2 = st.columns([1, 2])
-
-    with col1:
-        # Ensure main_value is a scalar
-        if isinstance(main_value, pd.Series):
-            if not main_value.empty:
-                main_value = main_value.iloc[0]
-            else:
-                main_value = 0
-
-        # Ensure comparison_value is a scalar
-        if isinstance(comparison_value, pd.Series):
-            if not comparison_value.empty:
-                comparison_value = comparison_value.iloc[0]
-            else:
-                comparison_value = None
-
-        if comparison_value is not None:
-            delta = main_value - comparison_value
-            if comparison_value != 0:
-                delta_percent = (delta / comparison_value) * 100
-            else:
-                delta_percent = 0
+def render_kpi_chart(main_value, comparison_value, title):
+    # Ensure main_value is a scalar
+    if isinstance(main_value, pd.Series):
+        if not main_value.empty:
+            main_value = main_value.iloc[0]
         else:
-            delta = 0
+            main_value = 0
+
+    # Ensure comparison_value is a scalar
+    if isinstance(comparison_value, pd.Series):
+        if not comparison_value.empty:
+            comparison_value = comparison_value.iloc[0]
+        else:
+            comparison_value = None
+
+    if comparison_value is not None:
+        delta = main_value - comparison_value
+        if comparison_value != 0:
+            delta_percent = (delta / comparison_value) * 100
+        else:
             delta_percent = 0
-        
-        st.metric(
-            label=title,
-            value=f"${main_value:,.2f}",
-            delta=f"{delta_percent:,.2f}%"
-        )
-
-    with col2:
-        chart_df = history_df.reset_index()
-        
-        # Determine the correct date column
-        if 'Date' in chart_df.columns:
-            date_column = 'Date'
-        elif 'index' in chart_df.columns:
-            date_column = 'index'
-        else:
-            st.error("Could not find a date column for the sparkline chart.")
-            return
-
-        # Create a sparkline chart
-        sparkline = alt.Chart(chart_df).mark_line().encode(
-            x=alt.X(f'{date_column}:T', title='Date'),
-            y=alt.Y('Close:Q', axis=alt.Axis(labels=False, title=None)),
-            tooltip=[alt.Tooltip(f'{date_column}:T', title='Date'), alt.Tooltip('Close:Q', title='Close')]
-        ).properties(
-            width=200,
-            height=80
-        ).configure_axis(
-            grid=False
-        ).configure_view(
-            strokeWidth=0
-        )
-        st.altair_chart(sparkline)
+    else:
+        delta = 0
+        delta_percent = 0
+    
+    st.metric(
+        label=title,
+        value=f"${main_value:,.2f}",
+        delta=f"{delta_percent:,.2f}%"
+    )
 
 
 @st.cache_data(show_spinner=True)
@@ -81,56 +51,7 @@ def render(selected_ticker):
     with c2:
         end_date_input = st.date_input("End date", pd.to_datetime("today"), key="price_end")
 
-    # --- DATA FETCHING ---
-    # Fetch last year of data for all calculations
-    price_df_full_year = get_price_history(selected_ticker, pd.to_datetime("today") - pd.DateOffset(years=1), pd.to_datetime("today"))
-
-    if not price_df_full_year.empty:
-        # --- KPI Section ---
-        st.subheader("Key Performance Indicators")
-
-        # Latest Price KPI
-        latest_price = price_df_full_year['Close'].iloc[-1]
-        previous_day_price = price_df_full_year['Close'].iloc[-2] if len(price_df_full_year) > 1 else latest_price
-        render_kpi_chart(latest_price, previous_day_price, price_df_full_year.tail(30), "Latest Price (vs yesterday)")
-
-
-        # Percentage Change KPIs
-        change_period = st.radio(
-            "Select Period for Percentage Change",
-            ('Weekly', 'Monthly', 'Yearly'),
-            horizontal=True
-        )
-
-        latest_price_for_change = price_df_full_year["Close"].iloc[-1]
-
-        comparison_price = None
-        if change_period == 'Weekly':
-            comparison_date = datetime.now() - timedelta(weeks=1)
-            period_label = "Weekly"
-            history_for_kpi = price_df_full_year.tail(7)
-        elif change_period == 'Monthly':
-            comparison_date = datetime.now() - timedelta(days=30)
-            period_label = "Monthly"
-            history_for_kpi = price_df_full_year.tail(30)
-        else:  # Yearly
-            comparison_price = price_df_full_year["Close"].iloc[0]
-            period_label = "Yearly"
-            history_for_kpi = price_df_full_year
-
-        if change_period != 'Yearly':
-            # Find the closest available date in the history
-            comparison_price_series = price_df_full_year.iloc[price_df_full_year.index.get_indexer([comparison_date], method='nearest')]
-            if not comparison_price_series.empty:
-                comparison_price = comparison_price_series["Close"].iloc[0]
-
-        if comparison_price is not None:
-            render_kpi_chart(latest_price_for_change, comparison_price, history_for_kpi, f"{period_label} Change")
-        else:
-            st.warning(f"Could not calculate {period_label} percentage change.")
-
-
-    c1, c2, c3 = st.columns([1,1,2])
+    c1, c2, c3 = st.columns(3)
     with c1:
         aggregation = st.selectbox("Aggregation", ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'], key="price_agg")
     with c2:
@@ -141,8 +62,45 @@ def render(selected_ticker):
         else:
             line_metric = 'close' # Default for candlestick
 
+    # --- DATA FETCHING ---
+    # Fetch last year of data for all calculations
+    price_df_full_year = get_price_history(selected_ticker, pd.to_datetime("today") - pd.DateOffset(years=1), pd.to_datetime("today"))
+
+    if not price_df_full_year.empty:
+        # --- KPI Section ---
+        st.subheader("Key Performance Indicators")
+
+        latest_price = price_df_full_year['Close'].iloc[-1]
+        comparison_price = None
+        period_label = aggregation
+        comparison_date = None
+
+        if aggregation == 'Daily':
+            comparison_price = price_df_full_year['Close'].iloc[-2] if len(price_df_full_year) > 1 else latest_price
+            period_label = "vs Yesterday"
+        elif aggregation == 'Weekly':
+            comparison_date = datetime.now() - timedelta(weeks=1)
+        elif aggregation == 'Monthly':
+            comparison_date = datetime.now() - timedelta(days=30)
+        elif aggregation == 'Quarterly':
+            comparison_date = datetime.now() - timedelta(days=90)
+        else:  # Yearly
+            comparison_date = datetime.now() - timedelta(days=365)
+
+        if aggregation not in ['Daily']:
+             # Find the closest available date in the history
+            comparison_price_series = price_df_full_year.iloc[price_df_full_year.index.get_indexer([comparison_date], method='nearest')]
+            if not comparison_price_series.empty:
+                comparison_price = comparison_price_series["Close"].iloc[0]
+
+        if comparison_price is not None:
+            title = f"Latest Price ({period_label} Change)" if aggregation != 'Daily' else f"Latest Price ({period_label})"
+            render_kpi_chart(latest_price, comparison_price, title)
+        else:
+            st.warning(f"Could not calculate {period_label} percentage change.")
+
     # --- DATA PROCESSING FOR CHART---
-    price_df = price_df_full_year[(price_df_full_year.index.date >= start_date_input.date()) & (price_df_full_year.index.date <= end_date_input.date())]
+    price_df = price_df_full_year[(price_df_full_year.index.date >= start_date_input) & (price_df_full_year.index.date <= end_date_input)]
 
 
     if not price_df.empty:
