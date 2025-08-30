@@ -20,6 +20,17 @@
             "chart_view": "Combined",
             "start_date": "2020-01-01",
             "end_date": "2025-07-01"
+        },
+        "snapshot_tab": {
+            "snapshot_metrics": [
+                "Total Assets",
+                "Current Liabilities",
+                "Total Liabilities Net Minority Interest",
+                "Net Debt",
+                "Total Debt",
+                "Working Capital"
+            ],
+            "mode": "QoQ \u0394"
         }
     }
 }

@@ -17,8 +17,15 @@ def human_format(num):
 
 def render_filters(all_metrics, wide_df):
     st.markdown("#### Snapshot Options")
+    user_prefs = st.session_state.get("user_prefs", {})
+    snapshot_prefs = user_prefs.get("snapshot_tab", {})
+
     latest_period = wide_df.index.max()
-    mode = st.radio(f"Display (Period: {latest_period})", ["Latest", "QoQ Δ", "YoY Δ"], horizontal=True, key="snap_mode")
+    
+    mode_options = ["Latest", "QoQ Δ", "YoY Δ"]
+    default_mode = snapshot_prefs.get("mode", "Latest")
+    mode_index = mode_options.index(default_mode) if default_mode in mode_options else 0
+    mode = st.radio(f"Display (Period: {latest_period})", mode_options, index=mode_index, horizontal=True, key="snap_mode")
 
     important_mets = [
         "Total Revenue", "Net Income", "Operating Income", "EBIT", "EBITDA", "Operating Cash Flow", "Free Cash Flow",
@@ -28,8 +35,8 @@ def render_filters(all_metrics, wide_df):
         "Net Debt", "Total Debt", "Working Capital",
         "ROE", "ROA", "PE Ratio"
     ]
-    user_defaults = st.session_state.get("user_prefs", {})
-    saved_snap = user_defaults.get("snapshot_metrics", [])
+    
+    saved_snap = snapshot_prefs.get("snapshot_metrics", [])
     default_snapshot = [m for m in saved_snap if m in all_metrics] or [m for m in important_mets if m in all_metrics]
     snap_metrics = st.multiselect("Metrics to show", all_metrics, default=default_snapshot or all_metrics[:10], key="snap_met")
 
@@ -37,9 +44,13 @@ def render_filters(all_metrics, wide_df):
         all_prefs = _load_user_prefs()
         user = st.session_state.get("user")
         if user:
-            all_prefs.setdefault(user, {})["snapshot_metrics"] = snap_metrics
+            user_prefs = all_prefs.setdefault(user, {})
+            user_prefs["snapshot_tab"] = {
+                "snapshot_metrics": snap_metrics,
+                "mode": mode
+            }
             _save_user_prefs(all_prefs)
-            st.session_state.user_prefs = all_prefs[user]
+            st.session_state.user_prefs = user_prefs
             st.success("Snapshot preferences saved!")
 
     return {"mode": mode, "snap_metrics": snap_metrics}
