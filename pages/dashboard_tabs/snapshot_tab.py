@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 from auth import _load_user_prefs, _save_user_prefs
@@ -15,10 +16,19 @@ def human_format(num):
         num /= 1000
     return f"{sign}${num:.1f}P"
 
-def render_filters(all_metrics, wide_df):
-    st.markdown("#### Snapshot Options")
-    latest_period = wide_df.index.max()
-    mode = st.radio(f"Display (Period: {latest_period})", ["Latest", "QoQ Δ", "YoY Δ"], horizontal=True, key="snap_mode")
+def render(ticker_df, all_metrics):
+    st.markdown("### Snapshot & Changes")
+    
+    wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+    if wide.empty:
+        st.warning("No data available for this ticker.")
+        st.stop()
+    latest_period = wide.index.max()
+    latest_vals = wide.loc[latest_period]
+
+    mode = st.radio(f"Display (Period: {latest_period})", ["Latest", "QoQ Δ", "YoY Δ"], horizontal=True)
+
+    # ---------------- Default metrics (use user prefs if available) ---------------- #
 
     important_mets = [
         "Total Revenue", "Net Income", "Operating Income", "EBIT", "EBITDA", "Operating Cash Flow", "Free Cash Flow",
@@ -33,31 +43,7 @@ def render_filters(all_metrics, wide_df):
     default_snapshot = [m for m in saved_snap if m in all_metrics] or [m for m in important_mets if m in all_metrics]
     snap_metrics = st.multiselect("Metrics to show", all_metrics, default=default_snapshot or all_metrics[:10], key="snap_met")
 
-    if st.button("Save as default snapshot metrics", key="save_snap_btn"):
-        all_prefs = _load_user_prefs()
-        user = st.session_state.get("user")
-        if user:
-            all_prefs.setdefault(user, {})["snapshot_metrics"] = snap_metrics
-            _save_user_prefs(all_prefs)
-            st.session_state.user_prefs = all_prefs[user]
-            st.success("Snapshot preferences saved!")
-
-    return {"mode": mode, "snap_metrics": snap_metrics}
-
-def render(ticker_df, all_metrics, filters):
-    st.markdown("### Snapshot & Changes")
-    
-    wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
-    if wide.empty:
-        st.warning("No data available for this ticker.")
-        st.stop()
-    
-    mode = filters["mode"]
-    snap_metrics = filters["snap_metrics"]
-    
-    latest_period = wide.index.max()
-    latest_vals = wide.loc[latest_period]
-
+    # Determine deltas
     if mode == "Latest":
         delta_vals = {m: None for m in snap_metrics}
         pct_vals = {m: None for m in snap_metrics}
@@ -82,6 +68,7 @@ def render(ticker_df, all_metrics, filters):
             delta_vals = {m: None for m in snap_metrics}
             pct_vals = {m: None for m in snap_metrics}
 
+    # Display metrics in a responsive grid
     n_cols = 3
     rows = (len(snap_metrics) + n_cols - 1) // n_cols
     metric_iter = iter(snap_metrics)
@@ -105,3 +92,13 @@ def render(ticker_df, all_metrics, filters):
             c.metric(metric, human_format(val), delta_fmt if mode != "Latest" else None)
 
     st.caption("Data source: Yahoo Finance via yfinance • App generated automatically")
+
+    # Save snapshot prefs
+    if st.button(" Save these as my default snapshot metrics", key="save_snap_btn"):
+        all_prefs = _load_user_prefs()
+        user = st.session_state.get("user")
+        if user:
+            all_prefs.setdefault(user, {})["snapshot_metrics"] = snap_metrics
+            _save_user_prefs(all_prefs)
+            st.session_state.user_prefs = all_prefs[user]
+            st.success("Snapshot preferences saved!")
