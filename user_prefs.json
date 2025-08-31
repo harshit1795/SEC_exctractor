@@ -1,6 +1,6 @@
 {
     "5wrniLVB0STl0WY8LdlkM7Y3pTH3": {
-        "GEMINI_API_KEY": "AIzaSyD8eb-1RM0h31QlByNIFanEbzyc7WjaShU",
+        "GEMINI_API_KEY": "AIzaSyDw3VaMYnTB3lUcytUkq9x2brd9k2YVGJI",
         "snapshot_metrics": [
             "Total Assets",
             "Current Liabilities",
@@ -31,6 +31,20 @@
                 "Working Capital"
             ],
             "mode": "QoQ \u0394"
+        },
+        "chatbot_tab": {
+            "selected_tickers": [
+                "AMZN"
+            ],
+            "metric_categories": [
+                "Income Statement",
+                "Balance Sheet",
+                "Cash Flow"
+            ],
+            "fred_series": [
+                "GDP",
+                "UNRATE"
+            ]
         }
     }
 }
