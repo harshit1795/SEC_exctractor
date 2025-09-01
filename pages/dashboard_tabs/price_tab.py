@@ -2,71 +2,106 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 import yfinance as yf
-from auth import _load_user_prefs, _save_user_prefs
+from datetime import datetime, timedelta
+
+def render_kpi_chart(main_value, comparison_value, title):
+    # Ensure main_value is a scalar
+    if isinstance(main_value, pd.Series):
+        if not main_value.empty:
+            main_value = main_value.iloc[0]
+        else:
+            main_value = 0
+
+    # Ensure comparison_value is a scalar
+    if isinstance(comparison_value, pd.Series):
+        if not comparison_value.empty:
+            comparison_value = comparison_value.iloc[0]
+        else:
+            comparison_value = None
+
+    if comparison_value is not None:
+        delta = main_value - comparison_value
+        if comparison_value != 0:
+            delta_percent = (delta / comparison_value) * 100
+        else:
+            delta_percent = 0
+    else:
+        delta = 0
+        delta_percent = 0
+    
+    st.metric(
+        label=title,
+        value=f"${main_value:,.2f}",
+        delta=f"{delta_percent:,.2f}%"
+    )
+
 
 @st.cache_data(show_spinner=True)
 def get_price_history(ticker: str, start_date, end_date) -> pd.DataFrame:
     """Get historical price data from yfinance."""
     return yf.download(ticker, start=start_date, end=end_date)
 
-def render_filters():
-    """Renders filters for the price chart and returns their values."""
-    st.markdown("#### Chart Options")
-    user_prefs = st.session_state.get("user_prefs", {})
-    price_prefs = user_prefs.get("price_tab", {})
-
-    start_date = st.date_input("Start date", pd.to_datetime("today") - pd.DateOffset(years=1), key="price_start")
-    end_date = st.date_input("End date", pd.to_datetime("today"), key="price_end")
-    
-    agg_options = ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly']
-    default_agg = price_prefs.get("aggregation", "Daily")
-    agg_index = agg_options.index(default_agg) if default_agg in agg_options else 0
-    aggregation = st.selectbox("Aggregation", agg_options, index=agg_index, key="price_agg")
-
-    chart_type_options = ['Candlestick', 'Line']
-    default_chart_type = price_prefs.get("chart_type", "Candlestick")
-    chart_type_index = chart_type_options.index(default_chart_type) if default_chart_type in chart_type_options else 0
-    chart_type = st.radio("Chart Type", chart_type_options, index=chart_type_index, key="price_chart_type")
-    
-    line_metric = 'close'
-    if chart_type == 'Line':
-        metric_options = ['Open', 'High', 'Low', 'Close']
-        default_metric = price_prefs.get("line_metric", "Close")
-        metric_index = metric_options.index(default_metric) if default_metric in metric_options else 3
-        line_metric = st.selectbox("Metric for Line Chart", metric_options, index=metric_index, key="price_line_metric").lower()
-
-    if st.button("Save Chart Settings", key="save_price_prefs"):
-        all_prefs = _load_user_prefs()
-        user = st.session_state.get("user")
-        if user:
-            user_prefs = all_prefs.setdefault(user, {})
-            user_prefs["price_tab"] = {
-                "aggregation": aggregation,
-                "chart_type": chart_type,
-                "line_metric": line_metric
-            }
-            _save_user_prefs(all_prefs)
-            st.session_state.user_prefs = user_prefs
-            st.success("Price chart preferences saved!")
-        
-    return {
-        "start_date": start_date,
-        "end_date": end_date,
-        "aggregation": aggregation,
-        "chart_type": chart_type,
-        "line_metric": line_metric
-    }
-
-def render(selected_ticker, filters):
+def render(selected_ticker):
     st.markdown("### Price Chart")
 
-    start_date = filters['start_date']
-    end_date = filters['end_date']
-    aggregation = filters['aggregation']
-    chart_type = filters['chart_type']
-    line_metric = filters['line_metric']
+    # --- FILTERS ---
+    c1, c2 = st.columns(2)
+    with c1:
+        start_date_input = st.date_input("Start date", pd.to_datetime("today") - pd.DateOffset(months=1), key="price_start")
+    with c2:
+        end_date_input = st.date_input("End date", pd.to_datetime("today"), key="price_end")
 
-    price_df = get_price_history(selected_ticker, start_date, end_date)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        aggregation = st.selectbox("Aggregation", ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'], key="price_agg")
+    with c2:
+        chart_type = st.radio("Chart Type", ['Candlestick', 'Line'], key="price_chart_type")
+    with c3:
+        if chart_type == 'Line':
+            line_metric = st.selectbox("Metric for Line Chart", ['Open', 'High', 'Low', 'Close'], index=3, key="price_line_metric").lower()
+        else:
+            line_metric = 'close' # Default for candlestick
+
+    # --- DATA FETCHING ---
+    # Fetch last year of data for all calculations
+    price_df_full_year = get_price_history(selected_ticker, pd.to_datetime("today") - pd.DateOffset(years=1), pd.to_datetime("today"))
+
+    if not price_df_full_year.empty:
+        # --- KPI Section ---
+        st.subheader("Key Performance Indicators")
+
+        latest_price = price_df_full_year['Close'].iloc[-1]
+        comparison_price = None
+        period_label = aggregation
+        comparison_date = None
+
+        if aggregation == 'Daily':
+            comparison_price = price_df_full_year['Close'].iloc[-2] if len(price_df_full_year) > 1 else latest_price
+            period_label = "vs Yesterday"
+        elif aggregation == 'Weekly':
+            comparison_date = datetime.now() - timedelta(weeks=1)
+        elif aggregation == 'Monthly':
+            comparison_date = datetime.now() - timedelta(days=30)
+        elif aggregation == 'Quarterly':
+            comparison_date = datetime.now() - timedelta(days=90)
+        else:  # Yearly
+            comparison_date = datetime.now() - timedelta(days=365)
+
+        if aggregation not in ['Daily']:
+             # Find the closest available date in the history
+            comparison_price_series = price_df_full_year.iloc[price_df_full_year.index.get_indexer([comparison_date], method='nearest')]
+            if not comparison_price_series.empty:
+                comparison_price = comparison_price_series["Close"].iloc[0]
+
+        if comparison_price is not None:
+            title = f"Latest Price ({period_label} Change)" if aggregation != 'Daily' else f"Latest Price ({period_label})"
+            render_kpi_chart(latest_price, comparison_price, title)
+        else:
+            st.warning(f"Could not calculate {period_label} percentage change.")
+
+    # --- DATA PROCESSING FOR CHART---
+    price_df = price_df_full_year[(price_df_full_year.index.date >= start_date_input) & (price_df_full_year.index.date <= end_date_input)]
+
 
     if not price_df.empty:
         price_df.index.name = 'Date'
@@ -83,6 +118,7 @@ def render(selected_ticker, filters):
 
         price_df['date'] = pd.to_datetime(price_df['date'])
 
+        # --- AGGREGATION LOGIC ---
         if aggregation != 'Daily':
             agg_logic = {
                 'open': 'first',
@@ -99,6 +135,7 @@ def render(selected_ticker, filters):
             st.warning("No data available for the selected aggregation.")
             return
 
+        # --- X-AXIS FORMATTING ---
         if aggregation == 'Yearly':
             price_df['Label'] = price_df['date'].dt.strftime('%Y')
             x_title = 'Year'
@@ -108,18 +145,21 @@ def render(selected_ticker, filters):
         elif aggregation == 'Monthly':
             price_df['Label'] = price_df['date'].dt.strftime('%b %Y')
             x_title = 'Month'
-        else:
+        else: # Weekly or Daily
             price_df['Label'] = price_df['date'].dt.strftime('%Y-%m-%d')
             x_title = 'Date'
         
         x_axis = alt.X('Label:O', title=x_title, sort=None)
 
+        # --- Y-AXIS SCALE ---
+        # Calculate min/max for a tight y-axis domain
         min_val = price_df['low'].min()
         max_val = price_df['high'].max()
-        padding = (max_val - min_val) * 0.05
+        padding = (max_val - min_val) * 0.05 # Add 5% padding
         y_domain = [min_val - padding, max_val + padding]
         y_scale = alt.Scale(domain=y_domain, zero=False)
 
+        # --- CHARTING ---
         st.subheader(f"{aggregation} {chart_type} Chart")
         st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
 
@@ -153,5 +193,6 @@ def render(selected_ticker, filters):
                 ]
             ).interactive()
             st.altair_chart(chart, use_container_width=True)
+
     else:
         st.warning("Could not retrieve price data for the selected ticker and date range.")
