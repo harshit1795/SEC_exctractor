@@ -15,38 +15,6 @@ def render(selected_ticker):
 
     earnings_dates, ticker_info_yf = get_ticker_earnings_data(selected_ticker)
 
-    if not earnings_dates.empty:
-        earnings_dates.index = pd.to_datetime(earnings_dates.index)
-        
-        # Last Quarter's Earnings
-        st.subheader("Last Quarter's Earnings")
-        past_earnings = earnings_dates[
-            (earnings_dates.index < pd.Timestamp.now(tz='America/New_York')) &
-            (earnings_dates['Event Type'] == 'Earnings') &
-            (earnings_dates['Reported EPS'].notna())
-        ].sort_index(ascending=False)
-        
-        if not past_earnings.empty:
-            last_earnings = past_earnings.iloc[0]
-            st.write(f"**Date:** {last_earnings.name.strftime('%Y-%m-%d')}")
-            st.write(f"**Reported EPS:** {last_earnings.get('Reported EPS', 'N/A')}")
-            st.write(f"**Estimated EPS:** {last_earnings.get('EPS Estimate', 'N/A')}")
-            st.write(f"**Surprise (%):** {last_earnings.get('Surprise(%)', 'N/A')}")
-        else:
-            st.info("No past earnings data available.")
-
-        # Next Earnings Prediction
-        next_earnings = earnings_dates[
-            (earnings_dates.index > pd.Timestamp.now(tz='America/New_York')) &
-            (earnings_dates['Event Type'] == 'Earnings') &
-            (earnings_dates['EPS Estimate'].notna())
-        ].sort_index()
-
-        if not next_earnings.empty:
-            next_earnings_date = next_earnings.iloc[0]
-            st.write(f"**Next Earnings Date:** {next_earnings_date.name.strftime('%Y-%m-%d')}")
-            st.write(f"**Estimated EPS:** {next_earnings_date.get('EPS Estimate', 'N/A')}")
-
     st.subheader("Historical EPS Trend")
     st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
     historical_eps_df = earnings_dates[
@@ -134,6 +102,36 @@ def render(selected_ticker):
             st.info("No data available for the selected filters.")
     else:
         st.info("No sufficient historical EPS data available for charting.")
+
+    if not earnings_dates.empty:
+        # Last Quarter's Earnings
+        st.subheader("Last Quarter's Earnings")
+        past_earnings = earnings_dates[
+            (earnings_dates.index < pd.Timestamp.now(tz='America/New_York')) &
+            (earnings_dates['Event Type'] == 'Earnings') &
+            (earnings_dates['Reported EPS'].notna())
+        ].sort_index(ascending=False)
+        
+        if not past_earnings.empty:
+            last_earnings = past_earnings.iloc[0]
+            st.write(f"**Date:** {last_earnings.name.strftime('%Y-%m-%d')}")
+            st.write(f"**Reported EPS:** {last_earnings.get('Reported EPS', 'N/A')}")
+            st.write(f"**Estimated EPS:** {last_earnings.get('EPS Estimate', 'N/A')}")
+            st.write(f"**Surprise (%):** {last_earnings.get('Surprise(%)', 'N/A')}")
+        else:
+            st.info("No past earnings data available.")
+
+        # Next Earnings Prediction
+        next_earnings = earnings_dates[
+            (earnings_dates.index > pd.Timestamp.now(tz='America/New_York')) &
+            (earnings_dates['Event Type'] == 'Earnings') &
+            (earnings_dates['EPS Estimate'].notna())
+        ].sort_index()
+
+        if not next_earnings.empty:
+            next_earnings_date = next_earnings.iloc[0]
+            st.write(f"**Next Earnings Date:** {next_earnings_date.name.strftime('%Y-%m-%d')}")
+            st.write(f"**Estimated EPS:** {next_earnings_date.get('EPS Estimate', 'N/A')}")
 
     # --- Simple EPS Prediction Model --- #
     st.subheader("Next Earning Prediction")
