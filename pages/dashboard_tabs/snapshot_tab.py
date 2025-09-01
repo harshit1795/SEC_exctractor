@@ -15,15 +15,9 @@ def human_format(num):
         num /= 1000
     return f"{sign}${num:.1f}P"
 
-def render(ticker_df, all_metrics):
-    st.markdown("### Snapshot & Changes")
-
+def render_filters(ticker_df, all_metrics):
+    st.markdown("#### Snapshot Filters")
     wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
-    if wide.empty:
-        st.warning("No data available for this ticker.")
-        st.stop()
-
-    st.markdown("#### Snapshot Options")
     user_prefs = st.session_state.get("user_prefs", {})
     snapshot_prefs = user_prefs.get("snapshot_tab", {})
 
@@ -59,7 +53,24 @@ def render(ticker_df, all_metrics):
             _save_user_prefs(all_prefs)
             st.session_state.user_prefs = user_prefs
             st.success("Snapshot preferences saved!")
+    
+    return {"mode": mode, "snap_metrics": snap_metrics}
 
+def render_content(ticker_df, filters):
+    st.markdown("### Snapshot & Changes")
+    wide = ticker_df.pivot_table(index="FiscalPeriod", columns="Metric", values="Value", aggfunc="first").sort_index()
+    if wide.empty:
+        st.warning("No data available for this ticker.")
+        st.stop()
+
+    mode = filters.get("mode", "Latest")
+    snap_metrics = filters.get("snap_metrics", [])
+
+    if not snap_metrics:
+        st.info("Select at least one metric to display.")
+        return
+
+    latest_period = wide.index.max()
     latest_vals = wide.loc[latest_period]
 
     if mode == "Latest":
