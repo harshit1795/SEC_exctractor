@@ -51,7 +51,7 @@ def render_filters(all_metrics):
     
     selected_metrics_trend = st.multiselect("Metrics to plot", all_metrics, default=default_selection, key="trend_met")
 
-    chart_type_trend = st.radio("Chart Type:", ["Line", "Bar"], key="trend_chart_type", horizontal=True)
+    chart_type_trend = st.radio("Chart Type:", ["Line", "Bar"], key="trend_chart_type")
 
     if st.button("Save as default metrics", key="save_trend_btn"):
         all_prefs = _load_user_prefs()
