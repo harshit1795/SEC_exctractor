@@ -1,5 +1,50 @@
 {
     "5wrniLVB0STl0WY8LdlkM7Y3pTH3": {
-        "GEMINI_API_KEY": "AIzaSyD8eb-1RM0h31QlByNIFanEbzyc7WjaShU"
+        "GEMINI_API_KEY": "AIzaSyDw3VaMYnTB3lUcytUkq9x2brd9k2YVGJI",
+        "snapshot_metrics": [
+            "Total Assets",
+            "Current Liabilities",
+            "Total Liabilities Net Minority Interest",
+            "Net Debt",
+            "Total Debt",
+            "Working Capital"
+        ],
+        "fred_tab": {
+            "selected_indicators": [
+                "Real GDP",
+                "Inflation (CPI)",
+                "Unemployment Rate"
+            ],
+            "aggregation_period": "Quarterly",
+            "chart_type": "Line",
+            "chart_view": "Combined",
+            "start_date": "2020-01-01",
+            "end_date": "2025-07-01"
+        },
+        "snapshot_tab": {
+            "snapshot_metrics": [
+                "Total Assets",
+                "Current Liabilities",
+                "Total Liabilities Net Minority Interest",
+                "Net Debt",
+                "Total Debt",
+                "Working Capital"
+            ],
+            "mode": "QoQ \u0394"
+        },
+        "chatbot_tab": {
+            "selected_tickers": [
+                "AMZN"
+            ],
+            "metric_categories": [
+                "Income Statement",
+                "Balance Sheet",
+                "Cash Flow"
+            ],
+            "fred_series": [
+                "GDP",
+                "UNRATE"
+            ]
+        }
     }
 }
