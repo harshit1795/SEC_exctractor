@@ -26,7 +26,7 @@ def render_filters(ticker_df, all_metrics):
     mode_options = ["Latest", "QoQ Δ", "YoY Δ"]
     default_mode = snapshot_prefs.get("mode", "Latest")
     mode_index = mode_options.index(default_mode) if default_mode in mode_options else 0
-    mode = st.radio(f"Display (Period: {latest_period})", mode_options, index=mode_index, horizontal=True, key="snap_mode")
+    mode = st.radio(f"Display (Period: {latest_period})", mode_options, index=mode_index, key="snap_mode")
 
     important_mets = [
         "Total Revenue", "Net Income", "Operating Income", "EBIT", "EBITDA", "Operating Cash Flow", "Free Cash Flow",
