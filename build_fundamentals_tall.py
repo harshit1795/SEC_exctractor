@@ -11,8 +11,9 @@ BATCH_SLEEP = 0.5  # seconds between API calls to be polite
 
 def get_sp500_tickers() -> pd.DataFrame:
     """Scrape S&P-500 constituents from Wikipedia and return basic metadata."""
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    resp = requests.get(url, timeout=30)
+    url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'}
+    resp = requests.get(url, headers=headers)
     resp.raise_for_status()
     soup = BeautifulSoup(resp.text, 'html.parser')
     table = soup.find('table', {'id': 'constituents'})

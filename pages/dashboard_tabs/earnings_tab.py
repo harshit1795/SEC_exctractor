@@ -10,13 +10,9 @@ def get_ticker_earnings_data(ticker_symbol):
     ticker_yf = yf.Ticker(ticker_symbol)
     return ticker_yf.earnings_dates, ticker_yf.info
 
-def render(selected_ticker):
-    st.markdown("### Earning Summary")
-
-    earnings_dates, ticker_info_yf = get_ticker_earnings_data(selected_ticker)
-
-    st.subheader("Historical EPS Trend")
-    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
+def render_filters(selected_ticker):
+    st.markdown("#### Earnings Filters")
+    earnings_dates, _ = get_ticker_earnings_data(selected_ticker)
     historical_eps_df = earnings_dates[
         (earnings_dates['Event Type'] == 'Earnings') &
         (earnings_dates['Reported EPS'].notna()) &
@@ -24,13 +20,32 @@ def render(selected_ticker):
     ].reset_index().rename(columns={'Earnings Date': 'Date'})
 
     if not historical_eps_df.empty:
-        # --- FILTERS ---
         agg_options = ['Quarterly', 'Yearly']
         chart_type_options = ["Line", "Bar"]
         df_for_filters = historical_eps_df.set_index('Date')
         start_date, end_date, aggregation_period, chart_type, chart_view = render_filter_bar(df_for_filters, "earnings", agg_options, chart_type_options)
+        return {"start_date": start_date, "end_date": end_date, "aggregation_period": aggregation_period, "chart_type": chart_type, "chart_view": chart_view, "historical_eps_df": historical_eps_df, "earnings_dates": earnings_dates}
+    return {}
 
-        # --- PROCESS DATA ---
+def render_content(selected_ticker, filters):
+    st.markdown("### Earning Summary")
+
+    if not filters:
+        st.info("No earnings data to display filters for.")
+        return
+
+    start_date = filters.get("start_date")
+    end_date = filters.get("end_date")
+    aggregation_period = filters.get("aggregation_period", "Quarterly")
+    chart_type = filters.get("chart_type", "Line")
+    chart_view = filters.get("chart_view", "Combined")
+    historical_eps_df = filters.get("historical_eps_df")
+    earnings_dates = filters.get("earnings_dates")
+
+    st.subheader("Historical EPS Trend")
+    st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
+
+    if not historical_eps_df.empty:
         mask = (historical_eps_df['Date'] >= pd.to_datetime(start_date, utc=True)) & (historical_eps_df['Date'] <= pd.to_datetime(end_date, utc=True))
         filtered_df = historical_eps_df.loc[mask]
 
@@ -44,7 +59,6 @@ def render(selected_ticker):
         agg_df = agg_df.reset_index()
 
         if not agg_df.empty:
-            # --- CREATE CHART (Specific to this tab) ---
             if chart_view == 'Combined':
                 melted_df = agg_df.melt(
                     id_vars=['Date'], 
@@ -104,7 +118,6 @@ def render(selected_ticker):
         st.info("No sufficient historical EPS data available for charting.")
 
     if not earnings_dates.empty:
-        # Last Quarter's Earnings
         st.subheader("Last Quarter's Earnings")
         past_earnings = earnings_dates[
             (earnings_dates.index < pd.Timestamp.now(tz='America/New_York')) &
@@ -121,7 +134,7 @@ def render(selected_ticker):
         else:
             st.info("No past earnings data available.")
 
-        # Next Earnings Prediction
+        st.subheader("Next Earning Prediction")
         next_earnings = earnings_dates[
             (earnings_dates.index > pd.Timestamp.now(tz='America/New_York')) &
             (earnings_dates['Event Type'] == 'Earnings') &
@@ -133,17 +146,15 @@ def render(selected_ticker):
             st.write(f"**Next Earnings Date:** {next_earnings_date.name.strftime('%Y-%m-%d')}")
             st.write(f"**Estimated EPS:** {next_earnings_date.get('EPS Estimate', 'N/A')}")
 
-    # --- Simple EPS Prediction Model --- #
-    st.subheader("Next Earning Prediction")
-    reported_eps_data = earnings_dates[
-        (earnings_dates['Event Type'] == 'Earnings') &
-        (earnings_dates['Reported EPS'].notna())
-    ].sort_index(ascending=False)
+        reported_eps_data = earnings_dates[
+            (earnings_dates['Event Type'] == 'Earnings') &
+            (earnings_dates['Reported EPS'].notna())
+        ].sort_index(ascending=False)
 
-    if not reported_eps_data.empty and len(reported_eps_data) >= 4:
-        eps_values = reported_eps_data['Reported EPS'].head(4).values
-        predicted_eps = np.mean(eps_values)
-        st.write(f"**Predicted EPS for Next Quarter:** {predicted_eps:.2f}")
-        st.caption("Prediction based on the average of the last 4 reported EPS values.")
-    else:
-        st.info("Not enough historical data to make a prediction.")
+        if not reported_eps_data.empty and len(reported_eps_data) >= 4:
+            eps_values = reported_eps_data['Reported EPS'].head(4).values
+            predicted_eps = np.mean(eps_values)
+            st.write(f"**Predicted EPS for Next Quarter:** {predicted_eps:.2f}")
+            st.caption("Prediction based on the average of the last 4 reported EPS values.")
+        else:
+            st.info("Not enough historical data to make a prediction.")
