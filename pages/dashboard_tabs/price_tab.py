@@ -43,22 +43,14 @@ def get_price_history(ticker: str, start_date, end_date) -> pd.DataFrame:
 
 def render_filters():
     st.markdown("#### Price Filters")
-    c1, c2 = st.columns(2)
-    with c1:
-        start_date_input = st.date_input("Start date", pd.to_datetime("today") - pd.DateOffset(months=1), key="price_start")
-    with c2:
-        end_date_input = st.date_input("End date", pd.to_datetime("today"), key="price_end")
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        aggregation = st.selectbox("Aggregation", ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'], key="price_agg")
-    with c2:
-        chart_type = st.radio("Chart Type", ['Candlestick', 'Line'], key="price_chart_type")
-    with c3:
-        if chart_type == 'Line':
-            line_metric = st.selectbox("Metric for Line Chart", ['Open', 'High', 'Low', 'Close'], index=3, key="price_line_metric").lower()
-        else:
-            line_metric = 'close' # Default for candlestick
+    start_date_input = st.date_input("Start date", pd.to_datetime("today") - pd.DateOffset(months=1), key="price_start")
+    end_date_input = st.date_input("End date", pd.to_datetime("today"), key="price_end")
+    aggregation = st.selectbox("Aggregation", ['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Yearly'], key="price_agg")
+    chart_type = st.radio("Chart Type", ['Candlestick', 'Line'], key="price_chart_type")
+    if chart_type == 'Line':
+        line_metric = st.selectbox("Metric for Line Chart", ['Open', 'High', 'Low', 'Close'], index=3, key="price_line_metric").lower()
+    else:
+        line_metric = 'close' # Default for candlestick
     
     return {"start_date": start_date_input, "end_date": end_date_input, "aggregation": aggregation, "chart_type": chart_type, "line_metric": line_metric}
 
