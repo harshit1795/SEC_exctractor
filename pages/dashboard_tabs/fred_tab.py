@@ -41,6 +41,21 @@ def render():
             agg_df = filtered_df.resample(period_map[aggregation_period]).mean(numeric_only=True)
 
             if not agg_df.empty:
+                # --- RENDER CHART ---
+                st.subheader("Aggregated Chart")
+                st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
+                melted_df = agg_df.reset_index().melt(id_vars='Date', var_name='Metric', value_name='Value')
+                render_altair_chart(
+                    df=melted_df,
+                    aggregation_period=aggregation_period,
+                    chart_type=chart_type,
+                    chart_view=chart_view,
+                    x_col='Date',
+                    y_col='Value',
+                    color_col='Metric',
+                    chart_title="Macroeconomic Trends"
+                )
+
                 st.subheader(f"Aggregated Data ({aggregation_period})")
                 
                 # --- DISPLAY TABLE ---
@@ -56,21 +71,6 @@ def render():
                         gb.configure_column(col, type=["numericColumn", "numberColumnFilter", "customNumericFormat"], editable=False)
                     gridOptions = gb.build()
                     AgGrid(display_df, gridOptions=gridOptions, height=350, width='100%', theme='streamlit')
-
-                # --- RENDER CHART ---
-                st.subheader("Aggregated Chart")
-                st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
-                melted_df = agg_df.reset_index().melt(id_vars='Date', var_name='Metric', value_name='Value')
-                render_altair_chart(
-                    df=melted_df,
-                    aggregation_period=aggregation_period,
-                    chart_type=chart_type,
-                    chart_view=chart_view,
-                    x_col='Date',
-                    y_col='Value',
-                    color_col='Metric',
-                    chart_title="Macroeconomic Trends"
-                )
             else:
                 st.warning("No data available for the selected filters.")
         else:
