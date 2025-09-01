@@ -1,4 +1,9 @@
 import streamlit as st
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '.')))
+
 from components.shared import render_sidebar
 from components.utils import hide_default_sidebar
 from pages import Dashboard, Financial_Health_Monitoring, Nexus, Settings
