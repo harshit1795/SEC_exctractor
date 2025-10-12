@@ -7,20 +7,10 @@ import os
 import streamlit as st
 
 # IMPORTANT: Replace with your actual email address for SEC EDGAR API compliance
-# SEC requires a valid User-Agent. Failure to provide one will result in 403 errors.
-# Example: "Your Name YourEmail@example.com"
-USER_AGENT = "YourName YourEmail@example.com" # <--- UPDATE THIS WITH YOUR EMAIL
-
-SEC_DATA_HEADERS = {
-    "User-Agent": USER_AGENT,
+SEC_HEADERS = {
+    "User-Agent": "HarshitGola harshit.gola@gmail.com", 
     "Accept-Encoding": "gzip, deflate",
     "Host": "data.sec.gov"
-}
-
-SEC_ARCHIVE_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept-Encoding": "gzip, deflate",
-    "Host": "www.sec.gov"
 }
 
 @st.cache_data(ttl=3600) # Cache for 1 hour
@@ -41,7 +31,7 @@ def get_company_filings(cik):
     """Fetches a company's recent filing history from SEC EDGAR API."""
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"
     try:
-        response = requests.get(url, headers=SEC_DATA_HEADERS) # Use SEC_DATA_HEADERS
+        response = requests.get(url, headers=SEC_HEADERS)
         response.raise_for_status() # Raise an exception for HTTP errors
         company_filings = response.json()
         filings_df = pd.DataFrame(company_filings["filings"]["recent"])
@@ -86,53 +76,61 @@ def get_latest_10k_filing_info(ticker, cik, filings_df):
 def download_10k_html(doc_url):
     """Downloads the HTML content of a 10-K filing."""
     try:
-        response = requests.get(doc_url, headers=SEC_ARCHIVE_HEADERS) # Use SEC_ARCHIVE_HEADERS
+        response = requests.get(doc_url, headers=SEC_HEADERS)
         response.raise_for_status()
         return response.content.decode("utf-8")
     except requests.exceptions.RequestException as e:
         st.error(f"Error downloading 10-K HTML from {doc_url}: {e}")
         return None
 
-def parse_10k_sections(html_content):
-    """Parses 10-K HTML content to extract specific sections (Item 1, 1A, 7)."""
+def parse_10k_sections(html_content, section_type):
+    """Parses 10-K HTML content to extract specific sections."""
     if not html_content:
         return "", "", ""
+
     soup = BeautifulSoup(html_content, 'html.parser')
     text = soup.get_text()
     text = unicodedata.normalize("NFKD", text).encode('ascii', 'ignore').decode('utf8')
-    text = " ".join(text.split("\n")) # Join by newline, not all whitespace
+    text = " ".join(text.split())
 
-    def extract_section_text(full_text, start_pattern, end_pattern):
-        starts = [i.start() for i in start_pattern.finditer(full_text)]
-        ends = [i.start() for i in end_pattern.finditer(full_text)]
-        
-        # Find the best matching start and end for the section
-        best_start = -1
-        best_end = -1
-        max_len = 0
-        for s in starts:
-            for e in ends:
-                if s < e:
-                    current_len = e - s
-                    if current_len > max_len:
-                        max_len = current_len
-                        best_start = s
-                        best_end = e
-        
-        if best_start != -1 and best_end != -1:
-            return full_text[best_start:best_end].strip()
-        return "Section not found or empty."
+    business_text = ""
+    risk_text = ""
+    mda_text = ""
 
-    # Regex patterns from the notebook, slightly adapted for robustness
-    item1_start_pattern = re.compile(r"item\s*[1][\.\;\:\-\_]*\s*\b", re.IGNORECASE)
-    item1_end_pattern = re.compile(r"item\s*1a[\.\;\:\-\_]\s*Risk|item\s*2[\.\,\;\:\-\_]\s*Prop", re.IGNORECASE)
-    item1a_start_pattern = re.compile(r"(?<!,\s)item\s*1a[\.\;\:\-\_]\s*Risk", re.IGNORECASE)
-    item1a_end_pattern = re.compile(r"item\s*2[\.\;\:\-\_]\s*Prop|item\s*[1][\.\;\:\-\_]*\s*\b", re.IGNORECASE)
-    item7_start_pattern = re.compile(r"item\s*[7][\.\;\:\-\_]*\s*\bM", re.IGNORECASE)
-    item7_end_pattern = re.compile(r"item\s*7a[\.\;\:\-\_]\sQuanti|item\s*8[\.\,\;\:\-\_]\s*", re.IGNORECASE)
-
-    business_text = extract_section_text(text, item1_start_pattern, item1_end_pattern)
-    risk_text = extract_section_text(text, item1a_start_pattern, item1a_end_pattern)
-    mda_text = extract_section_text(text, item7_start_pattern, item7_end_pattern)
+    # Regex patterns for Item 1 (Business), Item 1A (Risk Factors), Item 7 (MD&A)
+    # These patterns are simplified and might need refinement for robustness
+    item1_pattern = re.compile(r'item\s*1\.\s*business', re.IGNORECASE)
+    item1a_pattern = re.compile(r'item\s*1a\.\s*risk\s*factors', re.IGNORECASE)
+    item7_pattern = re.compile(r'item\s*7\.\s*management\s*'
+                               r's\s*discussion\s*and\s*analysis\s*'
+                               r'of\s*financial\s*condition\s*and\s*'
+                               r'results\s*of\s*operations', re.IGNORECASE)
     
+    # Find start and end of sections
+    item1_match = item1_pattern.search(text)
+    item1a_match = item1a_pattern.search(text)
+    item7_match = item7_pattern.search(text)
+
+    # Extract Business (Item 1)
+    if item1_match:
+        start = item1_match.end()
+        end = item1a_match.start() if item1a_match else (item7_match.start() if item7_match else len(text))
+        business_text = text[start:end].strip()
+
+    # Extract Risk Factors (Item 1A)
+    if item1a_match:
+        start = item1a_match.end()
+        end = item7_match.start() if item7_match else len(text)
+        risk_text = text[start:end].strip()
+
+    # Extract MD&A (Item 7)
+    if item7_match:
+        start = item7_match.end()
+        # MD&A usually ends before Item 7A or Item 8
+        item7a_pattern = re.compile(r'item\s*7a\.\s*quantitative\s*and\s*qualitative', re.IGNORECASE)
+        item8_pattern = re.compile(r'item\s*8\.\s*financial\s*statements', re.IGNORECASE)
+        end = item7a_pattern.search(text).start() if item7a_pattern.search(text) else \
+              (item8_pattern.search(text).start() if item8_pattern.search(text) else len(text))
+        mda_text = text[start:end].strip()
+
     return business_text, risk_text, mda_text
