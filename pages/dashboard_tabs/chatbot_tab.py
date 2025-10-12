@@ -18,6 +18,13 @@ import os
 # Import local modules
 from auth import load_api_keys
 from fred_data import get_fred_series, get_multiple_fred_series
+from components.sec_edgar_utils import (
+    load_cik_ticker_map,
+    get_company_filings,
+    get_latest_10k_filing_info,
+    download_10k_html,
+    parse_10k_sections
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +33,10 @@ logger = logging.getLogger(__name__)
 class DataSourceManager:
     """MCP-style data source manager for accessing financial data"""
     
-    def __init__(self):
+    def __init__(self, cik_df: pd.DataFrame):
         self.cache = {}
         self.cache_ttl = 300  # 5 minutes
+        self.cik_df = cik_df
         
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cached data is still valid"""
@@ -86,12 +94,116 @@ class DataSourceManager:
         except Exception as e:
             logger.error(f"Error fetching FRED data: {e}")
             return pd.DataFrame()
+    
+    def get_sec_filing_data(self, ticker: str) -> Dict[str, Any]:
+        """Get SEC filing data from local storage"""
+        cache_key = f"sec_{ticker}"
+        
+        if self._is_cache_valid(cache_key):
+            return self.cache[cache_key][1]
+        
+        try:
+            data_dir = Path("data") / ticker
+            if not data_dir.exists():
+                return {}
+            
+            filings = {}
+            for file_path in data_dir.glob("*.htm"):
+                year = file_path.stem.split('-')[-1] if '-' in file_path.stem else file_path.stem
+                filings[year] = {
+                    'path': str(file_path),
+                    'size': file_path.stat().st_size,
+                    'modified': datetime.fromtimestamp(file_path.stat().st_mtime)
+                }
+            
+            data = {'filings': filings, 'ticker': ticker}
+            self._cache_data(cache_key, data)
+            return data
+            
+        except Exception as e:
+            logger.error(f"Error fetching SEC data for {ticker}: {e}")
+            return {}
+    
+    def get_10k_section_data(self, ticker: str, sections: List[str]) -> Dict[str, str]:
+        """Fetches and parses key sections from the latest 10-K filing."""
+        cache_key = f"10k_{ticker}_{'_'.join(sections)}"
+        if self._is_cache_valid(cache_key):
+            return self.cache[cache_key][1]
+
+        try:
+            company_info = self.cik_df[self.cik_df['ticker'] == ticker]
+            if company_info.empty:
+                logger.warning(f"No CIK information found for {ticker}.")
+                return {}
+            
+            cik = company_info.iloc[0]['cik']
+            filings_df = get_company_filings(cik)
+            if filings_df.empty:
+                logger.warning(f"No recent filings found for {ticker}.")
+                return {}
+
+            latest_10k_info = get_latest_10k_filing_info(ticker, cik, filings_df)
+            if not latest_10k_info:
+                logger.warning(f"No 10-K filings found for {ticker}.")
+                return {}
+
+            html_content = download_10k_html(latest_10k_info['doc_url'])
+            if not html_content:
+                logger.error(f"Could not download 10-K HTML for {ticker}.")
+                return {}
+
+            business_text, risk_text, mda_text = parse_10k_sections(html_content)
+            
+            section_data = {}
+            if "business" in sections:
+                section_data["Business Overview (Item 1)"] = business_text
+            if "risk" in sections:
+                section_data["Risk Factors (Item 1A)"] = risk_text
+            if "mda" in sections:
+                section_data["Management's Discussion & Analysis (Item 7)"] = mda_text
+            
+            self._cache_data(cache_key, section_data)
+            return section_data
+
+        except Exception as e:
+            logger.error(f"Error fetching or parsing 10-K data for {ticker}: {e}")
+            return {}
+    
+    def get_fundamentals_data(self, ticker: Optional[str] = None) -> pd.DataFrame:
+        """Get fundamentals data from parquet file"""
+        cache_key = "fundamentals"
+        
+        if self._is_cache_valid(cache_key):
+            return self.cache[cache_key][1]
+        
+        try:
+            if Path("fundamentals_tall.parquet").exists():
+                df = pd.read_parquet("fundamentals_tall.parquet")
+                if ticker:
+                    df = df[df['Ticker'] == ticker]
+                self._cache_data(cache_key, df)
+                return df
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"Error loading fundamentals data: {e}")
+            return pd.DataFrame()
+    
+    def get_available_tickers(self) -> List[str]:
+        """Get list of available tickers from data directory"""
+        try:
+            data_dir = Path("data")
+            if data_dir.exists():
+                return [d.name for d in data_dir.iterdir() if d.is_dir()]
+            return []
+        except Exception as e:
+            logger.error(f"Error getting available tickers: {e}")
+            return []
 
 class FinancialAnalyzer:
     """AI-powered financial analysis engine"""
     
     def __init__(self, api_key: str):
-        self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        self.model = genai.GenerativeModel('models/gemini-flash-latest')
         self.api_key = api_key
         
     def analyze_financial_data(self, user_question: str, context_data: Dict[str, Any]) -> str:
@@ -164,26 +276,30 @@ Guidelines:
                             available_metrics.append("Cash Flow")
                         
                         if available_metrics:
-                            prompt_parts.append(f"Available Financials: {', '.join(available_metrics)}")
+                            prompt_parts.append(f"  Available Metrics: {', '.join(available_metrics)}\n")
+                        
+                        if "Stock Price & Volume" in context_data.get('metric_categories', []) and data.get('history') is not None:
+                            hist_data = data['history']
+                            if not hist_data.empty:
+                                latest_price = hist_data['Close'].iloc[-1]
+                                prompt_parts.append(f"  Latest Price: ${latest_price:.2f}\n")
+        
+        # Add economic data if available
+        if context_data.get('economic_data') is not None:
+            prompt_parts.append("Economic Data Available: FRED economic indicators\n")
+        
+        # Add fundamentals data if available
+        if context_data.get('fundamentals_data') is not None:
+            prompt_parts.append("Fundamentals Data Available: Historical financial metrics\n")
 
-                        # Add more detailed price info
-                        price_info = []
-                        if data.get('info'):
-                            if 'currentPrice' in data['info']:
-                                price_info.append(f"Current Price: ${data['info']['currentPrice']:.2f}")
-                            if 'dayHigh' in data['info'] and 'dayLow' in data['info']:
-                                price_info.append(f"Day's Range: ${data['info']['dayLow']:.2f} - ${data['info']['dayHigh']:.2f}")
-                            if 'fiftyTwoWeekHigh' in data['info'] and 'fiftyTwoWeekLow' in data['info']:
-                                price_info.append(f"52-Week Range: ${data['info']['fiftyTwoWeekLow']:.2f} - ${data['info']['fiftyTwoWeekHigh']:.2f}")
-                            if 'averageVolume' in data['info']:
-                                price_info.append(f"Avg. Volume: {data['info']['averageVolume']:,}")
-                        if price_info:
-                            prompt_parts.append(f"Price Data: {', '.join(price_info)}")
-
-        if context_data.get('economic_data') is not None and not context_data['economic_data'].empty:
-            prompt_parts.append("\n--- Macroeconomic Data ---")
-            prompt_parts.append(f"Available Indicators: {', '.join(context_data['economic_data'].columns)}")
-            prompt_parts.append(context_data['economic_data'].tail().to_string())
+        # Add 10-K data if available
+        if context_data.get('10k_data'):
+            prompt_parts.append("10-K Filing Data Available:\n")
+            for ticker, data in context_data['10k_data'].items():
+                prompt_parts.append(f"  Company: {ticker}\n")
+                for section, text in data.items():
+                    if text and "not found" not in text.lower():
+                        prompt_parts.append(f"    - {section}: {text[:500]}...\n") # Truncate for prompt
         
         prompt_parts.append("\nPlease provide a comprehensive analysis based on the available data.")
         
@@ -193,7 +309,8 @@ class ChatbotInterface:
     """Streamlit-based chatbot interface"""
     
     def __init__(self):
-        self.data_manager = DataSourceManager()
+        self.cik_df = load_cik_ticker_map()
+        self.data_manager = DataSourceManager(self.cik_df)
         self.analyzer = None
         self.initialize_ai()
     
@@ -210,15 +327,119 @@ class ChatbotInterface:
     def render_filters(self, all_tickers):
         st.markdown("#### Chatbot Context")
         
-        with st.expander("Company Data", expanded=True):
-            selected_tickers = st.multiselect("Select Companies:", options=all_tickers, default=st.session_state.get('selected_tickers', []))
-            st.session_state['selected_tickers'] = selected_tickers
+        # Quick actions
+        self._render_quick_actions()
+    
+    def _render_data_source_selector(self):
+        """Render data source selection interface"""
+        with st.expander("🔍 Data Sources & Context", expanded=False):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                # Company selection
+                available_tickers = self.data_manager.get_available_tickers()
+                selected_tickers = st.multiselect(
+                    "Select Companies for Context:",
+                    options=available_tickers,
+                    default=[],
+                    help="Select one or more companies to analyze. You can compare multiple companies or analyze sector performance."
+                )
+                
+                if selected_tickers:
+                    st.session_state['selected_tickers'] = selected_tickers
+                    
+                    # Metric category selection
+                    st.markdown("**📊 Financial Metrics**")
+                    metric_categories = st.multiselect(
+                        "Select Metric Categories:",
+                        options=[
+                            "Income Statement",
+                            "Balance Sheet", 
+                            "Cash Flow",
+                            "Stock Price & Volume",
+                            "Earnings & Estimates",
+                            "Valuation Metrics",
+                            "Technical Indicators"
+                        ],
+                        default=["Income Statement", "Balance Sheet"],
+                        help="Choose which financial metrics to include in your analysis. More categories provide richer analysis but may take longer to load."
+                    )
+                    
+                    if metric_categories:
+                        st.session_state['metric_categories'] = metric_categories
+                        
+                        # Load company data for all selected tickers
+                        if st.button("Load Company Data"):
+                            with st.spinner(f"Loading {', '.join(metric_categories)} data for {len(selected_tickers)} companies..."):
+                                all_yahoo_data = {}
+                                for ticker in selected_tickers:
+                                    yahoo_data = self.data_manager.get_yahoo_finance_data(ticker)
+                                    all_yahoo_data[ticker] = yahoo_data
+                                
+                                st.session_state['yahoo_data'] = all_yahoo_data
+                                st.success(f"Loaded {', '.join(metric_categories)} data for {len(selected_tickers)} companies: {', '.join(selected_tickers)}")
+                                
+                                # Show data summary with selected metrics
+                                with st.expander("📊 Data Summary", expanded=False):
+                                    for ticker, data in all_yahoo_data.items():
+                                        if data.get('info'):
+                                            company_name = data['info'].get('longName', ticker)
+                                            sector = data['info'].get('sector', 'N/A')
+                                            market_cap = data['info'].get('marketCap', 'N/A')
+                                            if market_cap and market_cap != 'N/A':
+                                                market_cap = f"${market_cap:,.0f}" if isinstance(market_cap, (int, float)) else str(market_cap)
+                                            
+                                            st.write(f"**{ticker}** ({company_name}) - {sector} - Market Cap: {market_cap}")
+                                            
+                                            # Show available metrics for this company
+                                            available_metrics = []
+                                            if "Income Statement" in metric_categories and data.get('financials') is not None:
+                                                available_metrics.append("Income Statement")
+                                            if "Balance Sheet" in metric_categories and data.get('balance_sheet') is not None:
+                                                available_metrics.append("Balance Sheet")
+                                            if "Cash Flow" in metric_categories and data.get('cashflow') is not None:
+                                                available_metrics.append("Cash Flow")
+                                            if "Stock Price & Volume" in metric_categories and data.get('history') is not None:
+                                                available_metrics.append("Stock Price & Volume")
+                                            if "Earnings & Estimates" in metric_categories and data.get('earnings') is not None:
+                                                available_metrics.append("Earnings & Estimates")
+                                            
+                                            if available_metrics:
+                                                st.write(f"  📈 Available: {', '.join(available_metrics)}")
 
-            if selected_tickers:
-                metric_categories = st.multiselect(
-                    "Select Financial Statements:",
-                    options=["Income Statement", "Balance Sheet", "Cash Flow"],
-                    default=st.session_state.get('metric_categories', ["Income Statement", "Balance Sheet"])
+                    st.markdown("**📝 10-K Sections**")
+                    section_options = {
+                        "Business Overview (Item 1)": "business",
+                        "Risk Factors (Item 1A)": "risk",
+                        "Management's Discussion & Analysis (Item 7)": "mda"
+                    }
+                    selected_sections = st.multiselect(
+                        "Select 10-K Sections:",
+                        options=list(section_options.keys()),
+                        default=list(section_options.keys())
+                    )
+
+                    if st.button("Load 10-K Data"):
+                        if 'selected_tickers' in st.session_state and st.session_state['selected_tickers']:
+                            with st.spinner(f"Loading 10-K data for {', '.join(st.session_state['selected_tickers'])}..."):
+                                all_10k_data = {}
+                                section_codes = [section_options[s] for s in selected_sections]
+                                for ticker in st.session_state['selected_tickers']:
+                                    data_10k = self.data_manager.get_10k_section_data(ticker, section_codes)
+                                    all_10k_data[ticker] = data_10k
+                                
+                                st.session_state['10k_data'] = all_10k_data
+                                st.success(f"Loaded 10-K data for {', '.join(st.session_state['selected_tickers'])}")
+                        else:
+                            st.warning("Please select at least one company first.")
+            
+            with col2:
+                # Economic indicators
+                st.markdown("**Economic Indicators**")
+                fred_series = st.multiselect(
+                    "Select FRED series:",
+                    options=["GDP", "UNRATE", "CPIAUCSL", "DGS10", "FEDFUNDS"],
+                    default=["GDP", "UNRATE"]
                 )
                 st.session_state['metric_categories'] = metric_categories
 
@@ -305,6 +526,25 @@ class ChatbotInterface:
             context['yahoo_data'] = st.session_state['yahoo_data']
         if 'economic_data' in st.session_state:
             context['economic_data'] = st.session_state['economic_data']
+        
+        # Fundamentals data for all selected tickers
+        if 'selected_tickers' in st.session_state:
+            all_fundamentals = []
+            for ticker in st.session_state['selected_tickers']:
+                fundamentals = self.data_manager.get_fundamentals_data(ticker)
+                if not fundamentals.empty:
+                    all_fundamentals.append(fundamentals)
+            
+            if all_fundamentals:
+                context['fundamentals_data'] = pd.concat(all_fundamentals, ignore_index=True)
+        
+        # Available tickers
+        context['available_tickers'] = self.data_manager.get_available_tickers()
+
+        # 10-K data
+        if '10k_data' in st.session_state:
+            context['10k_data'] = st.session_state['10k_data']
+        
         return context
     
     def _render_quick_actions(self):
