@@ -1,16 +1,12 @@
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
-import re
-import unicodedata
-import os
 import streamlit as st
+import sec_parser as sp
 
 # IMPORTANT: Replace with your actual email address for SEC EDGAR API compliance
 SEC_HEADERS = {
-    "User-Agent": "HarshitGola harshit.gola@gmail.com", 
-    "Accept-Encoding": "gzip, deflate",
-    "Host": "data.sec.gov"
+    "User-Agent": "HarshitGola harshit.gola@gmail.com",
+    "Accept-Encoding": "gzip, deflate"
 }
 
 @st.cache_data(ttl=3600) # Cache for 1 hour
@@ -83,54 +79,31 @@ def download_10k_html(doc_url):
         st.error(f"Error downloading 10-K HTML from {doc_url}: {e}")
         return None
 
-def parse_10k_sections(html_content, section_type):
-    """Parses 10-K HTML content to extract specific sections."""
+def parse_10k_sections(html_content):
+    """Parses 10-K HTML content to extract specific sections using sec-parser."""
     if not html_content:
         return "", "", ""
 
-    soup = BeautifulSoup(html_content, 'html.parser')
-    text = soup.get_text()
-    text = unicodedata.normalize("NFKD", text).encode('ascii', 'ignore').decode('utf8')
-    text = " ".join(text.split())
+    try:
+        parser = sp.Edgar10QParser()
+        elements = parser.parse(html_content)
+        tree_builder = sp.TreeBuilder()
+        tree = tree_builder.build(elements)
+        
+        business_text = ""
+        risk_text = ""
+        mda_text = ""
 
-    business_text = ""
-    risk_text = ""
-    mda_text = ""
+        for node in tree.nodes:
+            title = node.text.lower()
+            if 'item 1.' in title and 'business' in title:
+                business_text = "".join(desc.text for desc in node.get_descendants())
+            elif 'item 1a.' in title and 'risk factors' in title:
+                risk_text = "".join(desc.text for desc in node.get_descendants())
+            elif 'item 7.' in title and 'management' in title and 'discussion' in title:
+                mda_text = "".join(desc.text for desc in node.get_descendants())
 
-    # Regex patterns for Item 1 (Business), Item 1A (Risk Factors), Item 7 (MD&A)
-    # These patterns are simplified and might need refinement for robustness
-    item1_pattern = re.compile(r'item\s*1\.\s*business', re.IGNORECASE)
-    item1a_pattern = re.compile(r'item\s*1a\.\s*risk\s*factors', re.IGNORECASE)
-    item7_pattern = re.compile(r'item\s*7\.\s*management\s*'
-                               r's\s*discussion\s*and\s*analysis\s*'
-                               r'of\s*financial\s*condition\s*and\s*'
-                               r'results\s*of\s*operations', re.IGNORECASE)
-    
-    # Find start and end of sections
-    item1_match = item1_pattern.search(text)
-    item1a_match = item1a_pattern.search(text)
-    item7_match = item7_pattern.search(text)
-
-    # Extract Business (Item 1)
-    if item1_match:
-        start = item1_match.end()
-        end = item1a_match.start() if item1a_match else (item7_match.start() if item7_match else len(text))
-        business_text = text[start:end].strip()
-
-    # Extract Risk Factors (Item 1A)
-    if item1a_match:
-        start = item1a_match.end()
-        end = item7_match.start() if item7_match else len(text)
-        risk_text = text[start:end].strip()
-
-    # Extract MD&A (Item 7)
-    if item7_match:
-        start = item7_match.end()
-        # MD&A usually ends before Item 7A or Item 8
-        item7a_pattern = re.compile(r'item\s*7a\.\s*quantitative\s*and\s*qualitative', re.IGNORECASE)
-        item8_pattern = re.compile(r'item\s*8\.\s*financial\s*statements', re.IGNORECASE)
-        end = item7a_pattern.search(text).start() if item7a_pattern.search(text) else \
-              (item8_pattern.search(text).start() if item8_pattern.search(text) else len(text))
-        mda_text = text[start:end].strip()
-
-    return business_text, risk_text, mda_text
+        return business_text, risk_text, mda_text
+    except Exception as e:
+        st.error(f"Error parsing 10-K with sec-parser: {e}")
+        return "", "", ""
