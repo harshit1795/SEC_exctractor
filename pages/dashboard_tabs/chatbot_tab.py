@@ -18,6 +18,13 @@ import os
 # Import local modules
 from auth import load_api_keys
 from fred_data import get_fred_series, get_multiple_fred_series
+from components.sec_edgar_utils import (
+    load_cik_ticker_map,
+    get_company_filings,
+    get_latest_10k_filing_info,
+    download_10k_html,
+    parse_10k_sections
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,9 +33,10 @@ logger = logging.getLogger(__name__)
 class DataSourceManager:
     """MCP-style data source manager for accessing financial data"""
     
-    def __init__(self):
+    def __init__(self, cik_df: pd.DataFrame):
         self.cache = {}
         self.cache_ttl = 300  # 5 minutes
+        self.cik_df = cik_df
         
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cached data is still valid"""
@@ -117,6 +125,51 @@ class DataSourceManager:
             logger.error(f"Error fetching SEC data for {ticker}: {e}")
             return {}
     
+    def get_10k_section_data(self, ticker: str, sections: List[str]) -> Dict[str, str]:
+        """Fetches and parses key sections from the latest 10-K filing."""
+        cache_key = f"10k_{ticker}_{'_'.join(sections)}"
+        if self._is_cache_valid(cache_key):
+            return self.cache[cache_key][1]
+
+        try:
+            company_info = self.cik_df[self.cik_df['ticker'] == ticker]
+            if company_info.empty:
+                logger.warning(f"No CIK information found for {ticker}.")
+                return {}
+            
+            cik = company_info.iloc[0]['cik']
+            filings_df = get_company_filings(cik)
+            if filings_df.empty:
+                logger.warning(f"No recent filings found for {ticker}.")
+                return {}
+
+            latest_10k_info = get_latest_10k_filing_info(ticker, cik, filings_df)
+            if not latest_10k_info:
+                logger.warning(f"No 10-K filings found for {ticker}.")
+                return {}
+
+            html_content = download_10k_html(latest_10k_info['doc_url'])
+            if not html_content:
+                logger.error(f"Could not download 10-K HTML for {ticker}.")
+                return {}
+
+            business_text, risk_text, mda_text = parse_10k_sections(html_content)
+            
+            section_data = {}
+            if "business" in sections:
+                section_data["Business Overview (Item 1)"] = business_text
+            if "risk" in sections:
+                section_data["Risk Factors (Item 1A)"] = risk_text
+            if "mda" in sections:
+                section_data["Management's Discussion & Analysis (Item 7)"] = mda_text
+            
+            self._cache_data(cache_key, section_data)
+            return section_data
+
+        except Exception as e:
+            logger.error(f"Error fetching or parsing 10-K data for {ticker}: {e}")
+            return {}
+    
     def get_fundamentals_data(self, ticker: Optional[str] = None) -> pd.DataFrame:
         """Get fundamentals data from parquet file"""
         cache_key = "fundamentals"
@@ -151,7 +204,7 @@ class FinancialAnalyzer:
     """AI-powered financial analysis engine"""
     
     def __init__(self, api_key: str):
-        self.model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        self.model = genai.GenerativeModel('models/gemini-flash-latest')
         self.api_key = api_key
         
     def analyze_financial_data(self, user_question: str, context_data: Dict[str, Any]) -> str:
@@ -253,6 +306,15 @@ Guidelines:
         # Add fundamentals data if available
         if context_data.get('fundamentals_data') is not None:
             prompt_parts.append("Fundamentals Data Available: Historical financial metrics\n")
+
+        # Add 10-K data if available
+        if context_data.get('10k_data'):
+            prompt_parts.append("10-K Filing Data Available:\n")
+            for ticker, data in context_data['10k_data'].items():
+                prompt_parts.append(f"  Company: {ticker}\n")
+                for section, text in data.items():
+                    if text and "not found" not in text.lower():
+                        prompt_parts.append(f"    - {section}: {text[:500]}...\n") # Truncate for prompt
         
         prompt_parts.append("\nPlease provide a comprehensive analysis based on the available data.")
         
@@ -262,7 +324,8 @@ class ChatbotInterface:
     """Streamlit-based chatbot interface"""
     
     def __init__(self):
-        self.data_manager = DataSourceManager()
+        self.cik_df = load_cik_ticker_map()
+        self.data_manager = DataSourceManager(self.cik_df)
         self.analyzer = None
         self.initialize_ai()
     
@@ -370,6 +433,32 @@ class ChatbotInterface:
                                             
                                             if available_metrics:
                                                 st.write(f"  📈 Available: {', '.join(available_metrics)}")
+
+                    st.markdown("**📝 10-K Sections**")
+                    section_options = {
+                        "Business Overview (Item 1)": "business",
+                        "Risk Factors (Item 1A)": "risk",
+                        "Management's Discussion & Analysis (Item 7)": "mda"
+                    }
+                    selected_sections = st.multiselect(
+                        "Select 10-K Sections:",
+                        options=list(section_options.keys()),
+                        default=list(section_options.keys())
+                    )
+
+                    if st.button("Load 10-K Data"):
+                        if 'selected_tickers' in st.session_state and st.session_state['selected_tickers']:
+                            with st.spinner(f"Loading 10-K data for {', '.join(st.session_state['selected_tickers'])}..."):
+                                all_10k_data = {}
+                                section_codes = [section_options[s] for s in selected_sections]
+                                for ticker in st.session_state['selected_tickers']:
+                                    data_10k = self.data_manager.get_10k_section_data(ticker, section_codes)
+                                    all_10k_data[ticker] = data_10k
+                                
+                                st.session_state['10k_data'] = all_10k_data
+                                st.success(f"Loaded 10-K data for {', '.join(st.session_state['selected_tickers'])}")
+                        else:
+                            st.warning("Please select at least one company first.")
             
             with col2:
                 # Economic indicators
@@ -467,6 +556,10 @@ class ChatbotInterface:
         
         # Available tickers
         context['available_tickers'] = self.data_manager.get_available_tickers()
+
+        # 10-K data
+        if '10k_data' in st.session_state:
+            context['10k_data'] = st.session_state['10k_data']
         
         return context
     
