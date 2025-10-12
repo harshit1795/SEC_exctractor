@@ -3,6 +3,7 @@ import yfinance as yf
 import requests
 from bs4 import BeautifulSoup
 import time
+import os
 
 # Step 1: Get S&P 500 tickers from Wikipedia
 
@@ -51,6 +52,19 @@ if __name__ == "__main__":
     tickers_df = get_sp500_tickers()
     tickers = tickers_df['Symbol'].tolist()
     print(f"Found {len(tickers)} tickers.")
+
+    # Create data directories
+    data_dir = "data"
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+    
+    for ticker in tickers:
+        # Replace characters that are invalid in directory names
+        safe_ticker = ticker.replace('.', '-')
+        ticker_dir = os.path.join(data_dir, safe_ticker)
+        if not os.path.exists(ticker_dir):
+            os.makedirs(ticker_dir)
+    print(f"Created directories for all tickers in '{data_dir}'.")
 
     fundamentals = []
     for i, ticker in enumerate(tickers):

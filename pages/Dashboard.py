@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 
 from auth import load_api_keys
-from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab, finq_360_tab
+from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab, finq_360_tab, disclosures_tab
 
 def render():
     load_api_keys()
@@ -124,6 +124,23 @@ def render():
         with hcols[1]:
             st.markdown(f"## {selected_ticker} – {tinfo['name']}")
             st.caption(f"Sector: {tinfo['sector']} • Industry: {tinfo['industry']}")
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Compute universe of metrics for the selected ticker
+        all_metrics = sorted(ticker_df["Metric"].unique())
+
+        # ------------------------- Tabs ------------------------- #
+        tab_options = {
+            "Metrics Trend Analysis": "fa-chart-line",
+            "Snapshot & Changes": "fa-camera",
+            "Earning Summary": "fa-file-invoice-dollar",
+            "Price Chart": "fa-chart-area",
+            "Disclosures": "fa-file-lines",
+            "Macroeconomic Data": "fa-globe",
+            "FinQ 360": "fa-magnifying-glass-chart",
+            "FinQ Bot": "fa-robot"
+        }
 
         if 'active_tab' not in st.session_state:
             st.session_state.active_tab = list(tab_options.keys())[0]
@@ -137,20 +154,22 @@ def render():
                     st.session_state.active_tab = tab_name
                     st.rerun()
         
-        st.markdown("---")
+        st.markdown("---") # Add a separator
 
-        active_tab_name = st.session_state.active_tab
-        if active_tab_name == "Metrics Trend Analysis":
-            trend_tab.render_content(ticker_df, tab_filters)
-        elif active_tab_name == "Snapshot & Changes":
-            snapshot_tab.render_content(ticker_df, tab_filters)
-        elif active_tab_name == "Earning Summary":
-            earnings_tab.render_content(selected_ticker, tab_filters)
-        elif active_tab_name == "Price Chart":
-            price_tab.render_content(selected_ticker, tab_filters)
-        elif active_tab_name == "Macroeconomic Data":
-            fred_tab.render_content(tab_filters)
-        elif active_tab_name == "FinQ 360":
-            finq_360_tab.render_content(ticker_df, selected_ticker, tab_filters)
-        elif active_tab_name == "FinQ Bot":
-            chatbot_tab.render_content()
+        # Render content based on active tab
+        if st.session_state.active_tab == "Metrics Trend Analysis":
+            trend_tab.render(ticker_df, all_metrics)
+        elif st.session_state.active_tab == "Snapshot & Changes":
+            snapshot_tab.render(ticker_df, all_metrics)
+        elif st.session_state.active_tab == "Earning Summary":
+            earnings_tab.render(selected_ticker)
+        elif st.session_state.active_tab == "Price Chart":
+            price_tab.render(selected_ticker)
+        elif st.session_state.active_tab == "Disclosures":
+            disclosures_tab.render(selected_ticker)
+        elif st.session_state.active_tab == "Macroeconomic Data":
+            fred_tab.render()
+        elif st.session_state.active_tab == "FinQ 360":
+            finq_360_tab.render(ticker_df, selected_ticker)
+        elif st.session_state.active_tab == "FinQ Bot":
+            chatbot_tab.render()
