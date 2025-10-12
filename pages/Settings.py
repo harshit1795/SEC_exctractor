@@ -28,3 +28,13 @@ def render():
             all_prefs.setdefault(user, {})["FRED_API_KEY"] = fred_api_key
             _save_user_prefs(all_prefs)
             st.success("FRED API Key saved!")
+
+    # Polygon.ai API Key
+    polygon_api_key = st.text_input("Polygon.ai API Key", value=user_prefs.get("POLYGON_API_KEY", ""), type="password")
+    if st.button("Save Polygon.ai Key"):
+        all_prefs = _load_user_prefs()
+        user = st.session_state.get("user")
+        if user:
+            all_prefs.setdefault(user, {})["POLYGON_API_KEY"] = polygon_api_key
+            _save_user_prefs(all_prefs)
+            st.success("Polygon.ai API Key saved!")

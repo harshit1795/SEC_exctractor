@@ -4,7 +4,7 @@ import os
 from functools import lru_cache
 
 from auth import load_api_keys
-from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab, finq_360_tab
+from pages.dashboard_tabs import trend_tab, snapshot_tab, earnings_tab, price_tab, fred_tab, chatbot_tab, finq_360_tab, disclosures_tab
 
 def render():
     load_api_keys()
@@ -115,6 +115,7 @@ def render():
             "Snapshot & Changes": "fa-camera",
             "Earning Summary": "fa-file-invoice-dollar",
             "Price Chart": "fa-chart-area",
+            "Disclosures": "fa-file-lines",
             "Macroeconomic Data": "fa-globe",
             "FinQ 360": "fa-magnifying-glass-chart",
             "FinQ Bot": "fa-robot"
@@ -143,6 +144,8 @@ def render():
             earnings_tab.render(selected_ticker)
         elif st.session_state.active_tab == "Price Chart":
             price_tab.render(selected_ticker)
+        elif st.session_state.active_tab == "Disclosures":
+            disclosures_tab.render(selected_ticker)
         elif st.session_state.active_tab == "Macroeconomic Data":
             fred_tab.render()
         elif st.session_state.active_tab == "FinQ 360":
