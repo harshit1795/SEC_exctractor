@@ -314,7 +314,7 @@ Guidelines:
                 prompt_parts.append(f"  Company: {ticker}\n")
                 for section, text in data.items():
                     if text and "not found" not in text.lower():
-                        prompt_parts.append(f"    - {section}: {text[:500]}...\n") # Truncate for prompt
+                        prompt_parts.append(f"    - {section}: {text[:4000]}...\n") # Truncate for prompt
         
         prompt_parts.append("\nPlease provide a comprehensive analysis based on the available data.")
         
