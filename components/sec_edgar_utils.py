@@ -1,7 +1,8 @@
 import pandas as pd
 import requests
 import streamlit as st
-import sec_parser as sp
+from bs4 import BeautifulSoup
+import re
 
 # IMPORTANT: Replace with your actual email address for SEC EDGAR API compliance
 SEC_HEADERS = {
@@ -80,30 +81,64 @@ def download_10k_html(doc_url):
         return None
 
 def parse_10k_sections(html_content):
-    """Parses 10-K HTML content to extract specific sections using sec-parser."""
+    """Parses 10-K HTML content to extract specific sections using BeautifulSoup."""
     if not html_content:
         return "", "", ""
 
     try:
-        parser = sp.Edgar10QParser()
-        elements = parser.parse(html_content)
-        tree_builder = sp.TreeBuilder()
-        tree = tree_builder.build(elements)
-        
-        business_text = ""
-        risk_text = ""
-        mda_text = ""
+        soup = BeautifulSoup(html_content, 'html.parser')
 
-        for node in tree.nodes:
-            title = node.text.lower()
-            if 'item 1.' in title and 'business' in title:
-                business_text = "".join(desc.text for desc in node.get_descendants())
-            elif 'item 1a.' in title and 'risk factors' in title:
-                risk_text = "".join(desc.text for desc in node.get_descendants())
-            elif 'item 7.' in title and 'management' in title and 'discussion' in title:
-                mda_text = "".join(desc.text for desc in node.get_descendants())
+        # Create a set of all section anchors for quick lookups
+        section_anchors = set()
+        toc_links = []
+        # Find all links that look like they are part of a ToC
+        for link in soup.find_all('a', href=re.compile(r'^#\w')):
+            link_text = link.get_text(strip=True).lower()
+            # Heuristic for ToC links: they usually contain "item"
+            if 'item' in link_text:
+                 section_anchors.add(link['href'])
+                 toc_links.append(link)
+
+        def get_section_text(keywords):
+            target_link = None
+            for link in toc_links:
+                if any(keyword in link.get_text(strip=True).lower() for keyword in keywords):
+                    target_link = link
+                    break
+            if not target_link:
+                return ""
+
+            start_id = target_link['href'][1:]
+            start_tag = soup.find(id=start_id) or soup.find('a', {'name': start_id})
+            if not start_tag:
+                return ""
+
+            content = []
+            for elem in start_tag.find_all_next():
+                # Stop if we hit another section
+                if elem.name == 'a' and elem.has_attr('href') and elem['href'] in section_anchors and elem['href'] != target_link['href']:
+                    break
+                if elem.name == 'a' and elem.has_attr('name') and '#' + elem['name'] in section_anchors and '#' + elem['name'] != target_link['href']:
+                    break
+                
+                # Heuristic to stop at document end markers
+                if elem.name == 'hr' and len(content) > 100:
+                    break
+
+                # Get text from non-script and non-style tags
+                if elem.name not in ['script', 'style']:
+                    text = elem.get_text(strip=True)
+                    if text:
+                        content.append(text)
+            
+            return " ".join(content)
+
+        business_text = get_section_text(['item 1', 'business'])
+        risk_text = get_section_text(['item 1a', 'risk factors'])
+        mda_text = get_section_text(["item 7", "management's discussion and analysis"])
 
         return business_text, risk_text, mda_text
+
     except Exception as e:
-        st.error(f"Error parsing 10-K with sec-parser: {e}")
+        st.error(f"Error parsing 10-K with BeautifulSoup: {e}")
         return "", "", ""
