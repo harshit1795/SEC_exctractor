@@ -1,5 +1,5 @@
 tqdm==4.67.1
-lxml==6.0.0
+lxml
 xbrlassembler==0.13.1
 py-xbrl==2.2.14
 ipywidgets==7.8.5

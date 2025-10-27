@@ -9,8 +9,7 @@ import os
 
 def get_sp500_tickers():
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'
-    headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'}
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url)
     soup = BeautifulSoup(resp.text, 'html.parser')
     table = soup.find('table', {'id': 'constituents'})
     df = pd.read_html(str(table))[0]
