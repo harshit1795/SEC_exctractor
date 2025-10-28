@@ -4,16 +4,22 @@ import altair as alt
 
 def render_filter_bar(df, key_prefix, agg_options, chart_type_options, default_agg_index=0):
     """Renders the common filter widgets and returns their values."""
-    start_date = st.date_input("Start date", df.index.min(), key=f"{key_prefix}_start")
-    end_date = st.date_input("End date", df.index.max(), key=f"{key_prefix}_end")
-    aggregation_period = st.selectbox(
-        "Aggregation Period:",
-        options=agg_options,
-        index=default_agg_index,
-        key=f"{key_prefix}_agg_period"
-    )
-    chart_type = st.radio("Chart Type:", chart_type_options, key=f"{key_prefix}_chart_type")
-    chart_view = st.radio("Chart View:", ["Combined", "Individual"], key=f"{key_prefix}_view_type")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    with c1:
+        start_date = st.date_input("Start date", df.index.min(), key=f"{key_prefix}_start")
+    with c2:
+        end_date = st.date_input("End date", df.index.max(), key=f"{key_prefix}_end")
+    with c3:
+        aggregation_period = st.selectbox(
+            "Aggregation Period:",
+            options=agg_options,
+            index=default_agg_index,
+            key=f"{key_prefix}_agg_period"
+        )
+    with c4:
+        chart_type = st.radio("Chart Type:", chart_type_options, key=f"{key_prefix}_chart_type", horizontal=True)
+    with c5:
+        chart_view = st.radio("Chart View:", ["Combined", "Individual"], key=f"{key_prefix}_view_type", horizontal=True)
     
     return start_date, end_date, aggregation_period, chart_type, chart_view
 

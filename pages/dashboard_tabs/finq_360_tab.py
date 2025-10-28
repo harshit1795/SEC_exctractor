@@ -43,12 +43,21 @@ def prepare_fundamentals_data(ticker_df):
     all_metrics = sorted(pivot_df.columns.tolist())
     return pivot_df, all_metrics
 
-def render_filters(ticker_df, selected_ticker):
-    st.markdown("#### 360 Filters")
-    
-    fundamentals_df, fundamental_metrics = prepare_fundamentals_data(ticker_df.copy())
-    earnings_df = get_earnings_data(selected_ticker)
+def render(ticker_df, selected_ticker):
+    st.markdown("### FinQ 360")
+    st.write("Create custom charts by combining company fundamentals, earnings, and macroeconomic data.")
 
+    # --- 1. Fetch and Prepare Data ---
+    with st.spinner("Preparing data sources..."):
+        fundamentals_df, fundamental_metrics = prepare_fundamentals_data(ticker_df.copy())
+        earnings_df = get_earnings_data(selected_ticker)
+
+    if fundamentals_df.empty and earnings_df.empty:
+        st.warning("No company-specific data available to plot.")
+        return
+
+    # --- 2. Build UI for Metric Selection ---
+    st.markdown("#### 1. Select Metrics")
     with st.expander("Company Fundamentals", expanded=True):
         selected_fundamentals = st.multiselect("Select fundamental metrics:", options=fundamental_metrics, default=fundamental_metrics[:1] if fundamental_metrics else [])
     with st.expander("Earnings", expanded=True):
@@ -62,44 +71,12 @@ def render_filters(ticker_df, selected_ticker):
         }
         selected_fred_keys = st.multiselect("Select macroeconomic indicators:", options=list(INDICATORS.keys()))
 
-    combined_df = pd.concat([fundamentals_df[selected_fundamentals], earnings_df[selected_earnings]], axis=1).sort_index()
-    
-    start_date, end_date, aggregation_period, chart_type, chart_view = render_filter_bar(combined_df, "360", ['Monthly', 'Quarterly', 'Yearly'], ["Line", "Bar", "Scatter"], default_agg_index=1)
-
-    return {
-        "selected_fundamentals": selected_fundamentals,
-        "selected_earnings": selected_earnings,
-        "selected_fred_keys": selected_fred_keys,
-        "start_date": start_date,
-        "end_date": end_date,
-        "aggregation_period": aggregation_period,
-        "chart_type": chart_type,
-        "chart_view": chart_view,
-        "INDICATORS": INDICATORS
-    }
-
-def render_content(ticker_df, selected_ticker, filters):
-    st.markdown("### FinQ 360")
-    st.write("Create custom charts by combining company fundamentals, earnings, and macroeconomic data.")
-
-    selected_fundamentals = filters.get("selected_fundamentals", [])
-    selected_earnings = filters.get("selected_earnings", [])
-    selected_fred_keys = filters.get("selected_fred_keys", [])
-    start_date = filters.get("start_date")
-    end_date = filters.get("end_date")
-    aggregation_period = filters.get("aggregation_period", "Quarterly")
-    chart_type = filters.get("chart_type", "Line")
-    chart_view = filters.get("chart_view", "Combined")
-    INDICATORS = filters.get("INDICATORS", {})
-
+    # --- 3. Combine Selected Data ---
     all_selected_metrics = selected_fundamentals + selected_earnings + selected_fred_keys
     if not all_selected_metrics:
         st.info("Please select at least one metric to plot.")
         return
 
-    fundamentals_df, _ = prepare_fundamentals_data(ticker_df.copy())
-    earnings_df = get_earnings_data(selected_ticker)
-    
     fred_df = pd.DataFrame()
     if selected_fred_keys:
         series_info_to_fetch = {INDICATORS[key]["id"]: INDICATORS[key]["freq"] for key in selected_fred_keys}
@@ -113,6 +90,13 @@ def render_content(ticker_df, selected_ticker, filters):
         st.warning("No data available for the selected metrics.")
         return
 
+    # --- 4. Filters ---
+    st.markdown("#### 2. Customize Chart")
+    agg_options = ['Monthly', 'Quarterly', 'Yearly']
+    chart_type_options = ["Line", "Bar", "Scatter"]
+    start_date, end_date, aggregation_period, chart_type, chart_view = render_filter_bar(combined_df, "360", agg_options, chart_type_options, default_agg_index=1)
+
+    # --- 5. Process Data for Charting ---
     filtered_df = combined_df[(combined_df.index >= pd.to_datetime(start_date, utc=True)) & (combined_df.index <= pd.to_datetime(end_date, utc=True))]
     period_map = {'Monthly': 'M', 'Quarterly': 'Q', 'Yearly': 'A'}
     agg_df = filtered_df.resample(period_map[aggregation_period]).mean(numeric_only=True)
@@ -121,6 +105,7 @@ def render_content(ticker_df, selected_ticker, filters):
         st.warning("No data available for the selected filters.")
         return
 
+    # --- 6. Render Chart ---
     st.markdown(f"#### {aggregation_period} Chart")
     st.button("💡 Tips", help="* To Zoom: Place your mouse over the chart and use your mouse wheel to scroll.\n* To Pan: Click and drag the chart to move it up, down, left, or right.\n* To Reset: Double-click on the chart to return to the default view.", disabled=True)
 
