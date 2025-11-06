@@ -1,3 +1,4 @@
+
 """
 Enhanced FinQ Chatbot Tab with MCP Architecture
 Provides intelligent financial analysis with access to multiple data sources
@@ -22,8 +23,10 @@ from components.sec_edgar_utils import (
     load_cik_ticker_map,
     get_company_filings,
     get_latest_10k_filing_info,
-    download_10k_html,
-    parse_10k_sections
+    get_latest_10q_filing_info,
+    download_filing_html,
+    parse_10k_sections,
+    parse_10q_sections
 )
 
 # Configure logging
@@ -148,7 +151,7 @@ class DataSourceManager:
                 logger.warning(f"No 10-K filings found for {ticker}.")
                 return {}
 
-            html_content = download_10k_html(latest_10k_info['doc_url'])
+            html_content = download_filing_html(latest_10k_info['doc_url'])
             if not html_content:
                 logger.error(f"Could not download 10-K HTML for {ticker}.")
                 return {}
@@ -168,6 +171,49 @@ class DataSourceManager:
 
         except Exception as e:
             logger.error(f"Error fetching or parsing 10-K data for {ticker}: {e}")
+            return {}
+
+    def get_10q_section_data(self, ticker: str, sections: List[str]) -> Dict[str, str]:
+        """Fetches and parses key sections from the latest 10-Q filing."""
+        cache_key = f"10q_{ticker}_{'_'.join(sections)}"
+        if self._is_cache_valid(cache_key):
+            return self.cache[cache_key][1]
+
+        try:
+            company_info = self.cik_df[self.cik_df['ticker'] == ticker]
+            if company_info.empty:
+                logger.warning(f"No CIK information found for {ticker}.")
+                return {}
+            
+            cik = company_info.iloc[0]['cik']
+            filings_df = get_company_filings(cik)
+            if filings_df.empty:
+                logger.warning(f"No recent filings found for {ticker}.")
+                return {}
+
+            latest_10q_info = get_latest_10q_filing_info(ticker, cik, filings_df)
+            if not latest_10q_info:
+                logger.warning(f"No 10-Q filings found for {ticker}.")
+                return {}
+
+            html_content = download_filing_html(latest_10q_info['doc_url'])
+            if not html_content:
+                logger.error(f"Could not download 10-Q HTML for {ticker}.")
+                return {}
+
+            risk_text, mda_text = parse_10q_sections(html_content)
+            
+            section_data = {}
+            if "risk" in sections:
+                section_data["Risk Factors (Part II, Item 1A)"] = risk_text
+            if "mda" in sections:
+                section_data["Management's Discussion & Analysis (Part I, Item 2)"] = mda_text
+            
+            self._cache_data(cache_key, section_data)
+            return section_data
+
+        except Exception as e:
+            logger.error(f"Error fetching or parsing 10-Q data for {ticker}: {e}")
             return {}
     
     def get_fundamentals_data(self, ticker: Optional[str] = None) -> pd.DataFrame:
@@ -222,7 +268,7 @@ class FinancialAnalyzer:
     
     def _build_system_prompt(self) -> str:
         """Build comprehensive system prompt for financial analysis"""
-        return """You are FinQ, an expert financial analyst AI assistant with deep knowledge of:
+        return '''You are FinQ, an expert financial analyst AI assistant with deep knowledge of:
 - Financial statement analysis (Income Statement, Balance Sheet, Cash Flow)
 - Market analysis and stock valuation
 - Economic indicators and macroeconomic trends
@@ -245,7 +291,7 @@ Guidelines:
 - Provide actionable insights
 - Use professional financial terminology appropriately
 - If data is insufficient, clearly state what additional information would be helpful
-- Format responses with clear sections and bullet points when appropriate"""
+- Format responses with clear sections and bullet points when appropriate'''
     
     def _build_user_prompt(self, user_question: str, context_data: Dict[str, Any]) -> str:
         """Build user prompt with context data"""
@@ -311,6 +357,15 @@ Guidelines:
         if context_data.get('10k_data'):
             prompt_parts.append("10-K Filing Data Available:\n")
             for ticker, data in context_data['10k_data'].items():
+                prompt_parts.append(f"  Company: {ticker}\n")
+                for section, text in data.items():
+                    if text and "not found" not in text.lower():
+                        prompt_parts.append(f"    - {section}: {text[:4000]}...\n") # Truncate for prompt
+
+        # Add 10-Q data if available
+        if context_data.get('10q_data'):
+            prompt_parts.append("10-Q Filing Data Available:\n")
+            for ticker, data in context_data['10q_data'].items():
                 prompt_parts.append(f"  Company: {ticker}\n")
                 for section, text in data.items():
                     if text and "not found" not in text.lower():
@@ -434,31 +489,57 @@ class ChatbotInterface:
                                             if available_metrics:
                                                 st.write(f"  📈 Available: {', '.join(available_metrics)}")
 
-                    st.markdown("**📝 10-K Sections**")
-                    section_options = {
-                        "Business Overview (Item 1)": "business",
-                        "Risk Factors (Item 1A)": "risk",
-                        "Management's Discussion & Analysis (Item 7)": "mda"
-                    }
-                    selected_sections = st.multiselect(
-                        "Select 10-K Sections:",
-                        options=list(section_options.keys()),
-                        default=list(section_options.keys())
-                    )
+                    st.markdown("**📝 SEC Filings**")
+                    report_types = st.multiselect("Select Report Types", ["10-K", "10-Q"], default=["10-K"])
 
-                    if st.button("Load 10-K Data"):
-                        if 'selected_tickers' in st.session_state and st.session_state['selected_tickers']:
-                            with st.spinner(f"Loading 10-K data for {', '.join(st.session_state['selected_tickers'])}..."):
-                                all_10k_data = {}
-                                section_codes = [section_options[s] for s in selected_sections]
-                                for ticker in st.session_state['selected_tickers']:
-                                    data_10k = self.data_manager.get_10k_section_data(ticker, section_codes)
-                                    all_10k_data[ticker] = data_10k
-                                
-                                st.session_state['10k_data'] = all_10k_data
-                                st.success(f"Loaded 10-K data for {', '.join(st.session_state['selected_tickers'])}")
-                        else:
-                            st.warning("Please select at least one company first.")
+                    if "10-K" in report_types:
+                        section_options = {
+                            "Business Overview (Item 1)": "business",
+                            "Risk Factors (Item 1A)": "risk",
+                            "Management's Discussion & Analysis (Item 7)": "mda"
+                        }
+                        selected_sections = st.multiselect(
+                            "Select 10-K Sections:",
+                            options=list(section_options.keys()),
+                            default=list(section_options.keys())
+                        )
+                        if st.button("Load 10-K Data"):
+                            if 'selected_tickers' in st.session_state and st.session_state['selected_tickers']:
+                                with st.spinner(f"Loading 10-K data for {', '.join(st.session_state['selected_tickers'])}..."):
+                                    all_10k_data = {}
+                                    section_codes = [section_options[s] for s in selected_sections]
+                                    for ticker in st.session_state['selected_tickers']:
+                                        data_10k = self.data_manager.get_10k_section_data(ticker, section_codes)
+                                        all_10k_data[ticker] = data_10k
+                                    
+                                    st.session_state['10k_data'] = all_10k_data
+                                    st.success(f"Loaded 10-K data for {', '.join(st.session_state['selected_tickers'])}")
+                            else:
+                                st.warning("Please select at least one company first.")
+
+                    if "10-Q" in report_types:
+                        section_options = {
+                            "Risk Factors (Part II, Item 1A)": "risk",
+                            "Management's Discussion & Analysis (Part I, Item 2)": "mda"
+                        }
+                        selected_sections = st.multiselect(
+                            "Select 10-Q Sections:",
+                            options=list(section_options.keys()),
+                            default=list(section_options.keys())
+                        )
+                        if st.button("Load 10-Q Data"):
+                            if 'selected_tickers' in st.session_state and st.session_state['selected_tickers']:
+                                with st.spinner(f"Loading 10-Q data for {', '.join(st.session_state['selected_tickers'])}..."):
+                                    all_10q_data = {}
+                                    section_codes = [section_options[s] for s in selected_sections]
+                                    for ticker in st.session_state['selected_tickers']:
+                                        data_10q = self.data_manager.get_10q_section_data(ticker, section_codes)
+                                        all_10q_data[ticker] = data_10q
+                                    
+                                    st.session_state['10q_data'] = all_10q_data
+                                    st.success(f"Loaded 10-Q data for {', '.join(st.session_state['selected_tickers'])}")
+                            else:
+                                st.warning("Please select at least one company first.")
             
             with col2:
                 # Economic indicators
@@ -560,6 +641,10 @@ class ChatbotInterface:
         # 10-K data
         if '10k_data' in st.session_state:
             context['10k_data'] = st.session_state['10k_data']
+
+        # 10-Q data
+        if '10q_data' in st.session_state:
+            context['10q_data'] = st.session_state['10q_data']
         
         return context
     
