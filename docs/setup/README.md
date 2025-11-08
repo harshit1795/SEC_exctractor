@@ -8,65 +8,68 @@
 
 ## Getting Started
 
-### For Firebase Studio Workspace
+This guide will walk you through setting up the application for both local development and cloud deployment.
 
-1. **Firebase Setup:**
-   - Create a Firebase project in the [Firebase console](https://console.firebase.google.com/).
-   - In your Firebase project, go to **Authentication** > **Sign-in method** and enable the **Google** provider.
-   - Go to your Firebase project settings and create a **Web App**. Copy the `firebaseConfig` object.
-   - In your Firebase project settings, go to the **Service accounts** tab and generate a private key file. Rename it to `firebase-credentials.json` and place it in the root of this project.
+### 1. Firebase Project Setup
 
-2. **Configuration:**
-   - Create or update your Streamlit secrets in `.streamlit/secrets.toml` with your Firebase settings:
+1.  **Create a Firebase Project:** Go to the [Firebase Console](https://console.firebase.google.com/) and create a new project.
+2.  **Enable Google Authentication:** In your Firebase project, go to **Authentication** > **Sign-in method** and enable the **Google** provider.
+3.  **Create a Web App:** In your project settings, create a new **Web App** and take note of the `firebaseConfig` values.
+4.  **Generate a Private Key:** In project settings, go to the **Service accounts** tab and generate a new private key for the Admin SDK. This will download a JSON file.
 
-```toml
-# Service account credentials for Firebase Admin SDK
-firebase_credentials = { /* paste the JSON object from your Firebase service account private key */ }
+### 2. Configure Streamlit Secrets
 
-# Firebase Web App config for Firebase JS SDK
-firebase_config = {
-  apiKey = "...",
-  authDomain = "...",
-  projectId = "...",
-  storageBucket = "...",
-  messagingSenderId = "...",
-  appId = "..."
-}
+Create a file named `secrets.toml` in a `.streamlit` directory in the project root (`.streamlit/secrets.toml`). This file will manage all your credentials for both local and cloud environments.
 
-## OAuth Python Flow Configuration
-
-In your `.streamlit/secrets.toml`, add your Google OAuth client config under `[oauth.client_config]`:
+Populate it with the following keys, using the values from your Firebase project and the JSON file you downloaded:
 
 ```toml
-[oauth]
-[oauth.client_config.web]
-client_id = "<YOUR_WEB_CLIENT_ID>"
-client_secret = "<YOUR_WEB_CLIENT_SECRET>"
-auth_uri = "https://accounts.google.com/o/oauth2/auth"
-token_uri = "https://oauth2.googleapis.com/token"
-redirect_uris = ["http://localhost:8501"]
+# Firebase Web App Configuration
+FIREBASE_API_KEY = "your_api_key_from_web_app_config"
+FIREBASE_AUTH_DOMAIN = "your_auth_domain_from_web_app_config"
+FIREBASE_PROJECT_ID = "your_project_id"
+FIREBASE_STORAGE_BUCKET = "your_storage_bucket"
+FIREBASE_MESSAGING_SENDER_ID = "your_messaging_sender_id"
+FIREBASE_APP_ID = "your_app_id"
+FIREBASE_MEASUREMENT_ID = "your_measurement_id"
+
+# Firebase Service Account Credentials (from the downloaded JSON file)
+FIREBASE_CRED_TYPE = "service_account"
+FIREBASE_CRED_PROJECT_ID = "your_project_id"
+FIREBASE_CRED_PRIVATE_KEY_ID = "your_private_key_id"
+FIREBASE_CRED_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----\n...your_private_key...\n-----END PRIVATE KEY-----\n"
+FIREBASE_CRED_CLIENT_EMAIL = "your_client_email"
+FIREBASE_CRED_CLIENT_ID = "your_client_id"
+FIREBASE_CRED_AUTH_URI = "https://accounts.google.com/o/oauth2/auth"
+FIREBASE_CRED_TOKEN_URI = "https://oauth2.googleapis.com/token"
+FIREBASE_CRED_AUTH_PROVIDER_X509_CERT_URL = "https://www.googleapis.com/oauth2/v1/certs"
+FIREBASE_CRED_CLIENT_X509_CERT_URL = "your_client_x509_cert_url"
+FIREBASE_CRED_UNIVERSE_DOMAIN = "googleapis.com"
+
+# Other API Keys
+GEMINI_API_KEY="your_gemini_key"
+FRED_API_KEY="your_fred_key"
 ```
+
+**Important:** The `FIREBASE_CRED_PRIVATE_KEY` must have its newline characters preserved. Copy the entire key from the JSON file, including the `-----BEGIN PRIVATE KEY-----` and `-----END PRIVATE KEY-----` lines, and paste it inside the quotes.
+
+### 3. Install Dependencies
+
+It is recommended to use a Python virtual environment.
+
+```bash
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install the required packages
+pip install -r requirements.txt
 ```
 
-3. **First time setup:**
-   ```bash
-  nix-shell -p python311 --run "python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt"
-   ```
+### 4. Run the Application
 
-4. **Run the app:**
-   ```bash
-   nix-shell -p python311 --run "source venv/bin/activate && streamlit run Home.py --server.headless true --server.enableCORS false"
-   ```
+```bash
+streamlit run Home.py
+```
+The application should now be running locally at `http://localhost:8501`.
 
-### For local setup
-
-**Important:** You must run the `settoken.sh` script before each session.
-
-1.  **Set the token:**
-    ```bash
-    source settoken.sh
-    ```
-2.  **Run the app:**
-    ```bash
-    streamlit run Home.py
-    ```
