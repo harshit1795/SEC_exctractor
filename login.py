@@ -6,6 +6,7 @@ import firebase_admin
 from firebase_admin import credentials, auth
 from components.utils import hide_default_sidebar
 import time
+import base64
 
 def init_firebase():
     # This function initializes Firebase using credentials from Streamlit secrets for cloud deployment,
@@ -14,7 +15,7 @@ def init_firebase():
     creds_dict = None
     try:
         # First, try to load credentials from Streamlit secrets (for cloud deployment)
-        creds_b64_str = st.secrets["FIREBASE_CREDENTIALS_JSON"]
+        creds_b64_str = st.secrets["FIREBASE_CREDENTIALS_B64"]
         creds_json_str = base64.b64decode(creds_b64_str).decode('utf-8')
         creds_dict = json.loads(creds_json_str)
     except (KeyError, json.JSONDecodeError):
@@ -23,7 +24,7 @@ def init_firebase():
             with open("firebase-credentials.json") as f:
                 creds_dict = json.load(f)
         else:
-            st.error("Firebase credentials not found. Please set up your FIREBASE_CREDENTIALS_JSON secret in Streamlit Cloud or ensure firebase-credentials.json exists for local development.")
+            st.error("Firebase credentials not found. Please set up your FIREBASE_CREDENTIALS_B64 secret in Streamlit Cloud or ensure firebase-credentials.json exists for local development.")
             st.stop()
 
     if not firebase_admin._apps:
@@ -34,7 +35,7 @@ def init_firebase():
             st.error(f"Failed to initialize Firebase: {e}")
             st.stop()
 
-    # Load the web app config, which is needed for the frontend authentication component
+    # Load the web app config, which is also needed for the frontend authentication component
     try:
         firebase_config = {
             "apiKey": st.secrets["FIREBASE_API_KEY"],
