@@ -8,21 +8,34 @@ from components.utils import hide_default_sidebar
 import time
 
 def init_firebase():
+    # This function initializes Firebase using credentials from Streamlit secrets for cloud deployment,
+    # and falls back to a local JSON file for local development.
+
     try:
-        # Try to get Firebase credentials from Streamlit secrets first (for cloud deployment)
-        firebase_creds_dict = {
-            "type": st.secrets["FIREBASE_CRED_TYPE"],
-            "project_id": st.secrets["FIREBASE_CRED_PROJECT_ID"],
-            "private_key_id": st.secrets["FIREBASE_CRED_PRIVATE_KEY_ID"],
-            "private_key": st.secrets["FIREBASE_CRED_PRIVATE_KEY"].replace('\n', '\n'),
-            "client_email": st.secrets["FIREBASE_CRED_CLIENT_EMAIL"],
-            "client_id": st.secrets["FIREBASE_CRED_CLIENT_ID"],
-            "auth_uri": st.secrets["FIREBASE_CRED_AUTH_URI"],
-            "token_uri": st.secrets["FIREBASE_CRED_TOKEN_URI"],
-            "auth_provider_x509_cert_url": st.secrets["FIREBASE_CRED_AUTH_PROVIDER_X509_CERT_URL"],
-            "client_x509_cert_url": st.secrets["FIREBASE_CRED_CLIENT_X509_CERT_URL"],
-            "universe_domain": st.secrets["FIREBASE_CRED_UNIVERSE_DOMAIN"]
-        }
+        # First, try to load credentials from Streamlit secrets (for cloud deployment)
+        creds_json_str = st.secrets["FIREBASE_CREDENTIALS_JSON"]
+        firebase_creds_dict = json.loads(creds_json_str)
+    except (KeyError, json.JSONDecodeError):
+        # If secrets fail, fall back to local file (for local development)
+        if os.path.exists("firebase-credentials.json"):
+            with open("firebase-credentials.json") as f:
+                firebase_creds_dict = json.load(f)
+        else:
+            st.error("Firebase credentials not found. Please set up your FIREBASE_CREDENTIALS_JSON secret in Streamlit Cloud or ensure firebase-credentials.json exists for local development.")
+            st.stop()
+
+    if not firebase_admin._apps:
+        try:
+            cred = credentials.Certificate(firebase_creds_dict)
+            firebase_admin.initialize_app(cred, {
+                'projectId': firebase_creds_dict['project_id'],
+            })
+        except Exception as e:
+            st.error(f"Failed to initialize Firebase: {e}")
+            st.stop()
+
+    # Load the web app config, which is needed for the frontend authentication component
+    try:
         firebase_config = {
             "apiKey": st.secrets["FIREBASE_API_KEY"],
             "authDomain": st.secrets["FIREBASE_AUTH_DOMAIN"],
@@ -32,20 +45,9 @@ def init_firebase():
             "appId": st.secrets["FIREBASE_APP_ID"],
             "measurementId": st.secrets.get("FIREBASE_MEASUREMENT_ID", "")
         }
-    except KeyError:
-        # If secrets are not found, fallback to local files (for local development)
-        if os.path.exists("firebase-credentials.json") and os.path.exists("firebase-config.json"):
-            with open("firebase-credentials.json") as f:
-                firebase_creds_dict = json.load(f)
-            with open("firebase-config.json") as f:
-                firebase_config = json.load(f)
-        else:
-            st.error("Firebase configuration not found. Please set up your secrets or local config files.")
-            st.stop()
-
-    if not firebase_admin._apps:
-        cred = credentials.Certificate(firebase_creds_dict)
-        firebase_admin.initialize_app(cred)
+    except KeyError as e:
+        st.error(f"Firebase web app configuration key not found in Streamlit secrets: {e}. Please check your .streamlit/secrets.toml file.")
+        st.stop()
         
     return firebase_config
 
