@@ -100,10 +100,8 @@ def render_login_form(firebase_config):
             
             if user:
                 with st.spinner("Loading application... Please wait."):
-                    st.session_state["user"] = user['uid']
+                    st.session_state["user_info"] = user
                     st.session_state["logged_in"] = True
-                    st.session_state["user_email"] = user.get('email', '')
-                    st.session_state["user_name"] = user.get('displayName', '')
                     
                     # Show success message
                     st.success(f"Welcome back, {user.get('displayName', 'User')}!")
@@ -127,13 +125,11 @@ def render_login_form(firebase_config):
 
 def logout(firebase_config):
     st.info(f"Logging you out..")
-    if st.session_state.get("user"):
+    if st.session_state.get("user_info"):
         try:
-            auth.revoke_refresh_tokens(st.session_state["user"])
+            auth.revoke_refresh_tokens(st.session_state.user_info['uid'])
         except Exception as e:
             st.error(f"Logout Error.. {e}")
     st.session_state['logged_in'] = False
-    st.session_state.pop('user', None)
-    st.session_state.pop('user_email', None)
-    st.session_state.pop('user_name', None)
+    st.session_state.pop('user_info', None)
     render_logout_js(firebase_config)
