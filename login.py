@@ -11,25 +11,25 @@ def init_firebase():
     # This function initializes Firebase using credentials from Streamlit secrets for cloud deployment,
     # and falls back to a local JSON file for local development.
 
+    creds_dict = None
     try:
         # First, try to load credentials from Streamlit secrets (for cloud deployment)
-        creds_json_str = st.secrets["FIREBASE_CREDENTIALS_JSON"]
-        firebase_creds_dict = json.loads(creds_json_str)
+        creds_b64_str = st.secrets["FIREBASE_CREDENTIALS_JSON"]
+        creds_json_str = base64.b64decode(creds_b64_str).decode('utf-8')
+        creds_dict = json.loads(creds_json_str)
     except (KeyError, json.JSONDecodeError):
         # If secrets fail, fall back to local file (for local development)
         if os.path.exists("firebase-credentials.json"):
             with open("firebase-credentials.json") as f:
-                firebase_creds_dict = json.load(f)
+                creds_dict = json.load(f)
         else:
             st.error("Firebase credentials not found. Please set up your FIREBASE_CREDENTIALS_JSON secret in Streamlit Cloud or ensure firebase-credentials.json exists for local development.")
             st.stop()
 
     if not firebase_admin._apps:
         try:
-            cred = credentials.Certificate(firebase_creds_dict)
-            firebase_admin.initialize_app(cred, {
-                'projectId': firebase_creds_dict['project_id'],
-            })
+            cred = credentials.Certificate(creds_dict)
+            firebase_admin.initialize_app(cred)
         except Exception as e:
             st.error(f"Failed to initialize Firebase: {e}")
             st.stop()
