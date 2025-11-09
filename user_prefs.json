@@ -1,51 +1,56 @@
 {
-    "5wrniLVB0STl0WY8LdlkM7Y3pTH3": {
-        "GEMINI_API_KEY": "AIzaSyCT7tDrjA0xpsJFAHJvB72uD024nMfG9OA",
-        "snapshot_metrics": [
-            "Total Assets",
-            "Current Liabilities",
-            "Total Liabilities Net Minority Interest",
-            "Net Debt",
-            "Total Debt",
-            "Working Capital"
-        ],
-        "fred_tab": {
-            "selected_indicators": [
-                "Real GDP",
-                "Inflation (CPI)",
-                "Unemployment Rate"
-            ],
-            "aggregation_period": "Quarterly",
-            "chart_type": "Line",
-            "chart_view": "Combined",
-            "start_date": "2020-01-01",
-            "end_date": "2025-07-01"
-        },
-        "snapshot_tab": {
-            "snapshot_metrics": [
-                "Total Assets",
-                "Current Liabilities",
-                "Total Liabilities Net Minority Interest",
-                "Net Debt",
-                "Total Debt",
-                "Working Capital"
-            ],
-            "mode": "QoQ \u0394"
-        },
-        "chatbot_tab": {
-            "selected_tickers": [
-                "AMZN"
-            ],
-            "metric_categories": [
-                "Income Statement",
-                "Balance Sheet",
-                "Cash Flow"
-            ],
-            "fred_series": [
-                "GDP",
-                "UNRATE"
-            ]
-        },
-        "POLYGON_API_KEY": "Q5AiOPfc_1Bwlv1f7bYSioJMxdpgqw21"
-    }
+  "5wrniLVB0STl0WY8LdlkM7Y3pTH3": {
+    "GEMINI_API_KEY": "AIzaSyCT7tDrjA0xpsJFAHJvB72uD024nMfG9OA",
+    "snapshot_metrics": [
+      "Total Assets",
+      "Current Liabilities",
+      "Total Liabilities Net Minority Interest",
+      "Net Debt",
+      "Total Debt",
+      "Working Capital"
+    ],
+    "fred_tab": {
+      "selected_indicators": [
+        "Real GDP",
+        "Inflation (CPI)",
+        "Unemployment Rate"
+      ],
+      "aggregation_period": "Quarterly",
+      "chart_type": "Line",
+      "chart_view": "Combined",
+      "start_date": "2020-01-01",
+      "end_date": "2025-07-01"
+    },
+    "snapshot_tab": {
+      "snapshot_metrics": [
+        "Total Assets",
+        "Current Liabilities",
+        "Total Liabilities Net Minority Interest",
+        "Net Debt",
+        "Total Debt",
+        "Working Capital"
+      ],
+      "mode": "QoQ \u0394"
+    },
+    "chatbot_tab": {
+      "selected_tickers": [
+        "AMZN"
+      ],
+      "metric_categories": [
+        "Income Statement",
+        "Balance Sheet",
+        "Cash Flow"
+      ],
+      "fred_series": [
+        "GDP",
+        "UNRATE"
+      ]
+    },
+    "POLYGON_API_KEY": "Q5AiOPfc_1Bwlv1f7bYSioJMxdpgqw21",
+    "health_metrics": [
+      "Tax Rate For Calcs",
+      "Reconciled Cost Of Revenue",
+      "EBITDA"
+    ]
+  }
 }

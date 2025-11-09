@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import os
+import json
 
 def render():
     st.markdown("<h2 style='text-align: center;'> Financial Health Monitoring</h2>", unsafe_allow_html=True)
@@ -200,11 +201,31 @@ def render():
     with custom_tab:
         st.header("Your Selections")
 
+        USER_PREFS_PATH = "user_prefs.json"
+
+        def _load_user_prefs() -> dict:
+            """Load user preferences from disk."""
+            if os.path.exists(USER_PREFS_PATH):
+                try:
+                    with open(USER_PREFS_PATH, "r") as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    return {}
+            return {}
+
+        def _save_user_prefs(data: dict):
+            """Persist user preferences to disk."""
+            try:
+                with open(USER_PREFS_PATH, "w") as f:
+                    json.dump(data, f, indent=2)
+            except Exception as e:
+                st.error(f"Failed to save preferences: {e}")
+
         # Get the list of available metrics
         available_metrics = df["Metric"].unique()
 
         # Load user preferences
-        user_prefs = _load_user_prefs().get(st.session_state.get("user", ""), {})
+        user_prefs = _load_user_prefs().get(st.session_state.get("user_info", {}).get("uid", ""), {})
         
         selected_metrics = st.multiselect(
             "Select your preferred metrics for health score calculation:",
@@ -214,9 +235,9 @@ def render():
 
         if st.button("Save Preferences"):
             all_prefs = _load_user_prefs()
-            user = st.session_state.get("user")
-            if user:
-                all_prefs.setdefault(user, {})["health_metrics"] = selected_metrics
+            user_id = st.session_state.get("user_info", {}).get("uid")
+            if user_id:
+                all_prefs.setdefault(user_id, {})["health_metrics"] = selected_metrics
                 _save_user_prefs(all_prefs)
                 st.success("Preferences saved!")
 
