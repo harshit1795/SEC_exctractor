@@ -5,9 +5,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pandas_ta as ta
 import plotly.graph_objects as go
-import ast # For safe parsing of string literals
 from polygon import RESTClient # New import
-from auth import _load_user_prefs # New import
 
 def render_kpi_chart(main_value, comparison_value, title):
     if isinstance(main_value, pd.Series):
@@ -64,13 +62,12 @@ def get_technical_analysis_summary(data):
 def get_sentiment_analysis(ticker_symbol):
     """Analyzes news sentiment for a stock using Polygon.ai."""
     try:
-        user_prefs = _load_user_prefs().get(st.session_state.get("user"), {})
-        polygon_api_key = user_prefs.get("POLYGON_API_KEY")
+        polygon_api_key = st.secrets.get("POLYGON_API_KEY")
 
         st.warning(f"DEBUG: Loaded Polygon.ai API Key (first 5 chars): {str(polygon_api_key)[:5]}...")
 
-        if not polygon_api_key:
-            st.error("Polygon.ai API key not found. Please go to Settings to configure it.")
+        if not polygon_api_key or polygon_api_key == "your_sec_api_key_here": # Check for placeholder
+            st.error("Polygon.ai API key not found or is a placeholder. Please go to Settings to configure it.")
             return None, []
 
         client = RESTClient(polygon_api_key)
@@ -78,16 +75,16 @@ def get_sentiment_analysis(ticker_symbol):
         today = datetime.now().date()
         thirty_days_ago = today - timedelta(days=30)
         
-        news_response = client.get_reference_news(
-            ticker_lte=ticker_symbol,
+        news_response = client.get_ticker_news(
+            ticker=ticker_symbol,
             published_utc_gte=thirty_days_ago.isoformat(),
             published_utc_lte=today.isoformat(),
-            limit=50 # Fetch up to 50 articles
+            limit=50
         )
         
         news_articles = []
-        if news_response and news_response.results:
-            for article in news_response.results:
+        if news_response:
+            for article in news_response:
                 news_articles.append({'title': article.title, 'link': article.article_url})
         
         if not news_articles:
