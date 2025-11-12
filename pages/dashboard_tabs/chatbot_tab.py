@@ -17,7 +17,7 @@ from pathlib import Path
 import os
 
 # Import local modules
-from auth import load_api_keys
+from auth import load_api_keys, _load_user_prefs
 from fred_data import get_fred_series, get_multiple_fred_series
 from components.sec_edgar_utils import (
     load_cik_ticker_map,
@@ -73,8 +73,6 @@ class DataSourceManager:
                 'quarterly_cashflow': ticker_obj.quarterly_cashflow,
                 'history': ticker_obj.history(period=period),
                 'recommendations': ticker_obj.recommendations,
-                'earnings': ticker_obj.earnings,
-                'quarterly_earnings': ticker_obj.quarterly_earnings
             }
             
             self._cache_data(cache_key, data)
@@ -236,11 +234,17 @@ class DataSourceManager:
             return pd.DataFrame()
     
     def get_available_tickers(self) -> List[str]:
-        """Get list of available tickers from data directory"""
+        """Get list of available tickers from sp500_fundamentals.csv"""
         try:
-            data_dir = Path("data")
-            if data_dir.exists():
-                return [d.name for d in data_dir.iterdir() if d.is_dir()]
+            path = "sp500_fundamentals.csv"
+            if Path(path).exists():
+                meta_df = pd.read_csv(path)
+                return sorted(meta_df["Ticker"].unique())
+            else:
+                # Fallback to data directory if csv not found
+                data_dir = Path("data")
+                if data_dir.exists():
+                    return [d.name for d in data_dir.iterdir() if d.is_dir()]
             return []
         except Exception as e:
             logger.error(f"Error getting available tickers: {e}")
@@ -333,7 +337,7 @@ Guidelines:
                             available_metrics.append("Cash Flow")
                         if "Stock Price & Volume" in context_data.get('metric_categories', []) and data.get('history') is not None:
                             available_metrics.append("Stock Price & Volume")
-                        if "Earnings & Estimates" in context_data.get('metric_categories', []) and data.get('earnings') is not None:
+                        if "Earnings & Estimates" in context_data.get('metric_categories', []) and data.get('financials') is not None and "Net Income" in data.get('financials').index:
                             available_metrics.append("Earnings & Estimates")
                         
                         if available_metrics:
@@ -388,12 +392,27 @@ class ChatbotInterface:
         """Initialize AI model with API keys"""
         try:
             load_api_keys()
-            # Get API key from environment or session state
-            api_key = os.environ.get("GOOGLE_API_KEY") or st.secrets.get("GOOGLE_API_KEY", "")
+
+            user_api_key = None
+            user = st.session_state.get("user")
+            if user:
+                user_prefs = _load_user_prefs().get(user, {})
+                user_api_key = user_prefs.get("GEMINI_API_KEY")
+
+            # Get API key from user settings, environment, or secrets, with fallback for GOOGLE_API_KEY
+            api_key = (
+                user_api_key
+                or os.environ.get("GEMINI_API_KEY")
+                or st.secrets.get("GEMINI_API_KEY")
+                or os.environ.get("GOOGLE_API_KEY")
+                or st.secrets.get("GOOGLE_API_KEY", "")
+            )
+
             if api_key:
+                genai.configure(api_key=api_key)
                 self.analyzer = FinancialAnalyzer(api_key)
             else:
-                st.warning("Google API key not found. Please configure it in your environment or secrets.")
+                st.warning("Google API key not found. Please provide it in the Settings page or configure it in your environment/secrets.")
         except Exception as e:
             logger.error(f"Error initializing AI: {e}")
             st.error(f"Failed to initialize AI model: {e}")
@@ -483,7 +502,7 @@ class ChatbotInterface:
                                                 available_metrics.append("Cash Flow")
                                             if "Stock Price & Volume" in metric_categories and data.get('history') is not None:
                                                 available_metrics.append("Stock Price & Volume")
-                                            if "Earnings & Estimates" in metric_categories and data.get('earnings') is not None:
+                                            if "Earnings & Estimates" in metric_categories and data.get('financials') is not None and "Net Income" in data.get('financials').index:
                                                 available_metrics.append("Earnings & Estimates")
                                             
                                             if available_metrics:
