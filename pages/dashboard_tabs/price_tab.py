@@ -5,7 +5,7 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import pandas_ta as ta
 import plotly.graph_objects as go
-from polygon import RESTClient # New import
+from openbb import obb
 
 def render_kpi_chart(main_value, comparison_value, title):
     if isinstance(main_value, pd.Series):
@@ -60,35 +60,20 @@ def get_technical_analysis_summary(data):
     return analysis_summary
 
 def get_sentiment_analysis(ticker_symbol):
-    """Analyzes news sentiment for a stock using Polygon.ai."""
+    """Analyzes news sentiment for a stock using OpenBB."""
+    if not ticker_symbol:
+        return None, None
     try:
-        polygon_api_key = st.secrets.get("POLYGON_API_KEY")
-
-        st.warning(f"DEBUG: Loaded Polygon.ai API Key (first 5 chars): {str(polygon_api_key)[:5]}...")
-
-        if not polygon_api_key or polygon_api_key == "your_sec_api_key_here": # Check for placeholder
-            st.error("Polygon.ai API key not found or is a placeholder. Please go to Settings to configure it.")
-            return None, []
-
-        client = RESTClient(polygon_api_key)
-        
-        today = datetime.now().date()
-        thirty_days_ago = today - timedelta(days=30)
-        
-        news_response = client.get_ticker_news(
-            ticker=ticker_symbol,
-            published_utc_gte=thirty_days_ago.isoformat(),
-            published_utc_lte=today.isoformat(),
-            limit=50
-        )
+        news_response = obb.news.company(symbols=ticker_symbol, limit=50)
         
         news_articles = []
         if news_response:
-            for article in news_response:
-                news_articles.append({'title': article.title, 'link': article.article_url})
+            news_df = news_response.to_df()
+            for index, row in news_df.iterrows():
+                news_articles.append({'title': row['title'], 'link': row['url']})
         
         if not news_articles:
-            return None, []
+            return None, None
 
         positive_keywords = ["beat", "exceed", "upgrade", "strong", "growth", "profit", "revenue", "bullish", "buy", "outperform", "surge", "rally"]
         negative_keywords = ["miss", "downgrade", "weak", "loss", "decline", "bearish", "sell", "underperform", "fall", "cut", "concern", "risk"]
@@ -109,8 +94,8 @@ def get_sentiment_analysis(ticker_symbol):
             "articles_analyzed": len(news_articles)
         }, news_articles
     except Exception as e:
-        st.error(f"Error fetching news from Polygon.ai: {e}")
-        return None, []
+        st.error(f"Error fetching news from OpenBB: {e}")
+        return None, None
 
 def render(selected_ticker):
     st.markdown("### Price Chart")
@@ -275,4 +260,4 @@ def render(selected_ticker):
             else:
                 st.write("No news found for this ticker.")
         else:
-            st.write("Could not retrieve news sentiment. Please check your Polygon.ai API key in Settings.")
+            st.write("Could not retrieve news sentiment. Please check your OpenBB API key in Settings.")
