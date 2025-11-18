@@ -143,7 +143,11 @@ def render():
         elif st.session_state.active_tab == "Earning Summary":
             earnings_tab.render(selected_ticker)
         elif st.session_state.active_tab == "Price Chart":
-            price_tab.render(selected_ticker)
+            st.write(f"DEBUG: selected_ticker is {selected_ticker}")
+            if selected_ticker:
+                price_tab.render(selected_ticker)
+            else:
+                st.warning("Please select a ticker.")
         elif st.session_state.active_tab == "Disclosures":
             disclosures_tab.render(selected_ticker)
         elif st.session_state.active_tab == "Macroeconomic Data":
