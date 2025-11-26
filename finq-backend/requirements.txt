@@ -1,0 +1,47 @@
+# FastAPI and Server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy>=2.0.36  # Updated for Python 3.13 compatibility
+alembic>=1.13.0  # Updated for Python 3.13 compatibility
+# psycopg2-binary==2.9.9  # Optional - only needed for PostgreSQL (not needed for SQLite)
+# Note: If using PostgreSQL, install separately: pip install psycopg2-binary
+
+# Data Processing
+pandas==2.3.2
+numpy==1.26.2
+matplotlib>=3.8.0
+seaborn>=0.13.0
+pyarrow>=14.0.0  # Required for parquet file support
+
+# Financial Data Sources
+yfinance==0.2.65
+fredapi==0.5.2
+beautifulsoup4>=4.11.1
+requests>=2.31.0
+
+# AI/ML
+google-generativeai==0.8.5
+
+# Authentication
+firebase-admin==7.1.0
+
+# Configuration
+pydantic>=2.9.0  # Updated for Python 3.13 compatibility
+pydantic-settings>=2.5.0  # Updated for Python 3.13 compatibility
+python-dotenv==1.0.0
+
+# Utilities
+python-dateutil==2.8.2
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+httpx>=0.25.2  # firebase-admin requires httpx==0.28.1, so we use >=
+
+# Development
+black==23.11.0
+flake8==6.1.0
+
