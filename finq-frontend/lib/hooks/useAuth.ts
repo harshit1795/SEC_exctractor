@@ -19,16 +19,43 @@ export function useAuth() {
 
   useEffect(() => {
     if (!auth) {
+      console.warn('Firebase auth not initialized');
       setLoading(false);
       return;
     }
 
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // Set a timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      console.warn('Auth state check timeout - setting loading to false');
+      setLoading(false);
+    }, 10000); // 10 second timeout
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      clearTimeout(timeoutId);
       setUser(user);
       setLoading(false);
+      
+      // Auto-initialize user profile on sign-in
+      if (user?.uid) {
+        try {
+          // Import here to avoid circular dependency
+          const { api } = await import('../api');
+          await api.initializeUserProfile(user.uid, {
+            firebase_display_name: user.displayName || undefined,
+            firebase_photo_url: user.photoURL || undefined,
+            firebase_email: user.email || undefined,
+          });
+        } catch (error) {
+          // Silently fail - profile will be created on first access
+          console.debug('Profile initialization:', error);
+        }
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      clearTimeout(timeoutId);
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {

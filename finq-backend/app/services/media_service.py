@@ -3,15 +3,28 @@ Media Generation Service
 Converts charts and data visualizations to images for sharing
 """
 import logging
-from typing import Optional, List
+from typing import Optional, List, TYPE_CHECKING
 from io import BytesIO
 import base64
 from pathlib import Path
-import matplotlib
-matplotlib.use('Agg')  # Non-interactive backend
-import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
+
+# Optional dependencies - make imports lazy
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Non-interactive backend
+    import matplotlib.pyplot as plt
+    import pandas as pd
+    import seaborn as sns
+    MATPLOTLIB_AVAILABLE = True
+except ImportError:
+    MATPLOTLIB_AVAILABLE = False
+    matplotlib = None
+    plt = None
+    pd = None
+    sns = None
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +33,8 @@ class MediaService:
     """Service for generating media from financial data"""
     
     def __init__(self, output_dir: str = "../media_output"):
+        if not MATPLOTLIB_AVAILABLE:
+            raise ImportError("matplotlib is required for MediaService. Install with: pip install matplotlib pandas seaborn")
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         # Set style
@@ -28,7 +43,7 @@ class MediaService:
     
     def generate_chart_image(
         self,
-        data: pd.DataFrame,
+        data: "pd.DataFrame",
         chart_type: str = "line",
         title: str = "Financial Chart",
         x_col: str = "Date",
@@ -85,7 +100,7 @@ class MediaService:
     
     def generate_price_chart(
         self,
-        price_data: pd.DataFrame,
+        price_data: "pd.DataFrame",
         ticker: str,
         period: str = "1y"
     ) -> Optional[str]:

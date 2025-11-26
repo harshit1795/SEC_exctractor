@@ -11,7 +11,7 @@ export default function LoginPage() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
   const [configError, setConfigError] = useState(false);
-  const { login, signup, signInWithGoogle, user } = useAuth();
+  const { login, signup, signInWithGoogle, user, loading } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -21,6 +21,17 @@ export default function LoginPage() {
       setConfigError(true);
     }
   }, []);
+
+  // Show loading while checking auth state
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="mb-4 text-lg text-gray-600">Loading...</div>
+        </div>
+      </div>
+    );
+  }
 
   // Redirect if already logged in
   if (user) {

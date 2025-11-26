@@ -1,11 +1,50 @@
 'use client';
 
-import { useFriends, useFriendRequests, useAcceptFriendRequest } from '@/lib/hooks/useNexus';
+import { useFriends, useFriendRequests, useAcceptFriendRequest, useUserProfile } from '@/lib/hooks/useNexus';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { Loading } from '@/components/shared/Loading';
 import { ErrorDisplay } from '@/components/shared/ErrorDisplay';
 import { Card } from '@/components/shared/Card';
 import { useState } from 'react';
+
+function FriendItem({ friend, userId }: { friend: any; userId: string }) {
+  // Get the friend's user ID (could be in friend_id or user_id depending on direction)
+  const friendId = friend.friend_id === userId ? friend.user_id : friend.friend_id;
+  // Use display info from backend if available, otherwise fetch profile
+  const displayName = friend.display_name || friend.firebase_display_name || friendId;
+  const profilePicture = friend.profile_picture_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}`;
+  
+  return (
+    <div
+      className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0 hover:bg-gray-50 p-2 rounded-md transition-colors cursor-pointer"
+      onClick={() => {
+        // Navigate to friend's profile
+        window.location.hash = 'directory';
+        window.dispatchEvent(new CustomEvent('switchNexusTab', { detail: 'directory' }));
+        // Store friend ID for profile view
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('viewUserProfile', { detail: friendId }));
+        }, 100);
+      }}
+    >
+      <div className="flex items-center space-x-4">
+        <div className="flex-shrink-0">
+          <img
+            src={profilePicture}
+            alt={displayName}
+            className="h-12 w-12 rounded-full"
+          />
+        </div>
+        <div>
+          <p className="font-semibold text-gray-900">{displayName}</p>
+          <p className="text-sm text-gray-600">
+            Friends since {new Date(friend.created_at).toLocaleDateString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export function FriendsTab() {
   const { user } = useAuth();
@@ -60,26 +99,11 @@ export function FriendsTab() {
           ) : friendsData?.friends && friendsData.friends.length > 0 ? (
             <div className="space-y-4">
               {friendsData.friends.map((friend: any) => (
-                <div
-                  key={friend.id}
-                  className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <img
-                        src={`https://ui-avatars.com/api/?name=${friend.friend_id}`}
-                        alt={friend.friend_id}
-                        className="h-12 w-12 rounded-full"
-                      />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{friend.friend_id}</p>
-                      <p className="text-sm text-gray-600">
-                        Friends since {new Date(friend.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <FriendItem 
+                  key={friend.id} 
+                  friend={friend}
+                  userId={userId}
+                />
               ))}
             </div>
           ) : (
@@ -100,35 +124,45 @@ export function FriendsTab() {
             <ErrorDisplay error={requestsError} message="Failed to load friend requests" />
           ) : requestsData?.friends && requestsData.friends.length > 0 ? (
             <div className="space-y-4">
-              {requestsData.friends.map((request: any) => (
-                <div
-                  key={request.id}
-                  className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0"
-                >
-                  <div className="flex items-center space-x-4">
-                    <div className="flex-shrink-0">
-                      <img
-                        src={`https://ui-avatars.com/api/?name=${request.user_id}`}
-                        alt={request.user_id}
-                        className="h-12 w-12 rounded-full"
-                      />
-                    </div>
-                    <div>
-                      <p className="font-semibold text-gray-900">{request.user_id}</p>
-                      <p className="text-sm text-gray-600">
-                        Sent {new Date(request.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleAcceptRequest(request.user_id)}
-                    disabled={acceptRequestMutation.isPending}
-                    className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+              {requestsData.friends.map((request: any) => {
+                // Get display info from backend (user_id is the requester)
+                const requesterId = request.user_id;
+                const displayName = request.display_name || request.firebase_display_name || requesterId;
+                const profilePicture = request.profile_picture_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}`;
+                
+                return (
+                  <div
+                    key={request.id}
+                    className="flex items-center justify-between border-b border-gray-200 pb-4 last:border-b-0 hover:bg-gray-50 p-2 rounded-md transition-colors"
                   >
-                    {acceptRequestMutation.isPending ? 'Accepting...' : 'Accept'}
-                  </button>
-                </div>
-              ))}
+                    <div className="flex items-center space-x-4 flex-1">
+                      <div className="flex-shrink-0">
+                        <img
+                          src={profilePicture}
+                          alt={displayName}
+                          className="h-12 w-12 rounded-full"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <p className="font-semibold text-gray-900">{displayName}</p>
+                        {request.firebase_display_name && displayName !== request.firebase_display_name && (
+                          <p className="text-xs text-gray-500">{request.firebase_display_name}</p>
+                        )}
+                        <p className="text-sm text-gray-600">
+                          Sent {new Date(request.created_at).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleAcceptRequest(requesterId)}
+                      disabled={acceptRequestMutation.isPending}
+                      className="px-4 py-2 text-sm text-white bg-green-600 rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {acceptRequestMutation.isPending ? 'Accepting...' : 'Accept'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-8 text-gray-600">

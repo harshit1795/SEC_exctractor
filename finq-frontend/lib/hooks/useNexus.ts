@@ -5,17 +5,26 @@ import { api } from '../api';
 import { useAuth } from './useAuth';
 
 export function useFeed(limit: number = 20) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const userId = user?.uid || 'anonymous';
 
   return useQuery({
     queryKey: ['nexus', 'feed', userId],
     queryFn: async () => {
-      const response = await api.getFeed(userId, limit);
-      return response.data;
+      try {
+        const response = await api.getFeed(userId, limit);
+        return response.data;
+      } catch (error: any) {
+        console.error('Error fetching feed:', error);
+        // Return empty feed on error instead of throwing
+        return { posts: [], count: 0, limit, offset: 0 };
+      }
     },
-    enabled: !!user,
+    enabled: !authLoading && !!user, // Wait for auth to finish loading
     refetchInterval: 30000, // Refetch every 30 seconds for real-time feel
+    retry: 1, // Retry failed requests once
+    staleTime: 10000, // Consider data fresh for 10 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes
   });
 }
 
@@ -33,7 +42,9 @@ export function useCreatePost() {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nexus', 'feed', userId] });
+      // Invalidate and refetch the feed to show the new post immediately
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'feed'] });
+      queryClient.refetchQueries({ queryKey: ['nexus', 'feed', userId] });
     },
   });
 }
@@ -133,6 +144,7 @@ export function useSendFriendRequest() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['nexus', 'friends', userId] });
       queryClient.invalidateQueries({ queryKey: ['nexus', 'directory', userId] });
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'friend-requests', userId] });
       queryClient.invalidateQueries({ queryKey: ['nexus', 'profile'] });
     },
   });
@@ -182,6 +194,37 @@ export function useUserProfile(targetUserId: string) {
       return response.data;
     },
     enabled: !!user && !!targetUserId,
+  });
+}
+
+export function useUserProfilePreferences(userId: string) {
+  return useQuery({
+    queryKey: ['nexus', 'profile-preferences', userId],
+    queryFn: async () => {
+      const response = await api.getUserProfilePreferences(userId);
+      return response.data;
+    },
+    enabled: !!userId && userId !== 'anonymous',
+  });
+}
+
+export function useUpdateUserProfile() {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const userId = user?.uid || 'anonymous';
+
+  return useMutation({
+    mutationFn: async (data: { display_name?: string; profile_picture_url?: string; use_alias_as_display?: boolean }) => {
+      const response = await api.updateUserProfilePreferences(userId, data);
+      return response.data;
+    },
+    onSuccess: () => {
+      // Invalidate all queries that might show user info
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'profile-preferences', userId] });
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'feed'] });
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'directory'] });
+      queryClient.invalidateQueries({ queryKey: ['nexus', 'profile'] });
+    },
   });
 }
 

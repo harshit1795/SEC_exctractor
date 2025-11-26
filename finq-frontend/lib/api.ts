@@ -93,7 +93,7 @@ export const api = {
 
   // Nexus
   createPost: (data: { user_id: string; content: string; media_url?: string }) =>
-    apiClient.post('/nexus/posts', data),
+    apiClient.post('/nexus/posts', { content: data.content, media_url: data.media_url }, { params: { user_id: data.user_id } }),
   getFeed: (user_id: string, limit: number = 20) =>
     apiClient.get('/nexus/posts/feed', { params: { user_id, limit } }),
   getPost: (postId: string) =>
@@ -116,6 +116,12 @@ export const api = {
     apiClient.get('/nexus/users/directory', { params: { user_id, limit, offset } }),
   getUserProfile: (target_user_id: string, user_id: string) =>
     apiClient.get(`/nexus/users/${target_user_id}/profile`, { params: { user_id } }),
+  getUserProfilePreferences: (user_id: string) =>
+    apiClient.get(`/nexus/users/${user_id}/profile/preferences`, { params: { user_id } }),
+  initializeUserProfile: (user_id: string, data?: { firebase_display_name?: string; firebase_photo_url?: string; firebase_email?: string }) =>
+    apiClient.post(`/nexus/users/${user_id}/profile/initialize`, data || null, { params: { user_id } }),
+  updateUserProfilePreferences: (user_id: string, data: { display_name?: string; profile_picture_url?: string; use_alias_as_display?: boolean }) =>
+    apiClient.put(`/nexus/users/${user_id}/profile/preferences`, data, { params: { user_id } }),
 
   // Insights
   shareInsight: (data: { user_id: string; insight_id: string; content: string }) =>
