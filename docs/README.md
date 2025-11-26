@@ -28,7 +28,11 @@ Welcome to the comprehensive documentation for the FinQ SEC Extractor applicatio
 
 ### 🏗️ [Architecture](./architecture/)
 **Technical architecture and design**
+- **MIGRATION_EXECUTIVE_SUMMARY.md** - ⭐ Start here: Quick overview and recommendation
 - **CHATBOT_ARCHITECTURE.md** - MCP architecture for the enhanced chatbot
+- **MIGRATION_ASSESSMENT.md** - Framework migration assessment and architecture plan
+- **MIGRATION_IMPLEMENTATION_GUIDE.md** - Step-by-step migration implementation guide
+- **FRAMEWORK_COMPARISON.md** - Detailed comparison: Streamlit vs Next.js + FastAPI
 - System design principles
 - Component architecture
 - Data flow and integration patterns
@@ -50,7 +54,8 @@ Welcome to the comprehensive documentation for the FinQ SEC Extractor applicatio
 ### For Developers
 1. Review **[Development Guidelines](./development/SAVED_RULES.md)**
 2. Understand the **[Architecture](./architecture/CHATBOT_ARCHITECTURE.md)**
-3. Use **[Quick Reference](./reference/QUICK_REFERENCE.md)** for common tasks
+3. Review **[Migration Assessment](./architecture/MIGRATION_ASSESSMENT.md)** for framework migration planning
+4. Use **[Quick Reference](./reference/QUICK_REFERENCE.md)** for common tasks
 
 ### For Deployment
 1. Follow the **[Deployment Guide](./deployment/DEPLOYMENT.md)**
@@ -67,6 +72,12 @@ Welcome to the comprehensive documentation for the FinQ SEC Extractor applicatio
 ### Chatbot & AI Features
 - Architecture: [Chatbot Architecture](./architecture/CHATBOT_ARCHITECTURE.md)
 - Development: [Project Context](./development/gemini.md)
+
+### Framework Migration & Architecture
+- ⭐ **Start Here**: [Executive Summary](./architecture/MIGRATION_EXECUTIVE_SUMMARY.md) - Quick overview and recommendation
+- Assessment: [Migration Assessment](./architecture/MIGRATION_ASSESSMENT.md) - Complete migration plan
+- Implementation: [Migration Guide](./architecture/MIGRATION_IMPLEMENTATION_GUIDE.md) - Step-by-step guide
+- Comparison: [Framework Comparison](./architecture/FRAMEWORK_COMPARISON.md) - Streamlit vs Next.js + FastAPI
 
 ### Troubleshooting
 - Quick fixes: [Quick Reference](./reference/QUICK_REFERENCE.md)
