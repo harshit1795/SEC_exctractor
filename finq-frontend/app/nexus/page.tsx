@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AuthGuard } from '@/components/shared/AuthGuard';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { FeedTab } from '@/components/nexus/FeedTab';
@@ -9,7 +9,48 @@ import { DirectoryTab } from '@/components/nexus/DirectoryTab';
 import { FriendsTab } from '@/components/nexus/FriendsTab';
 
 export default function NexusPage() {
-  const [activeTab, setActiveTab] = useState<'feed' | 'profile' | 'directory' | 'friends'>('feed');
+  // Check for hash navigation (e.g., #directory)
+  const [activeTab, setActiveTab] = useState<'feed' | 'profile' | 'directory' | 'friends'>(() => {
+    if (typeof window !== 'undefined') {
+      const hash = window.location.hash.replace('#', '');
+      if (['feed', 'profile', 'directory', 'friends'].includes(hash)) {
+        return hash as 'feed' | 'profile' | 'directory' | 'friends';
+      }
+    }
+    return 'feed';
+  });
+
+  // Listen for hash changes and custom events
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (['feed', 'profile', 'directory', 'friends'].includes(hash)) {
+        setActiveTab(hash as 'feed' | 'profile' | 'directory' | 'friends');
+      }
+    };
+
+    const handleTabSwitch = (e: CustomEvent) => {
+      if (['feed', 'profile', 'directory', 'friends'].includes(e.detail)) {
+        setActiveTab(e.detail);
+      }
+    };
+
+    const handleViewProfile = (e: CustomEvent) => {
+      // Switch to directory tab and trigger profile view
+      setActiveTab('directory');
+      // The DirectoryTab will handle showing the profile
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    window.addEventListener('switchNexusTab', handleTabSwitch as EventListener);
+    window.addEventListener('viewUserProfile', handleViewProfile as EventListener);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('switchNexusTab', handleTabSwitch as EventListener);
+      window.removeEventListener('viewUserProfile', handleViewProfile as EventListener);
+    };
+  }, []);
 
   const tabs = [
     { id: 'feed', label: 'Feed', icon: '📰' },
@@ -29,7 +70,13 @@ export default function NexusPage() {
             {tabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => {
+                  setActiveTab(tab.id as any);
+                  // Update URL hash for deep linking
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = tab.id;
+                  }
+                }}
                 className={`px-4 py-4 text-base font-bold border-b-2 transition-all duration-200 ${
                   activeTab === tab.id
                     ? 'border-green-500 text-green-700 bg-green-50'

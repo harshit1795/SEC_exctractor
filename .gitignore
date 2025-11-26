@@ -1,9 +1,11 @@
 
 # Environments
 .env
+.env.*
 .venv
 venv/
 env/
+ENV/
 
 # IDEs and editors
 .idea/
@@ -22,8 +24,51 @@ dist/
 
 # Streamlit
 .streamlit/
+.streamlit/secrets.toml
 
-# Other
-.DS_Store
+# Firebase & Google API Keys
 firebase-credentials.json
+*firebase*.json
+*google*.json
+*credentials*.json
+serviceAccount*.json
+google-services.json
+GoogleService-Info.plist
+
+# API Keys & Secrets
+*.key
+*.pem
+*.p12
+*.pfx
+secrets*.toml
+secrets*.json
 secrets_template.txt
+.env.local
+.env.production
+.env.development
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# User preferences & tokens
+user_prefs.json
+settoken.sh
+env.txt
+
+# Node modules (if any in root)
+node_modules/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
