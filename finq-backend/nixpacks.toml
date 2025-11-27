@@ -1,0 +1,15 @@
+# Nixpacks configuration for Railway
+# This tells Railway how to build and run your application
+
+[phases.setup]
+nixPkgs = ["python312", "pip"]
+
+[phases.install]
+cmds = [
+  "pip install -r requirements.txt",
+  "pip install psycopg2-binary"
+]
+
+[start]
+cmd = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
