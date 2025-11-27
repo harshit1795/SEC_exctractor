@@ -123,9 +123,13 @@ alembic upgrade head
 
 2. **Configure Build Settings**:
    - Still in **Settings**, go to **"Build"** section
-   - **Root Directory**: `finq-backend`
+   - **Root Directory**: `finq-backend` ⚠️ **CRITICAL - Set this first!**
    - **Build Command**: (leave empty - auto-detected)
+   
+3. **Configure Start Command**:
+   - Still in **Settings**, go to **"Deploy"** section
    - **Start Command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - ⚠️ **Important**: Don't include `cd finq-backend` - Root Directory handles that
 
 **Note**: If branch dropdown is empty:
 - Make sure your branch is pushed to GitHub: `git push origin feature/nexus5.1_c_test`
