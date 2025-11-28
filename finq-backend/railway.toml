@@ -9,6 +9,6 @@ watchPatterns = ["finq-backend/**"]
 
 [deploy]
 # Start command for the application
-startCommand = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 
 
