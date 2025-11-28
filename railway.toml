@@ -7,8 +7,10 @@
 root = "finq-backend"
 # Watch paths for triggering redeployments (optional - monitors changes)
 watchPatterns = ["finq-backend/**"]
+# Ensure we use the correct requirements.txt
+buildCommand = "pip install -r requirements.txt"
 
 [deploy]
 # Start command for the application
-startCommand = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+startCommand = "/app/.venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
 
