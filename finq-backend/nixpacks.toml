@@ -7,7 +7,7 @@ nixPkgs = ["python312", "pip"]
 [phases.install]
 cmds = [
   "python -m pip install --upgrade pip",
-  "/app/.venv/bin/pip install -r /app/requirements.txt"
+  "pip install -r requirements.txt"
 ]
 
 [start]
