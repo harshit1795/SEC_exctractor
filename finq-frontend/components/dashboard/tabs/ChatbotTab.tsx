@@ -190,13 +190,14 @@ export function ChatbotTab({ ticker }: ChatbotTabProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Prevent duplicate submissions
     if (!input.trim() || isLoading) return;
 
     const userMessage: Message = { role: 'user', content: input };
     setMessages((prev) => [...prev, userMessage]);
     const question = input;
     setInput('');
-    setIsLoading(true);
+    setIsLoading(true); // Set loading immediately to prevent duplicate clicks
 
     try {
       // Build context data
@@ -254,7 +255,10 @@ export function ChatbotTab({ ticker }: ChatbotTabProps) {
         const status = error.response.status;
         const detail = error.response.data?.detail || error.response.data?.message;
         
-        if (status === 401 || status === 500) {
+        if (status === 429) {
+          // Rate limit error - provide helpful message
+          errorContent = `⏱️ Rate Limit Exceeded: ${detail || 'Too many requests. Please wait a minute before trying again. The system will automatically retry with backoff.'}`;
+        } else if (status === 401 || status === 500) {
           errorContent = `⚠️ Configuration Error: ${detail || 'AI service is not properly configured.'}`;
         } else if (status === 422) {
           errorContent = `Validation Error: ${detail || 'Invalid request format.'}`;
