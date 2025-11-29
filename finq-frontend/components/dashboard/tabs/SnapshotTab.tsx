@@ -77,7 +77,7 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
     isInitializing.current = true;
     lastCategory.current = category;
     
-    const savedMetrics = getMetricsForCategory(category);
+    const savedMetrics = getMetricsForCategory(ticker, category);
     
     // Filter saved metrics to only include those available in current data
     const validSavedMetrics = savedMetrics.filter((m: string) => (allMetrics as string[]).includes(m));
@@ -90,14 +90,14 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
       const defaultMetrics = allMetrics.slice(0, 10);
       setSelectedMetrics(defaultMetrics);
       // Save defaults, but mark as initializing to prevent loop
-      setMetricsForCategory(category, defaultMetrics);
+      setMetricsForCategory(ticker, category, defaultMetrics);
     }
     
     // Reset initialization flag after a brief delay
     setTimeout(() => {
       isInitializing.current = false;
     }, 100);
-  }, [category, allMetrics, getMetricsForCategory, setMetricsForCategory]);
+  }, [ticker, category, allMetrics, getMetricsForCategory, setMetricsForCategory]);
 
   // Auto-save preferences when selections change (but not during initialization)
   // Note: Manual save button is also available for explicit user control
@@ -111,10 +111,10 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
       const validMetrics = selectedMetrics.filter((m: string) => (allMetrics as string[]).includes(m));
       if (validMetrics.length > 0 && category === lastCategory.current) {
         // Auto-save silently (user can also use manual save button)
-        setMetricsForCategory(category, validMetrics);
+        setMetricsForCategory(ticker, category, validMetrics);
       }
     }
-  }, [selectedMetrics, category, allMetrics, setMetricsForCategory]);
+  }, [ticker, selectedMetrics, category, allMetrics, setMetricsForCategory]);
 
   // Helper function to parse period for sorting
   const parsePeriod = (period: string): [number, number] => {
@@ -259,7 +259,7 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
                 onClick={() => {
                   if (selectedMetrics.length > 0) {
                     setSaveStatus('saving');
-                    setMetricsForCategory(category, selectedMetrics);
+                    setMetricsForCategory(ticker, category, selectedMetrics);
                     setTimeout(() => {
                       setSaveStatus('saved');
                       setTimeout(() => setSaveStatus('idle'), 2000);
@@ -273,16 +273,16 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
                   <>💾 Saving...</>
                 ) : saveStatus === 'saved' ? (
                   <>✅ Saved</>
-                ) : hasPreferencesForCategory(category) ? (
+                ) : hasPreferencesForCategory(ticker, category) ? (
                   <>💾 Update Preference</>
                 ) : (
                   <>💾 Save Preference</>
                 )}
               </button>
-              {hasPreferencesForCategory(category) && (
+              {hasPreferencesForCategory(ticker, category) && (
                 <button
                   onClick={() => {
-                    clearCategory(category);
+                    clearCategory(ticker, category);
                     setSelectedMetrics([]);
                     setSaveStatus('cleared');
                     setTimeout(() => setSaveStatus('idle'), 2000);
@@ -294,7 +294,7 @@ export function SnapshotTab({ ticker, category }: SnapshotTabProps) {
               )}
             </div>
           </div>
-          {hasPreferencesForCategory(category) && saveStatus === 'idle' && (
+          {hasPreferencesForCategory(ticker, category) && saveStatus === 'idle' && (
             <div className="rounded-md bg-green-50 border border-green-200 px-3 py-2 text-sm text-green-800">
               ✓ Preferences saved for this category
             </div>
