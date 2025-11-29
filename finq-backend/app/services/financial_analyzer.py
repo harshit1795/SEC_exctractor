@@ -5,9 +5,12 @@ Migrated from Streamlit chatbot_tab.py
 AI-powered financial analysis using Google Gemini
 """
 import logging
+import asyncio
+import time
 from typing import Dict, Any, Optional
 import google.generativeai as genai
 from app.config import settings
+from app.services.rate_limiter import get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +32,8 @@ class FinancialAnalyzer:
         
         genai.configure(api_key=self.api_key)
         self.model = genai.GenerativeModel('models/gemini-flash-latest')
+        # Initialize rate limiter (15 requests per minute - conservative limit)
+        self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
     
     async def analyze_financial_data(
         self, 
@@ -49,11 +54,37 @@ class FinancialAnalyzer:
         user_prompt = self._build_user_prompt(user_question, context_data)
         
         try:
+            # Acquire rate limit permission before making request
+            await self.rate_limiter.acquire()
+            
             logger.info(f"Generating AI response for prompt length: {len(user_prompt)}")
             full_prompt = f"{system_prompt}\n\n{user_prompt}"
             logger.debug(f"Full prompt length: {len(full_prompt)}")
             
-            response = self.model.generate_content(full_prompt)
+            # Retry logic for rate limit errors
+            max_retries = 3
+            retry_delay = 2  # Start with 2 seconds
+            response = None
+            
+            for attempt in range(max_retries):
+                try:
+                    response = self.model.generate_content(full_prompt)
+                    break  # Success, exit retry loop
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_rate_limit = '429' in error_str or 'rate limit' in error_str or 'quota' in error_str or 'quota exceeded' in error_str
+                    
+                    if is_rate_limit and attempt < max_retries - 1:
+                        # Exponential backoff: 2s, 4s, 8s
+                        wait_time = retry_delay * (2 ** attempt)
+                        logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s before retry...")
+                        await asyncio.sleep(wait_time)
+                        # Also wait for rate limiter window
+                        await self.rate_limiter.acquire()
+                        continue
+                    else:
+                        # Not a rate limit error, or out of retries - re-raise
+                        raise
             
             if not response:
                 logger.warning("No response object returned from Gemini API")

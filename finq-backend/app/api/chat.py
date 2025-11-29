@@ -290,9 +290,17 @@ async def analyze_financial_data(
             logger.info(f"Successfully generated response of length: {len(response_text)}")
         except Exception as e:
             logger.error(f"Error generating AI response: {e}", exc_info=True)
-            # Check if it's an API key issue
+            # Check if it's a rate limit error
             error_msg = str(e).lower()
-            if 'api key' in error_msg or 'authentication' in error_msg or 'invalid' in error_msg or 'permission' in error_msg or '403' in error_msg or '401' in error_msg:
+            is_rate_limit = '429' in error_msg or 'rate limit' in error_msg or 'quota' in error_msg or 'quota exceeded' in error_msg
+            
+            if is_rate_limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Rate limit exceeded: Google Gemini API quota has been reached. Please wait a minute before trying again. If this persists, you may need to request a higher quota limit from Google Cloud Console."
+                )
+            # Check if it's an API key issue
+            elif 'api key' in error_msg or 'authentication' in error_msg or 'invalid' in error_msg or 'permission' in error_msg or '403' in error_msg or '401' in error_msg:
                 raise HTTPException(
                     status_code=401,
                     detail=f"Google API authentication failed: {str(e)}. Please check your GEMINI_API_KEY in the backend .env file."
