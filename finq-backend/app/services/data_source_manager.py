@@ -381,7 +381,9 @@ class DataSourceManager:
         
         try:
             # Try multiple possible paths
+            # Railway runs from finq-backend/, so check current directory first
             possible_paths = [
+                Path("fundamentals_tall.parquet"),  # Current directory (finq-backend/)
                 Path(settings.fundamentals_path),
                 Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
                 Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
