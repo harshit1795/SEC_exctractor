@@ -88,18 +88,34 @@ export default function DashboardPage() {
           <div className="lg:col-span-3">
             {selectedTicker ? (
               <>
-                <div className="mb-4 flex items-center justify-between">
-                  <div>
-                    {dataStatus?.latest_period && (
-                      <p className="text-sm text-gray-500">
-                        Latest data: <span className="font-medium">{dataStatus.latest_period}</span>
-                      </p>
-                    )}
+                <div className="mb-4">
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-blue-900 mb-1">
+                          📊 Data Pipeline Management
+                        </h3>
+                        <p className="text-xs text-blue-700 mb-3">
+                          Update quarterly financial data from Yahoo Finance. Real-time data (prices, FRED, SEC filings) is always current.
+                        </p>
+                        {dataStatus?.latest_period && (
+                          <p className="text-xs text-blue-600">
+                            Current data: <span className="font-medium">{dataStatus.latest_period}</span>
+                            {dataStatus.total_records && (
+                              <> • {dataStatus.total_records.toLocaleString()} records</>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3">
+                      <DataUpdateButton
+                        ticker={selectedTicker}
+                        onUpdateComplete={handleDataUpdate}
+                        showUpdateAll={true}
+                      />
+                    </div>
                   </div>
-                  <DataUpdateButton
-                    ticker={selectedTicker}
-                    onUpdateComplete={handleDataUpdate}
-                  />
                 </div>
                 <CompanyHeader ticker={selectedTicker} />
                 <TabNavigation
