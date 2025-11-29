@@ -22,9 +22,11 @@ class DataPipeline:
     def _find_fundamentals_file(self) -> Optional[Path]:
         """Find the fundamentals parquet file"""
         # Railway runs from finq-backend/, so check current directory first
+        # Priority: Railway volume > env var > current directory > project root
         possible_paths = [
+            Path("/data/fundamentals_tall.parquet"),  # Railway volume (persistent)
+            Path(settings.fundamentals_path),  # From environment variable
             Path("fundamentals_tall.parquet"),  # Current directory (finq-backend/)
-            Path(settings.fundamentals_path),
             Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
             Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
             Path("../fundamentals_tall.parquet"),
@@ -202,10 +204,30 @@ class DataPipeline:
             
             # Save updated data
             if not self.fundamentals_path:
-                # Create new file in project root
-                self.fundamentals_path = Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet"
+                # Try to find or create file in appropriate location
+                # Priority: Railway volume > current directory > project root
+                possible_paths = [
+                    Path("/data/fundamentals_tall.parquet"),  # Railway volume
+                    Path("fundamentals_tall.parquet"),  # Current directory
+                    Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
+                ]
+                
+                for path in possible_paths:
+                    # Use first path that exists (for parent directory) or current directory
+                    if path.parent.exists() or path == Path("fundamentals_tall.parquet"):
+                        self.fundamentals_path = path
+                        break
+                
+                # Fallback to current directory if nothing found
+                if not self.fundamentals_path:
+                    self.fundamentals_path = Path("fundamentals_tall.parquet")
             
+            # Ensure parent directory exists
+            self.fundamentals_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Save the updated data
             updated_df.to_parquet(self.fundamentals_path, index=False)
+            logger.info(f"Saved {len(updated_df):,} records to {self.fundamentals_path}")
             
             new_count = len(new_data)
             total_count = len(updated_df)

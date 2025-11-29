@@ -1,0 +1,66 @@
+name: Monthly Data Pipeline Update
+
+on:
+  schedule:
+    # Run on 1st of every month at 2 AM UTC
+    - cron: '0 2 1 * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub UI
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Timeout after 30 minutes
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+      
+      - name: Install dependencies
+        working-directory: finq-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Trigger Railway API Update
+        env:
+          RAILWAY_API_URL: ${{ secrets.RAILWAY_API_URL }}
+        run: |
+          echo "Triggering data update on Railway..."
+          response=$(curl -X POST "${RAILWAY_API_URL}/api/data-pipeline/update-latest" \
+            -H "Content-Type: application/json" \
+            -w "\nHTTP_STATUS:%{http_code}" \
+            -s)
+          
+          http_status=$(echo "$response" | grep "HTTP_STATUS" | cut -d: -f2)
+          body=$(echo "$response" | sed '/HTTP_STATUS/d')
+          
+          echo "Response status: $http_status"
+          echo "Response body: $body"
+          
+          if [ "$http_status" -ge 400 ]; then
+            echo "Update failed with status $http_status"
+            exit 1
+          fi
+          
+          echo "Update triggered successfully"
+      
+      - name: Verify Update Status
+        env:
+          RAILWAY_API_URL: ${{ secrets.RAILWAY_API_URL }}
+        run: |
+          echo "Checking data status..."
+          sleep 5  # Wait a bit for update to start
+          curl -s "${RAILWAY_API_URL}/api/data-pipeline/status" | jq '.'
+      
+      - name: Notify on Failure
+        if: failure()
+        run: |
+          echo "Monthly data update failed!"
+          # Add notification here (email, Slack, etc.)
+          # Example: curl -X POST $SLACK_WEBHOOK_URL -d '{"text":"Monthly data update failed"}'
+
