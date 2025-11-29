@@ -764,7 +764,7 @@ async def get_user_directory(
 @router.get("/users/{target_user_id}/profile")
 async def get_user_profile(
     target_user_id: str,
-    user_id: str = Query(..., description="Current user ID (Firebase UID)"),  # Required - must be provided from frontend
+    user_id: str = Query(default="anonymous", description="Current user ID (Firebase UID)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -918,7 +918,7 @@ async def initialize_user_profile(
 @router.get("/users/{target_user_id}/profile/preferences", response_model=UserProfileResponse)
 async def get_user_profile_preferences(
     target_user_id: str,
-    user_id: str = Query(..., description="Current user ID (Firebase UID)"),  # Required - must be provided from frontend
+    user_id: str = Query(default="anonymous", description="Current user ID (Firebase UID)"),
     db: Session = Depends(get_db)
 ):
     """

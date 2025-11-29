@@ -362,9 +362,27 @@ async def get_fundamentals(
         df = await manager.get_fundamentals_data(ticker.upper())
         
         if df.empty:
+            # Check if it's a file not found issue
+            from pathlib import Path
+            from app.config import settings
+            possible_paths = [
+                Path(settings.fundamentals_path),
+                Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
+                Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
+                Path("../fundamentals_tall.parquet"),
+            ]
+            file_found = any(p.exists() for p in possible_paths)
+            
+            if not file_found:
+                logger.error(f"Fundamentals file not found. Tried paths: {possible_paths}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Fundamentals data file not found on server. Please check FUNDAMENTALS_PATH environment variable."
+                )
+            
             raise HTTPException(
                 status_code=404,
-                detail=f"No fundamentals data found for ticker {ticker}"
+                detail=f"No fundamentals data found for ticker {ticker}. The file exists but contains no data for this ticker."
             )
         
         data_list = _dataframe_to_dict(df)
@@ -376,7 +394,7 @@ async def get_fundamentals(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching fundamentals for {ticker}: {e}")
+        logger.error(f"Error fetching fundamentals for {ticker}: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Error fetching fundamentals: {str(e)}"
