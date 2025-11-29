@@ -74,14 +74,16 @@ export default function LoginPage() {
               Firebase configuration is missing. Please set up your environment variables.
             </p>
             <div className="mt-6 rounded-lg bg-gray-100 p-4 text-left">
-              <p className="mb-2 font-semibold text-gray-900">Steps to fix:</p>
+              <p className="mb-2 font-semibold text-gray-900">For Vercel Deployment:</p>
               <ol className="list-decimal space-y-2 pl-5 text-sm text-gray-700">
-                <li>Create <code className="rounded bg-gray-200 px-1">finq-frontend/.env.local</code></li>
-                <li>Add your Firebase config from Firebase Console</li>
-                <li>Restart the dev server: <code className="rounded bg-gray-200 px-1">npm run dev</code></li>
+                <li>Go to Vercel → Your Project → <strong>Settings → Environment Variables</strong></li>
+                <li>Add all 7 Firebase variables (NEXT_PUBLIC_FIREBASE_*)</li>
+                <li>Select <strong>Production, Preview, and Development</strong> for each</li>
+                <li><strong>Redeploy</strong> your application (Deployments → Redeploy)</li>
+                <li>Environment variables are embedded at build time, so redeploy is required!</li>
               </ol>
               <p className="mt-4 text-xs text-gray-600">
-                See <code className="rounded bg-gray-200 px-1">QUICK_START.md</code> for details.
+                For local development, see <code className="rounded bg-gray-200 px-1">QUICK_START.md</code>
               </p>
             </div>
           </div>

@@ -1,0 +1,7 @@
+{
+  "buildCommand": "echo 'Backend should be deployed on Railway, not Vercel'",
+  "outputDirectory": ".",
+  "framework": null,
+  "installCommand": "echo 'Backend should be deployed on Railway, not Vercel'"
+}
+

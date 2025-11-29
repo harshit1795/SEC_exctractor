@@ -1,0 +1,14 @@
+# Railway configuration file
+# This file tells Railway how to build and deploy your application
+
+[build]
+# Root directory for the build (relative to repo root)
+root = "finq-backend"
+# Watch paths for triggering redeployments
+watchPatterns = ["finq-backend/**"]
+
+[deploy]
+# Start command for the application
+startCommand = "python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+
+
