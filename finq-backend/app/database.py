@@ -16,12 +16,23 @@ if settings.database_url.startswith("sqlite"):
     )
 else:
     # PostgreSQL or other databases
+    # Add connection arguments to help with IPv6/IPv4 and network issues
+    connect_args = {}
+    
+    # Parse connection string to add parameters if not present
+    db_url = settings.database_url
+    if '?' not in db_url:
+        # Add connection parameters to help with Railway network issues
+        separator = '&' if '?' in db_url else '?'
+        db_url = f"{db_url}{separator}connect_timeout=10&sslmode=require"
+    
     engine = create_engine(
-        settings.database_url,
+        db_url,
         pool_pre_ping=True,  # Verify connections before using
         pool_size=10,
         max_overflow=20,
         echo=settings.debug,
+        connect_args=connect_args,
     )
 
 # Create session factory
