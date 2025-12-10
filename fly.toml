@@ -1,0 +1,37 @@
+# Fly.io Configuration
+# This file configures your Fly.io deployment
+# Run: fly launch (to create app) or fly deploy (to deploy)
+
+app = "finq-backend"  # Your app name (will be created on first launch)
+primary_region = "iad"  # US East (Virginia) - change to closest region
+
+[build]
+  # Build command (optional - Fly can auto-detect)
+  # build = "pip install -r requirements.txt"
+
+[env]
+  # Environment variables can be set via: fly secrets set KEY=value
+  # Or in fly.toml (less secure, use secrets for sensitive data)
+  APP_NAME = "FinQ Backend API"
+  API_PREFIX = "/api"
+  DEBUG = "false"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  auto_stop_machines = false  # Keep machines running (always-on)
+  auto_start_machines = true
+  min_machines_running = 1  # Always keep at least 1 machine running
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    timeout = "5s"
+    path = "/api/health"
+
+[[vm]]
+  memory_mb = 512  # Free tier: 256MB shared, but 512MB is still free for small apps
+  cpu_kind = "shared"  # Free tier uses shared CPU
+
