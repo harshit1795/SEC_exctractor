@@ -1,0 +1,43 @@
+# Render Blueprint Configuration
+# This file defines your services for Render deployment
+# Documentation: https://render.com/docs/blueprint-spec
+
+services:
+  # FinQ Backend API Service
+  - type: web
+    name: finq-backend
+    env: python
+    region: oregon  # Options: oregon, frankfurt, singapore, mumbai, tokyo
+    plan: free  # Options: free, starter ($7/mo), standard ($25/mo)
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: finq-backend
+    envVars:
+      # Database - Set this in Render Dashboard after deployment
+      - key: DATABASE_URL
+        sync: false  # Set manually in Render Dashboard
+      
+      # API Keys - Set these in Render Dashboard
+      - key: GEMINI_API_KEY
+        sync: false  # Set manually in Render Dashboard
+      
+      # CORS Origins - Add your Vercel URLs here
+      - key: CORS_ORIGINS
+        value: https://sec-exctractor.vercel.app,https://sec-exctractor-git-*.vercel.app,https://sec-exctractor-*.vercel.app
+      
+      # Optional: Firebase (if needed)
+      - key: FIREBASE_CREDENTIALS_B64
+        sync: false  # Set manually if needed
+      
+      # App Configuration
+      - key: APP_NAME
+        value: FinQ Backend API
+      - key: API_PREFIX
+        value: /api
+      - key: DEBUG
+        value: false
+      
+      # Health check
+      - key: HEALTH_CHECK_PATH
+        value: /api/health
+
