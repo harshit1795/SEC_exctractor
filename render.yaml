@@ -23,7 +23,7 @@ services:
       
       # CORS Origins - Add your Vercel URLs here
       - key: CORS_ORIGINS
-        value: https://sec-exctractor.vercel.app,https://sec-exctractor-git-*.vercel.app,https://sec-exctractor-*.vercel.app
+        value: https://sec-extractor-render.vercel.app,https://sec-extractor-render-*.vercel.app,https://sec-extractor-render-*.vercel.app
       
       # Optional: Firebase (if needed)
       - key: FIREBASE_CREDENTIALS_B64
