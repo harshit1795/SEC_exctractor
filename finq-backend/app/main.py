@@ -6,6 +6,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.api import financial, chat, health, nexus, insights, media, websocket, data_pipeline, health_scores
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -35,6 +38,41 @@ app.include_router(media.router, prefix=settings.api_prefix, tags=["media"])
 app.include_router(websocket.router, prefix=settings.api_prefix, tags=["websocket"])
 app.include_router(data_pipeline.router, prefix=settings.api_prefix, tags=["data-pipeline"])
 app.include_router(health_scores.router, prefix=settings.api_prefix, tags=["health-scores"])
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Run database migrations on startup"""
+    try:
+        from alembic.config import Config
+        from alembic import command
+        import os
+        
+        # Only run migrations if not SQLite (SQLite doesn't need migrations in production)
+        if not settings.database_url.startswith("sqlite"):
+            # Find alembic.ini - Render uses rootDir: finq-backend, so we're already in that directory
+            alembic_path = None
+            if os.path.exists("alembic.ini"):
+                alembic_path = "alembic.ini"
+            elif os.path.exists("../alembic.ini"):
+                alembic_path = "../alembic.ini"
+            elif os.path.exists("finq-backend/alembic.ini"):
+                alembic_path = "finq-backend/alembic.ini"
+            
+            if not alembic_path:
+                logger.warning("⚠️ alembic.ini not found, skipping migrations")
+                return
+            
+            logger.info(f"🔄 Running database migrations from {alembic_path}...")
+            alembic_cfg = Config(alembic_path)
+            command.upgrade(alembic_cfg, "head")
+            logger.info("✅ Database migrations completed successfully")
+        else:
+            logger.info("ℹ️ Using SQLite, skipping migrations")
+    except Exception as e:
+        logger.error(f"❌ Migration failed: {e}")
+        # Don't crash the app, but log the error
+        # In production, you might want to raise here
 
 
 @app.get("/")
