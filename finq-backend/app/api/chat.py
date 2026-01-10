@@ -61,9 +61,18 @@ def _clean_dict_for_storage(d: dict) -> dict:
             clean_key = str(k)
         
         # Convert value - handle pandas objects first
-        # Check for NaN first
-        if pd.isna(v) or (isinstance(v, float) and np.isnan(v)):
+        # Check for NaN first (only for scalar values to avoid ambiguity)
+        if isinstance(v, float) and np.isnan(v):
             clean[clean_key] = None
+        elif isinstance(v, (pd.Timestamp, datetime)):
+            try:
+                if pd.isna(v):
+                    clean[clean_key] = None
+                else:
+                    clean[clean_key] = v.isoformat() if hasattr(v, 'isoformat') else str(v)
+            except (ValueError, TypeError):
+                # pd.isna() failed, use value as-is
+                clean[clean_key] = v.isoformat() if hasattr(v, 'isoformat') else str(v)
         elif isinstance(v, pd.DataFrame):
             # Reset index if it contains Timestamps, then convert to records
             if isinstance(v.index, pd.DatetimeIndex):
@@ -94,31 +103,60 @@ def _clean_value(val):
     import numpy as np
     from datetime import datetime
     
-    # Convert NaN/NaT to None (becomes null in JSON)
-    if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
-        return None
-    
-    if isinstance(val, (pd.Timestamp, datetime)):
-        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
-    elif isinstance(val, pd.DataFrame):
+    # Handle pandas/numpy arrays and DataFrames first
+    if isinstance(val, pd.DataFrame):
         if isinstance(val.index, pd.DatetimeIndex):
             val = val.reset_index()
         # Convert DataFrame to dict, replacing NaN with None
         records = val.to_dict(orient='records')
-        return [{k: (None if pd.isna(v) else v) for k, v in record.items()} for record in records]
+        cleaned_records = []
+        for record in records:
+            cleaned_record = {}
+            for k, v in record.items():
+                # Safe NaN check - only for scalar values
+                if isinstance(v, float) and np.isnan(v):
+                    cleaned_record[k] = None
+                elif isinstance(v, (int, str, bool, type(None))):
+                    cleaned_record[k] = v
+                else:
+                    # For other types, try pd.isna() with error handling
+                    try:
+                        if pd.isna(v):
+                            cleaned_record[k] = None
+                        else:
+                            cleaned_record[k] = v
+                    except (ValueError, TypeError):
+                        # pd.isna() failed (likely array), clean recursively
+                        cleaned_record[k] = _clean_value(v)
+            cleaned_records.append(cleaned_record)
+        return cleaned_records
     elif isinstance(val, pd.Series):
         if isinstance(val.index, pd.DatetimeIndex):
-            return {str(idx): (None if pd.isna(v) else _clean_value(v)) for idx, v in val.items()}
-        return {str(k): (None if pd.isna(v) else _clean_value(v)) for k, v in val.to_dict().items()}
+            return {str(idx): _clean_value(v) for idx, v in val.items()}
+        return {str(k): _clean_value(v) for k, v in val.to_dict().items()}
+    elif isinstance(val, np.ndarray):
+        # Convert numpy array to list
+        return [_clean_value(item) for item in val.tolist()]
+    elif isinstance(val, (pd.Timestamp, datetime)):
+        # Check for NaT (Not a Time) - use try/except to handle ambiguity
+        try:
+            if pd.isna(val):
+                return None
+        except (ValueError, TypeError):
+            # pd.isna() failed, assume valid
+            pass
+        return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+    elif isinstance(val, float):
+        # Check for NaN/Inf in scalar float values
+        if np.isnan(val) or np.isinf(val):
+            return None
+        return val
+    elif isinstance(val, (int, str, bool, type(None))):
+        return val
     elif isinstance(val, dict):
         return _clean_dict_for_storage(val)
     elif isinstance(val, list):
         return [_clean_value(item) for item in val]
-    elif isinstance(val, (int, float, str, bool, type(None))):
-        # Check for NaN in float values
-        if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
-            return None
-        return val
     else:
         # Try to serialize, fallback to string
         try:
@@ -142,29 +180,72 @@ def _clean_context_for_storage(context: dict) -> dict:
     
     def convert_value(val):
         """Recursively convert non-serializable values"""
-        # Convert NaN/NaT to None (becomes null in JSON)
-        if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
-            return None
-        
-        if isinstance(val, (pd.Timestamp, datetime)):
+        # Handle arrays first to avoid ambiguity errors
+        if isinstance(val, (pd.Series, pd.DataFrame, np.ndarray)):
+            # Don't check pd.isna() on arrays directly
+            pass
+        elif isinstance(val, (pd.Timestamp, datetime)):
+            # Check for NaT (Not a Time)
+            try:
+                if pd.isna(val):
+                    return None
+            except (ValueError, TypeError):
+                # If pd.isna() fails (array-like), skip the check
+                pass
             return val.isoformat() if hasattr(val, 'isoformat') else str(val)
+        elif isinstance(val, (int, float)):
+            # Check for NaN/Inf in scalar values
+            if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
+                return None
+            return val
+        elif isinstance(val, (str, bool, type(None))):
+            return val
         elif isinstance(val, pd.DataFrame):
             # Convert DataFrame to list of dicts, replacing NaN with None
             records = val.to_dict(orient='records')
-            return [{k: (None if pd.isna(v) else _clean_dict({k: v})[k]) for k, v in record.items()} for record in records]
+            cleaned_records = []
+            for record in records:
+                cleaned_record = {}
+                for k, v in record.items():
+                    # Safe NaN check - only for scalar values
+                    if isinstance(v, float) and np.isnan(v):
+                        cleaned_record[k] = None
+                    elif isinstance(v, (int, float, str, bool, type(None))):
+                        try:
+                            if pd.isna(v):
+                                cleaned_record[k] = None
+                            else:
+                                cleaned_record[k] = v
+                        except (ValueError, TypeError):
+                            # pd.isna() failed (likely array), use value as-is
+                            cleaned_record[k] = v
+                    else:
+                        cleaned_record[k] = convert_value(v)
+                cleaned_records.append(cleaned_record)
+            return cleaned_records
         elif isinstance(val, pd.Series):
             # Convert Series to dict, replacing NaN with None
             series_dict = val.to_dict()
-            return {str(k): (None if pd.isna(v) else convert_value(v)) for k, v in series_dict.items()}
+            cleaned_dict = {}
+            for k, v in series_dict.items():
+                # Safe NaN check
+                if isinstance(v, float) and np.isnan(v):
+                    cleaned_dict[str(k)] = None
+                elif isinstance(v, (int, float, str, bool, type(None))):
+                    try:
+                        if pd.isna(v):
+                            cleaned_dict[str(k)] = None
+                        else:
+                            cleaned_dict[str(k)] = convert_value(v)
+                    except (ValueError, TypeError):
+                        cleaned_dict[str(k)] = convert_value(v)
+                else:
+                    cleaned_dict[str(k)] = convert_value(v)
+            return cleaned_dict
         elif isinstance(val, dict):
             return _clean_dict(val)
         elif isinstance(val, list):
             return [convert_value(item) for item in val]
-        elif isinstance(val, (int, float, str, bool, type(None))):
-            # Check for NaN in float values
-            if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
-                return None
-            return val
         else:
             # Try to serialize, fallback to string
             try:
@@ -185,11 +266,22 @@ def _clean_context_for_storage(context: dict) -> dict:
             else:
                 clean_key = str(k)
             
-            # Convert value, handling NaN
-            if pd.isna(v) or (isinstance(v, float) and np.isnan(v)):
+            # Convert value, handling NaN safely
+            if isinstance(v, float) and np.isnan(v):
                 clean[clean_key] = None
-            else:
+            elif isinstance(v, (pd.Series, pd.DataFrame, np.ndarray)):
+                # Handle arrays/DataFrames separately to avoid ambiguity
                 clean[clean_key] = convert_value(v)
+            else:
+                # For scalar values, try pd.isna() with error handling
+                try:
+                    if pd.isna(v):
+                        clean[clean_key] = None
+                    else:
+                        clean[clean_key] = convert_value(v)
+                except (ValueError, TypeError):
+                    # pd.isna() failed (likely array-like), use convert_value
+                    clean[clean_key] = convert_value(v)
         return clean
     
     return _clean_dict(context)
