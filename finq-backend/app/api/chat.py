@@ -47,6 +47,7 @@ def get_data_manager() -> DataSourceManager:
 def _clean_dict_for_storage(d: dict) -> dict:
     """Helper to clean a single dict, handling Timestamp keys and pandas objects"""
     import pandas as pd
+    import numpy as np
     from datetime import datetime
     
     clean = {}
@@ -60,17 +61,22 @@ def _clean_dict_for_storage(d: dict) -> dict:
             clean_key = str(k)
         
         # Convert value - handle pandas objects first
-        if isinstance(v, pd.DataFrame):
+        # Check for NaN first
+        if pd.isna(v) or (isinstance(v, float) and np.isnan(v)):
+            clean[clean_key] = None
+        elif isinstance(v, pd.DataFrame):
             # Reset index if it contains Timestamps, then convert to records
             if isinstance(v.index, pd.DatetimeIndex):
                 v = v.reset_index()
-            clean[clean_key] = v.to_dict(orient='records')
+            # Convert to dict, replacing NaN with None
+            records = v.to_dict(orient='records')
+            clean[clean_key] = [{k: (None if pd.isna(v) else v) for k, v in record.items()} for record in records]
         elif isinstance(v, pd.Series):
-            # Convert Series, handling Timestamp index
+            # Convert Series, handling Timestamp index and NaN values
             if isinstance(v.index, pd.DatetimeIndex):
-                clean[clean_key] = {str(idx): _clean_value(val) for idx, val in v.items()}
+                clean[clean_key] = {str(idx): (None if pd.isna(val) else _clean_value(val)) for idx, val in v.items()}
             else:
-                clean[clean_key] = {str(k): _clean_value(v) for k, v in v.to_dict().items()}
+                clean[clean_key] = {str(k): (None if pd.isna(v) else _clean_value(v)) for k, v in v.to_dict().items()}
         elif isinstance(v, dict):
             clean[clean_key] = _clean_dict_for_storage(v)
         elif isinstance(v, (pd.Timestamp, datetime)):
@@ -85,23 +91,33 @@ def _clean_dict_for_storage(d: dict) -> dict:
 def _clean_value(val):
     """Clean a single value, handling nested structures"""
     import pandas as pd
+    import numpy as np
     from datetime import datetime
+    
+    # Convert NaN/NaT to None (becomes null in JSON)
+    if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
+        return None
     
     if isinstance(val, (pd.Timestamp, datetime)):
         return val.isoformat() if hasattr(val, 'isoformat') else str(val)
     elif isinstance(val, pd.DataFrame):
         if isinstance(val.index, pd.DatetimeIndex):
             val = val.reset_index()
-        return val.to_dict(orient='records')
+        # Convert DataFrame to dict, replacing NaN with None
+        records = val.to_dict(orient='records')
+        return [{k: (None if pd.isna(v) else v) for k, v in record.items()} for record in records]
     elif isinstance(val, pd.Series):
         if isinstance(val.index, pd.DatetimeIndex):
-            return {str(idx): _clean_value(v) for idx, v in val.items()}
-        return {str(k): _clean_value(v) for k, v in val.to_dict().items()}
+            return {str(idx): (None if pd.isna(v) else _clean_value(v)) for idx, v in val.items()}
+        return {str(k): (None if pd.isna(v) else _clean_value(v)) for k, v in val.to_dict().items()}
     elif isinstance(val, dict):
         return _clean_dict_for_storage(val)
     elif isinstance(val, list):
         return [_clean_value(item) for item in val]
     elif isinstance(val, (int, float, str, bool, type(None))):
+        # Check for NaN in float values
+        if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
+            return None
         return val
     else:
         # Try to serialize, fallback to string
@@ -117,27 +133,37 @@ def _clean_context_for_storage(context: dict) -> dict:
     """
     Clean context data for JSON storage (remove non-serializable types)
     Handles Timestamps as keys, values, and in nested structures
+    Converts NaN values to None (null in JSON)
     """
     import pandas as pd
+    import numpy as np
     from datetime import datetime
     import json
     
     def convert_value(val):
         """Recursively convert non-serializable values"""
+        # Convert NaN/NaT to None (becomes null in JSON)
+        if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
+            return None
+        
         if isinstance(val, (pd.Timestamp, datetime)):
             return val.isoformat() if hasattr(val, 'isoformat') else str(val)
         elif isinstance(val, pd.DataFrame):
-            # Convert DataFrame to list of dicts, ensuring all values are serializable
+            # Convert DataFrame to list of dicts, replacing NaN with None
             records = val.to_dict(orient='records')
-            return [_clean_dict(item) for item in records]
+            return [{k: (None if pd.isna(v) else _clean_dict({k: v})[k]) for k, v in record.items()} for record in records]
         elif isinstance(val, pd.Series):
-            # Convert Series to dict, ensuring all values are serializable
-            return _clean_dict(val.to_dict())
+            # Convert Series to dict, replacing NaN with None
+            series_dict = val.to_dict()
+            return {str(k): (None if pd.isna(v) else convert_value(v)) for k, v in series_dict.items()}
         elif isinstance(val, dict):
             return _clean_dict(val)
         elif isinstance(val, list):
             return [convert_value(item) for item in val]
         elif isinstance(val, (int, float, str, bool, type(None))):
+            # Check for NaN in float values
+            if isinstance(val, float) and (np.isnan(val) or np.isinf(val)):
+                return None
             return val
         else:
             # Try to serialize, fallback to string
@@ -148,7 +174,7 @@ def _clean_context_for_storage(context: dict) -> dict:
                 return str(val)
     
     def _clean_dict(d):
-        """Clean a dictionary, handling Timestamp keys"""
+        """Clean a dictionary, handling Timestamp keys and NaN values"""
         clean = {}
         for k, v in d.items():
             # Convert key if it's a Timestamp
@@ -159,8 +185,11 @@ def _clean_context_for_storage(context: dict) -> dict:
             else:
                 clean_key = str(k)
             
-            # Convert value
-            clean[clean_key] = convert_value(v)
+            # Convert value, handling NaN
+            if pd.isna(v) or (isinstance(v, float) and np.isnan(v)):
+                clean[clean_key] = None
+            else:
+                clean[clean_key] = convert_value(v)
         return clean
     
     return _clean_dict(context)
