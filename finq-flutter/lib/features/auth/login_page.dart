@@ -97,6 +97,29 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                   onPressed: _isBusy || !firebaseReady ? null : _handleSubmit,
                   child: Text(_isLogin ? 'Sign In' : 'Sign Up'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _isBusy || !firebaseReady
+                      ? null
+                      : () async {
+                          setState(() {
+                            _errorMessage = null;
+                            _isBusy = true;
+                          });
+                          final result = await ref
+                              .read(authControllerProvider)
+                              .signInWithGoogle();
+                          if (!mounted) {
+                            return;
+                          }
+                          setState(() {
+                            _isBusy = false;
+                            _errorMessage = result.error;
+                          });
+                        },
+                  icon: const Icon(Icons.login),
+                  label: const Text('Continue with Google'),
+                ),
                 TextButton(
                   onPressed: _isBusy
                       ? null

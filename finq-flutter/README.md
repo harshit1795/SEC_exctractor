@@ -33,6 +33,7 @@ For a full setup walkthrough, see `docs/setup/FLUTTER_SETUP.md`.
 3) Add dependencies using `flutter pub add` (see list above).
 4) Configure Firebase using FlutterFire and generate platform configs.
 5) Enable Email/Password auth in Firebase Console.
+6) Enable Google provider if you want Google sign-in.
 
 Run the app
 -----------
@@ -56,6 +57,21 @@ flutter run -d chrome \
   --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id \
   --dart-define=FIREBASE_APP_ID=your_app_id \
   --dart-define=FIREBASE_MEASUREMENT_ID=your_measurement_id
+```
+
+Local secrets (recommended)
+---------------------------
+
+Create `finq-flutter/.dart-define.json` (ignored by git) from the example:
+
+```bash
+cp .dart-define.example.json .dart-define.json
+```
+
+Then run:
+
+```bash
+flutter run -d chrome --dart-define-from-file=.dart-define.json
 ```
 
 Once iOS/Android tooling is configured, you can run:

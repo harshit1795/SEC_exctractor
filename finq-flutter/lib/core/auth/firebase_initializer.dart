@@ -38,9 +38,10 @@ class FirebaseInitializer {
   }
 
   static bool _hasRequiredOptions(FirebaseOptions options) {
+    final hasAuthDomain = options.authDomain?.isNotEmpty ?? false;
     return options.apiKey.isNotEmpty &&
         options.appId.isNotEmpty &&
         options.projectId.isNotEmpty &&
-        options.authDomain.isNotEmpty;
+        hasAuthDomain;
   }
 }

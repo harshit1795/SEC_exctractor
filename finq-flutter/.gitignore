@@ -27,3 +27,8 @@ web/.dart_tool/
 
 # OS files
 .DS_Store
+
+# Local env files
+.env
+.env.*
+.dart-define.json

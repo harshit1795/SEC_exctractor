@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class AuthResult {
   AuthResult({this.user, this.error});
@@ -57,5 +59,35 @@ class AuthController {
       return;
     }
     await auth.signOut();
+  }
+
+  Future<AuthResult> signInWithGoogle() async {
+    final auth = _firebaseAuth;
+    if (auth == null) {
+      return AuthResult(error: 'Firebase not initialized');
+    }
+    try {
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider();
+        final credential = await auth.signInWithPopup(provider);
+        return AuthResult(user: credential.user);
+      }
+
+      final googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        return AuthResult(error: 'Google sign-in cancelled');
+      }
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      final userCredential = await auth.signInWithCredential(credential);
+      return AuthResult(user: userCredential.user);
+    } on FirebaseAuthException catch (error) {
+      return AuthResult(error: error.message ?? error.code);
+    } catch (error) {
+      return AuthResult(error: error.toString());
+    }
   }
 }

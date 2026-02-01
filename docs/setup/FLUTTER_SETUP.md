@@ -82,7 +82,17 @@ flutter run -d chrome \
   --dart-define=FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
+Recommended: keep secrets in a local file (ignored by git):
+
+```bash
+cd finq-flutter
+cp .dart-define.example.json .dart-define.json
+flutter run -d chrome --dart-define-from-file=.dart-define.json
+```
+
 In Firebase Console, enable **Authentication → Sign-in method → Email/Password**
 so the login screen can authenticate.
+
+If you want Google sign-in, enable **Google** in the same section.
 
 Optional: run on iOS/Android once emulators are configured.
