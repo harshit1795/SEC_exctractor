@@ -1,17 +1,45 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app_shell.dart';
+import '../../features/auth/auth_providers.dart';
+import '../../features/auth/login_page.dart';
 import '../../features/dashboard/dashboard_page.dart';
 import '../../features/health/health_page.dart';
 import '../../features/nexus/nexus_page.dart';
 import '../../features/settings/settings_page.dart';
 
-class AppRouter {
-  AppRouter._();
-
-  static final GoRouter router = GoRouter(
+final routerProvider = Provider<GoRouter>((ref) {
+  return GoRouter(
     initialLocation: '/',
+    refreshListenable: GoRouterRefreshStream(
+      ref.read(authStateStreamProvider),
+    ),
+    redirect: (context, state) {
+      final authState = ref.read(authStateProvider);
+      final isLoggingIn = state.matchedLocation == '/login';
+      final isLoading = authState.isLoading;
+      final isAuthenticated = authState.asData?.value ?? false;
+
+      if (isLoading) {
+        return isLoggingIn ? null : '/login';
+      }
+
+      if (!isAuthenticated && !isLoggingIn) {
+        return '/login';
+      }
+
+      if (isAuthenticated && isLoggingIn) {
+        return '/';
+      }
+
+      return null;
+    },
     routes: [
+      GoRoute(
+        path: '/login',
+        builder: (context, state) => const LoginPage(),
+      ),
       ShellRoute(
         builder: (context, state, child) => AppShell(
           child: child,
@@ -38,4 +66,4 @@ class AppRouter {
       ),
     ],
   );
-}
+});

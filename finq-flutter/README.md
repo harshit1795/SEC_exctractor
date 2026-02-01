@@ -32,6 +32,7 @@ For a full setup walkthrough, see `docs/setup/FLUTTER_SETUP.md`.
    `flutter create --platforms=android,ios,web .`
 3) Add dependencies using `flutter pub add` (see list above).
 4) Configure Firebase using FlutterFire and generate platform configs.
+5) Enable Email/Password auth in Firebase Console.
 
 Run the app
 -----------
@@ -41,6 +42,20 @@ From `finq-flutter/`:
 ```bash
 flutter pub get
 flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000/api
+```
+
+For web auth, pass Firebase config values:
+
+```bash
+flutter run -d chrome \
+  --dart-define=API_BASE_URL=http://localhost:8000/api \
+  --dart-define=FIREBASE_API_KEY=your_api_key \
+  --dart-define=FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com \
+  --dart-define=FIREBASE_PROJECT_ID=your_project_id \
+  --dart-define=FIREBASE_STORAGE_BUCKET=your_project.appspot.com \
+  --dart-define=FIREBASE_MESSAGING_SENDER_ID=your_sender_id \
+  --dart-define=FIREBASE_APP_ID=your_app_id \
+  --dart-define=FIREBASE_MEASUREMENT_ID=your_measurement_id
 ```
 
 Once iOS/Android tooling is configured, you can run:

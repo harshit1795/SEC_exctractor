@@ -1,16 +1,22 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 import 'auth_service.dart';
 
 class FirebaseAuthService implements AuthService {
   FirebaseAuthService({FirebaseAuth? firebaseAuth})
-      : _firebaseAuth = firebaseAuth ?? FirebaseAuth.instance;
+      : _firebaseAuth = firebaseAuth ??
+            (Firebase.apps.isNotEmpty ? FirebaseAuth.instance : null);
 
-  final FirebaseAuth _firebaseAuth;
+  final FirebaseAuth? _firebaseAuth;
 
   @override
   Future<String?> getIdToken() async {
-    final user = _firebaseAuth.currentUser;
+    final auth = _firebaseAuth;
+    if (auth == null) {
+      return null;
+    }
+    final user = auth.currentUser;
     if (user == null) {
       return null;
     }
@@ -19,6 +25,10 @@ class FirebaseAuthService implements AuthService {
 
   @override
   Stream<bool> authStateChanges() {
-    return _firebaseAuth.authStateChanges().map((user) => user != null);
+    final auth = _firebaseAuth;
+    if (auth == null) {
+      return Stream<bool>.value(false);
+    }
+    return auth.authStateChanges().map((user) => user != null);
   }
 }
