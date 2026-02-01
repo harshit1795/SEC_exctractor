@@ -5,4 +5,22 @@ class AppConfig {
     'API_BASE_URL',
     defaultValue: 'http://localhost:8000/api',
   );
+
+  static String websocketUrl({
+    required String path,
+    Map<String, String>? queryParameters,
+  }) {
+    final base = apiBaseUrl.startsWith('https://')
+        ? apiBaseUrl.replaceFirst('https://', 'wss://')
+        : apiBaseUrl.replaceFirst('http://', 'ws://');
+    final buffer = StringBuffer('$base$path');
+    if (queryParameters != null && queryParameters.isNotEmpty) {
+      buffer.write('?');
+      buffer.write(queryParameters.entries
+          .map((entry) =>
+              '${Uri.encodeQueryComponent(entry.key)}=${Uri.encodeQueryComponent(entry.value)}')
+          .join('&'));
+    }
+    return buffer.toString();
+  }
 }
