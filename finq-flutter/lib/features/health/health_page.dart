@@ -5,8 +5,8 @@ class HealthPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(
+    return const SafeArea(
+      child: Center(
         child: Text(
           'Financial Health Module',
           textAlign: TextAlign.center,

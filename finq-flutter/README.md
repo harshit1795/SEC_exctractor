@@ -33,6 +33,23 @@ For a full setup walkthrough, see `docs/setup/FLUTTER_SETUP.md`.
 3) Add dependencies using `flutter pub add` (see list above).
 4) Configure Firebase using FlutterFire and generate platform configs.
 
+Run the app
+-----------
+
+From `finq-flutter/`:
+
+```bash
+flutter pub get
+flutter run -d chrome --dart-define=API_BASE_URL=http://localhost:8000/api
+```
+
+Once iOS/Android tooling is configured, you can run:
+
+```bash
+flutter run -d ios
+flutter run -d android
+```
+
 Module map (from current app)
 -----------------------------
 
