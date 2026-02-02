@@ -14,6 +14,7 @@ final healthStatusProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 
 final tickerProvider = StateProvider<String>((ref) => 'AAPL');
 final periodProvider = StateProvider<String>((ref) => '1y');
+final categoryProvider = StateProvider<String>((ref) => '');
 
 final tickerDataProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final repository = ref.read(dashboardRepositoryProvider);
