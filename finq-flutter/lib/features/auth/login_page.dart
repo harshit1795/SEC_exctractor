@@ -32,7 +32,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     });
 
     final controller = ref.read(authControllerProvider);
-    final email = _emailController.text.trim();
+    final email = _emailController.text;
     final password = _passwordController.text;
 
     final result = _isLogin

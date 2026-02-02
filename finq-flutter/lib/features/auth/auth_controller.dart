@@ -22,14 +22,22 @@ class AuthController {
     if (auth == null) {
       return AuthResult(error: 'Firebase not initialized');
     }
+    final normalizedEmail = _normalizeEmail(email);
+    if (normalizedEmail == null) {
+      return AuthResult(error: 'Please enter a valid email address.');
+    }
+    if (password.isEmpty) {
+      return AuthResult(error: 'Please enter your password.');
+    }
     try {
+      await _ensureWebPersistence(auth);
       final credential = await auth.signInWithEmailAndPassword(
-        email: email,
+        email: normalizedEmail,
         password: password,
       );
       return AuthResult(user: credential.user);
     } on FirebaseAuthException catch (error) {
-      return AuthResult(error: error.message ?? error.code);
+      return AuthResult(error: _mapAuthError(error));
     } catch (error) {
       return AuthResult(error: error.toString());
     }
@@ -40,14 +48,22 @@ class AuthController {
     if (auth == null) {
       return AuthResult(error: 'Firebase not initialized');
     }
+    final normalizedEmail = _normalizeEmail(email);
+    if (normalizedEmail == null) {
+      return AuthResult(error: 'Please enter a valid email address.');
+    }
+    if (password.isEmpty) {
+      return AuthResult(error: 'Please enter a password.');
+    }
     try {
+      await _ensureWebPersistence(auth);
       final credential = await auth.createUserWithEmailAndPassword(
-        email: email,
+        email: normalizedEmail,
         password: password,
       );
       return AuthResult(user: credential.user);
     } on FirebaseAuthException catch (error) {
-      return AuthResult(error: error.message ?? error.code);
+      return AuthResult(error: _mapAuthError(error));
     } catch (error) {
       return AuthResult(error: error.toString());
     }
@@ -67,6 +83,7 @@ class AuthController {
       return AuthResult(error: 'Firebase not initialized');
     }
     try {
+      await _ensureWebPersistence(auth);
       if (kIsWeb) {
         final provider = GoogleAuthProvider();
         final credential = await auth.signInWithPopup(provider);
@@ -88,6 +105,45 @@ class AuthController {
       return AuthResult(error: error.message ?? error.code);
     } catch (error) {
       return AuthResult(error: error.toString());
+    }
+  }
+
+  Future<void> _ensureWebPersistence(FirebaseAuth auth) async {
+    if (!kIsWeb) {
+      return;
+    }
+    try {
+      await auth.setPersistence(Persistence.LOCAL);
+    } catch (_) {
+      // Ignore persistence errors; auth can still work in-memory.
+    }
+  }
+
+  String? _normalizeEmail(String email) {
+    final normalized = email.trim().toLowerCase();
+    if (normalized.isEmpty || !normalized.contains('@')) {
+      return null;
+    }
+    return normalized;
+  }
+
+  String _mapAuthError(FirebaseAuthException error) {
+    switch (error.code) {
+      case 'user-not-found':
+      case 'invalid-credential':
+        return 'No account found for that email.';
+      case 'wrong-password':
+        return 'Incorrect password.';
+      case 'invalid-email':
+        return 'That email address is invalid.';
+      case 'email-already-in-use':
+        return 'That email is already registered.';
+      case 'operation-not-allowed':
+        return 'Email/password sign-in is disabled in Firebase.';
+      case 'weak-password':
+        return 'Password is too weak (min 6 characters).';
+      default:
+        return error.message ?? error.code;
     }
   }
 }
