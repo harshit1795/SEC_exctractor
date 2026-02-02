@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
 import 'dashboard_providers.dart';
+import 'price_chart.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -414,6 +415,7 @@ class _PriceTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final points = parsePriceSeries(tickerData.valueOrNull);
     return SingleChildScrollView(
       child: Column(
         children: [
@@ -422,6 +424,11 @@ class _PriceTab extends StatelessWidget {
             periods: periods,
             onPeriodChanged: onPeriodChanged,
             onSubmit: onSubmit,
+          ),
+          const SizedBox(height: 12),
+          _InfoCard(
+            title: 'Price Chart',
+            child: PriceChart(points: points),
           ),
           const SizedBox(height: 12),
           _DataCard(title: 'Ticker Data', value: tickerData),
