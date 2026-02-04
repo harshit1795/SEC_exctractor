@@ -443,7 +443,7 @@ final _fredDataProvider = FutureProvider.family<
         'end_date': params.endDate,
       },
     );
-    return response as Map<String, dynamic>;
+    return response.data as Map<String, dynamic>;
   },
 );
 

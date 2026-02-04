@@ -394,7 +394,7 @@ final _secFilingsProvider = FutureProvider.family<Map<String, dynamic>, String>(
   (ref, ticker) async {
     final apiClient = ref.watch(apiClientProvider);
     final response = await apiClient.get('/financial/sec/$ticker');
-    return response as Map<String, dynamic>;
+    return response.data as Map<String, dynamic>;
   },
 );
 
@@ -402,7 +402,7 @@ final _sec10KProvider = FutureProvider.family<Map<String, dynamic>, String>(
   (ref, ticker) async {
     final apiClient = ref.watch(apiClientProvider);
     final response = await apiClient.get('/financial/sec/$ticker/10k');
-    return response as Map<String, dynamic>;
+    return response.data as Map<String, dynamic>;
   },
 );
 
@@ -410,7 +410,7 @@ final _sec10QProvider = FutureProvider.family<Map<String, dynamic>, String>(
   (ref, ticker) async {
     final apiClient = ref.watch(apiClientProvider);
     final response = await apiClient.get('/financial/sec/$ticker/10q');
-    return response as Map<String, dynamic>;
+    return response.data as Map<String, dynamic>;
   },
 );
 

@@ -55,8 +55,9 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
         },
       );
 
-      if (response is Map<String, dynamic>) {
-        final analysis = response['analysis'] ?? 'No response received';
+      if (response.data is Map<String, dynamic>) {
+        final data = response.data as Map<String, dynamic>;
+        final analysis = data['analysis'] ?? 'No response received';
         setState(() {
           _messages.add(ChatMessage(
             text: analysis,
