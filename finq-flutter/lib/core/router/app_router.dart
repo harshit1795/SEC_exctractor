@@ -9,7 +9,7 @@ import '../../features/auth/auth_providers.dart';
 import '../../features/auth/login_page.dart';
 import '../../features/dashboard/dashboard_page.dart';
 import '../../features/health/health_page.dart';
-import '../../features/nexus/nexus_page.dart';
+import '../../features/nexus/nexus_page_enhanced.dart';
 import '../../features/settings/settings_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -55,7 +55,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/nexus',
-            builder: (context, state) => const NexusPage(),
+            builder: (context, state) => const NexusPageEnhanced(),
           ),
           GoRoute(
             path: '/health',
