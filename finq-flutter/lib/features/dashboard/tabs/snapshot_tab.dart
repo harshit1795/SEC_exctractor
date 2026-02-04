@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../dashboard_providers.dart';
+import '../widgets/multi_select_dropdown.dart';
 
 class SnapshotTab extends ConsumerStatefulWidget {
   const SnapshotTab({
@@ -111,24 +112,18 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: allMetrics.map((metric) {
-                          return FilterChip(
-                            label: Text(metric, style: const TextStyle(fontSize: 12)),
-                            selected: _selectedMetrics.contains(metric),
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedMetrics.add(metric);
-                                } else {
-                                  _selectedMetrics.remove(metric);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
+                      MultiSelectDropdown<String>(
+                        label: 'Select metrics to show',
+                        searchHint: 'Search metrics...',
+                        items: allMetrics,
+                        selectedItems: _selectedMetrics,
+                        onSelectionChanged: (selected) {
+                          setState(() {
+                            _selectedMetrics.clear();
+                            _selectedMetrics.addAll(selected);
+                          });
+                        },
+                        itemLabel: (metric) => metric,
                       ),
                     ],
                   ),

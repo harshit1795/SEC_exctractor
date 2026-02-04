@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../dashboard_providers.dart';
+import '../widgets/multi_select_dropdown.dart';
 
 class TrendTab extends ConsumerStatefulWidget {
   const TrendTab({
@@ -72,61 +73,50 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
-                        'Metrics to Plot',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: allMetrics.map((metric) {
-                          return FilterChip(
-                            label: Text(metric),
-                            selected: _selectedMetrics.contains(metric),
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedMetrics.add(metric);
-                                } else {
-                                  _selectedMetrics.remove(metric);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 16),
                       Row(
                         children: [
-                          const Text(
-                            'Chart Type:',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
+                          const Expanded(
+                            child: Text(
+                              'Metrics to Plot',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          SegmentedButton<_ChartType>(
-                            segments: const [
-                              ButtonSegment(
+                          DropdownButton<_ChartType>(
+                            value: _chartType,
+                            items: const [
+                              DropdownMenuItem(
                                 value: _ChartType.line,
-                                label: Text('Line'),
+                                child: Text('Line Chart'),
                               ),
-                              ButtonSegment(
+                              DropdownMenuItem(
                                 value: _ChartType.bar,
-                                label: Text('Bar'),
+                                child: Text('Bar Chart'),
                               ),
                             ],
-                            selected: {_chartType},
-                            onSelectionChanged: (values) {
-                              setState(() => _chartType = values.first);
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _chartType = value);
+                              }
                             },
                           ),
                         ],
+                      ),
+                      const SizedBox(height: 12),
+                      MultiSelectDropdown<String>(
+                        label: 'Select metrics to plot',
+                        searchHint: 'Search metrics...',
+                        items: allMetrics,
+                        selectedItems: _selectedMetrics,
+                        onSelectionChanged: (selected) {
+                          setState(() {
+                            _selectedMetrics.clear();
+                            _selectedMetrics.addAll(selected);
+                          });
+                        },
+                        itemLabel: (metric) => metric,
                       ),
                     ],
                   ),
