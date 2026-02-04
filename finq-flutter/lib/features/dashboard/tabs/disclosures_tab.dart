@@ -33,8 +33,8 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
     return filingsFuture.when(
       data: (filingsData) {
         final filingInfo = _reportType == _ReportType.tenK
-            ? filingsData['filings']?['10-k'] ?? filingsData['filings']?['10-K']
-            : filingsData['filings']?['10-q'] ?? filingsData['filings']?['10-Q'];
+            ? (filingsData['filings']?['10-k'] ?? filingsData['filings']?['10-K'])
+            : (filingsData['filings']?['10-q'] ?? filingsData['filings']?['10-Q']);
 
         final sectionOptions = _reportType == _ReportType.tenK
             ? _sectionOptions10K

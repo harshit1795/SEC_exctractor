@@ -49,7 +49,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
       final apiClient = ref.read(apiClientProvider);
       final response = await apiClient.post(
         '/chat/analyze',
-        data: {
+        body: {
           'ticker': widget.ticker,
           'query': message,
         },
@@ -74,7 +74,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
           timestamp: DateTime.now(),
           isError: true,
         ));
-        _isLoading = false,
+        _isLoading = false;
       });
     }
 

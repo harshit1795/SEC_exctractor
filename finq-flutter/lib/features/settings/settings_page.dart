@@ -69,11 +69,12 @@ class _AuthSection extends ConsumerWidget {
       );
     }
 
+    final currentUser = user;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('User ID: ${user.uid}'),
-        if (user.email != null) Text('Email: ${user.email}'),
+        Text('User ID: ${currentUser?.uid ?? "Unknown"}'),
+        if (currentUser?.email != null) Text('Email: ${currentUser!.email}'),
         const SizedBox(height: 20),
         ElevatedButton(
           onPressed: () => ref.read(authControllerProvider).signOut(),
