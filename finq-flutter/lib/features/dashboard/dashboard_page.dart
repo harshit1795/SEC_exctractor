@@ -280,7 +280,7 @@ class _DashboardContent extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               SizedBox(
-                height: MediaQuery.of(context).size.height - 400,
+                height: 600,
                 child: TabBarView(
                   children: [
                     TrendTab(
