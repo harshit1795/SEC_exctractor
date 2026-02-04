@@ -6,6 +6,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Card } from '@/components/shared/Card';
 import { useAuth } from '@/lib/hooks/useAuth';
 import { useMetricPreferences } from '@/lib/hooks/useMetricPreferences';
+import { api } from '@/lib/api';
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
@@ -20,6 +21,19 @@ export default function SettingsPage() {
     defaultTicker: '',
     defaultCategory: '',
   });
+  
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState({
+    gemini: '',
+    fred: '',
+  });
+  const [apiKeysStatus, setApiKeysStatus] = useState<any>(null);
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showFredKey, setShowFredKey] = useState(false);
+  const [loadingKeys, setLoadingKeys] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [validatingKey, setValidatingKey] = useState<string | null>(null);
+  const [keyMessage, setKeyMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
 
   // Load preferences from localStorage
   useEffect(() => {
@@ -42,6 +56,129 @@ export default function SettingsPage() {
       }
     }
   }, []);
+  
+  // Load API keys status
+  useEffect(() => {
+    if (user?.uid) {
+      loadAPIKeysStatus();
+    }
+  }, [user]);
+  
+  const loadAPIKeysStatus = async () => {
+    if (!user?.uid) return;
+    
+    setLoadingKeys(true);
+    try {
+      const response = await api.getAPIKeysStatus(user.uid);
+      setApiKeysStatus(response.data);
+    } catch (error) {
+      console.error('Failed to load API keys status:', error);
+    } finally {
+      setLoadingKeys(false);
+    }
+  };
+  
+  const handleSaveAPIKey = async (keyType: 'gemini' | 'fred') => {
+    if (!user?.uid) return;
+    
+    const apiKey = keyType === 'gemini' ? apiKeys.gemini : apiKeys.fred;
+    if (!apiKey.trim()) {
+      setKeyMessage({ type: 'error', text: 'Please enter an API key' });
+      return;
+    }
+    
+    setSavingKey(keyType);
+    setKeyMessage(null);
+    
+    try {
+      const response = await api.setAPIKey(user.uid, keyType, apiKey);
+      setKeyMessage({ 
+        type: 'success', 
+        text: `${keyType === 'gemini' ? 'Gemini' : 'FRED'} API key saved successfully! Consider validating it.` 
+      });
+      
+      // Clear the input field
+      setApiKeys(prev => ({ ...prev, [keyType]: '' }));
+      
+      // Reload status
+      await loadAPIKeysStatus();
+      
+      // Clear message after 5 seconds
+      setTimeout(() => setKeyMessage(null), 5000);
+    } catch (error: any) {
+      setKeyMessage({ 
+        type: 'error', 
+        text: error.response?.data?.detail || 'Failed to save API key' 
+      });
+    } finally {
+      setSavingKey(null);
+    }
+  };
+  
+  const handleValidateAPIKey = async (keyType: 'gemini' | 'fred') => {
+    if (!user?.uid) return;
+    
+    setValidatingKey(keyType);
+    setKeyMessage(null);
+    
+    try {
+      const response = await api.validateAPIKey(user.uid, keyType);
+      
+      if (response.data.is_valid) {
+        setKeyMessage({ 
+          type: 'success', 
+          text: `${keyType === 'gemini' ? 'Gemini' : 'FRED'} API key is valid! ✓` 
+        });
+      } else {
+        setKeyMessage({ 
+          type: 'error', 
+          text: `${keyType === 'gemini' ? 'Gemini' : 'FRED'} API key validation failed: ${response.data.error_message}` 
+        });
+      }
+      
+      // Reload status
+      await loadAPIKeysStatus();
+      
+      // Clear message after 8 seconds
+      setTimeout(() => setKeyMessage(null), 8000);
+    } catch (error: any) {
+      setKeyMessage({ 
+        type: 'error', 
+        text: error.response?.data?.detail || 'Failed to validate API key' 
+      });
+    } finally {
+      setValidatingKey(null);
+    }
+  };
+  
+  const handleDeleteAPIKey = async (keyType: 'gemini' | 'fred') => {
+    if (!user?.uid) return;
+    
+    if (!confirm(`Are you sure you want to delete your ${keyType === 'gemini' ? 'Gemini' : 'FRED'} API key?`)) {
+      return;
+    }
+    
+    setKeyMessage(null);
+    
+    try {
+      await api.deleteAPIKey(user.uid, keyType);
+      setKeyMessage({ 
+        type: 'success', 
+        text: `${keyType === 'gemini' ? 'Gemini' : 'FRED'} API key deleted successfully` 
+      });
+      
+      // Reload status
+      await loadAPIKeysStatus();
+      
+      // Clear message after 5 seconds
+      setTimeout(() => setKeyMessage(null), 5000);
+    } catch (error: any) {
+      setKeyMessage({ 
+        type: 'error', 
+        text: error.response?.data?.detail || 'Failed to delete API key' 
+      });
+    }
+  };
 
   const handleNotificationChange = (key: string, value: boolean) => {
     const updated = { ...notifications, [key]: value };
@@ -196,6 +333,196 @@ export default function SettingsPage() {
                 </select>
               </div>
             </div>
+          </Card>
+
+          {/* API Keys (BYOK) */}
+          <Card>
+            <h2 className="text-xl font-semibold mb-4">API Keys (Bring Your Own Key)</h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Add your own API keys to use AI features. Your keys are encrypted and stored securely.
+              If you don't provide your own key, the application will use the default key (if available).
+            </p>
+            
+            {keyMessage && (
+              <div className={`mb-4 p-3 rounded-md ${keyMessage.type === 'success' ? 'bg-green-50 text-green-800 border border-green-200' : 'bg-red-50 text-red-800 border border-red-200'}`}>
+                {keyMessage.text}
+              </div>
+            )}
+            
+            {loadingKeys ? (
+              <div className="text-center py-4">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                <p className="mt-2 text-sm text-gray-600">Loading API keys status...</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Gemini API Key */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">Google Gemini API Key</h3>
+                      <p className="text-xs text-gray-500 mt-1">Used for AI chat and financial analysis</p>
+                    </div>
+                    {apiKeysStatus?.has_gemini_key && (
+                      <div className="flex items-center space-x-2">
+                        {apiKeysStatus.gemini_key_is_valid === true && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">✓ Valid</span>
+                        )}
+                        {apiKeysStatus.gemini_key_is_valid === false && (
+                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">✗ Invalid</span>
+                        )}
+                        {apiKeysStatus.gemini_key_is_valid === null && (
+                          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Not validated</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {apiKeysStatus?.has_gemini_key ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-sm text-gray-700">
+                        <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>API key is set</span>
+                      </div>
+                      {apiKeysStatus.gemini_key_last_validated && (
+                        <p className="text-xs text-gray-500">
+                          Last validated: {new Date(apiKeysStatus.gemini_key_last_validated).toLocaleString()}
+                        </p>
+                      )}
+                      <div className="flex space-x-2 mt-3">
+                        <button
+                          onClick={() => handleValidateAPIKey('gemini')}
+                          disabled={validatingKey === 'gemini'}
+                          className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {validatingKey === 'gemini' ? 'Validating...' : 'Validate Key'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAPIKey('gemini')}
+                          className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100"
+                        >
+                          Delete Key
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <input
+                          type={showGeminiKey ? 'text' : 'password'}
+                          value={apiKeys.gemini}
+                          onChange={(e) => setApiKeys(prev => ({ ...prev, gemini: e.target.value }))}
+                          placeholder="Enter your Gemini API key"
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowGeminiKey(!showGeminiKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                          {showGeminiKey ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => handleSaveAPIKey('gemini')}
+                        disabled={savingKey === 'gemini' || !apiKeys.gemini.trim()}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {savingKey === 'gemini' ? 'Saving...' : 'Save Gemini Key'}
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">Google AI Studio</a>
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                {/* FRED API Key */}
+                <div className="border border-gray-200 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <h3 className="font-semibold text-gray-900">FRED API Key</h3>
+                      <p className="text-xs text-gray-500 mt-1">Used for economic data (Federal Reserve)</p>
+                    </div>
+                    {apiKeysStatus?.has_fred_key && (
+                      <div className="flex items-center space-x-2">
+                        {apiKeysStatus.fred_key_is_valid === true && (
+                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">✓ Valid</span>
+                        )}
+                        {apiKeysStatus.fred_key_is_valid === false && (
+                          <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">✗ Invalid</span>
+                        )}
+                        {apiKeysStatus.fred_key_is_valid === null && (
+                          <span className="text-xs bg-gray-100 text-gray-800 px-2 py-1 rounded">Not validated</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {apiKeysStatus?.has_fred_key ? (
+                    <div className="space-y-2">
+                      <div className="flex items-center space-x-2 text-sm text-gray-700">
+                        <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                        <span>API key is set</span>
+                      </div>
+                      {apiKeysStatus.fred_key_last_validated && (
+                        <p className="text-xs text-gray-500">
+                          Last validated: {new Date(apiKeysStatus.fred_key_last_validated).toLocaleString()}
+                        </p>
+                      )}
+                      <div className="flex space-x-2 mt-3">
+                        <button
+                          onClick={() => handleValidateAPIKey('fred')}
+                          disabled={validatingKey === 'fred'}
+                          className="px-3 py-1.5 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {validatingKey === 'fred' ? 'Validating...' : 'Validate Key'}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteAPIKey('fred')}
+                          className="px-3 py-1.5 text-sm font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100"
+                        >
+                          Delete Key
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="relative">
+                        <input
+                          type={showFredKey ? 'text' : 'password'}
+                          value={apiKeys.fred}
+                          onChange={(e) => setApiKeys(prev => ({ ...prev, fred: e.target.value }))}
+                          placeholder="Enter your FRED API key"
+                          className="w-full rounded-md border border-gray-300 px-3 py-2 pr-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowFredKey(!showFredKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                        >
+                          {showFredKey ? '🙈' : '👁️'}
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => handleSaveAPIKey('fred')}
+                        disabled={savingKey === 'fred' || !apiKeys.fred.trim()}
+                        className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {savingKey === 'fred' ? 'Saving...' : 'Save FRED Key'}
+                      </button>
+                      <p className="text-xs text-gray-500 mt-2">
+                        Get your API key from <a href="https://fred.stlouisfed.org/docs/api/api_key.html" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">FRED</a>
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </Card>
 
           {/* Data Management */}

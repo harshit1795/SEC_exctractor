@@ -9,6 +9,8 @@ from app.services.financial_analyzer import FinancialAnalyzer
 from app.services.data_source_manager import DataSourceManager
 from app.models.insight import Insight
 from app.schemas.chat import ChatRequest, ChatResponse, ChatHistoryResponse
+from app.api.user_api_keys import get_user_api_key
+from app.config import settings
 from typing import Optional
 import uuid
 import logging
@@ -468,9 +470,40 @@ async def analyze_financial_data(
         AI-generated analysis and insight ID
     """
     try:
-        # Check if analyzer is available
+        # Get user ID from context
+        user_id = request.context_data.get('user_id', 'anonymous')
+        
+        # Check if user has a custom Gemini API key (BYOK)
+        user_api_key = None
+        if user_id != 'anonymous':
+            try:
+                user_api_key = get_user_api_key(user_id, 'gemini', db)
+                if user_api_key:
+                    logger.info(f"Using user-provided Gemini API key for user {user_id}")
+            except Exception as e:
+                logger.warning(f"Error getting user API key, falling back to global key: {e}")
+        
+        # Initialize analyzer with appropriate API key
         try:
-            analyzer = get_analyzer()
+            if user_api_key:
+                # Create analyzer with user's API key
+                analyzer = FinancialAnalyzer(api_key=user_api_key)
+            else:
+                # Use global analyzer with fallback to settings
+                try:
+                    analyzer = get_analyzer()
+                except HTTPException as e:
+                    # If no global key is set, inform user about BYOK
+                    if user_id != 'anonymous':
+                        raise HTTPException(
+                            status_code=401,
+                            detail="No API key configured. Please add your own Gemini API key in Settings to use the AI chat feature."
+                        )
+                    else:
+                        raise HTTPException(
+                            status_code=401,
+                            detail="AI service not available. Please contact the administrator or sign in to use your own API key."
+                        )
         except HTTPException as e:
             # Re-raise HTTP exceptions (like 500 for missing API key)
             raise

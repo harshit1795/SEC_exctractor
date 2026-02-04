@@ -35,6 +35,18 @@ class FinancialAnalyzer:
         # Initialize rate limiter (15 requests per minute - conservative limit)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
     
+    def update_api_key(self, api_key: str):
+        """
+        Update the API key and reconfigure the model
+        Useful for per-user API keys (BYOK)
+        
+        Args:
+            api_key: New API key to use
+        """
+        self.api_key = api_key
+        genai.configure(api_key=self.api_key)
+        self.model = genai.GenerativeModel('models/gemini-flash-latest')
+    
     async def analyze_financial_data(
         self, 
         user_question: str, 
