@@ -5,7 +5,7 @@ FastAPI application entry point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
-from app.api import financial, chat, health, nexus, insights, media, websocket, data_pipeline, health_scores, user_api_keys
+from app.api import financial, chat, health, nexus, insights, media, websocket, data_pipeline, health_scores
 import logging
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,6 @@ app.include_router(media.router, prefix=settings.api_prefix, tags=["media"])
 app.include_router(websocket.router, prefix=settings.api_prefix, tags=["websocket"])
 app.include_router(data_pipeline.router, prefix=settings.api_prefix, tags=["data-pipeline"])
 app.include_router(health_scores.router, prefix=settings.api_prefix, tags=["health-scores"])
-app.include_router(user_api_keys.router, prefix=settings.api_prefix, tags=["user-api-keys"])
 
 
 @app.on_event("startup")

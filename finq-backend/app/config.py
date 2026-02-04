@@ -32,12 +32,6 @@ class Settings(BaseSettings):
         env="FRED_API_KEY"
     )
     
-    # Encryption key for securing user API keys (BYOK)
-    encryption_key: str = Field(
-        default="",
-        env="ENCRYPTION_KEY"
-    )
-    
     # Firebase
     firebase_credentials_json: str = Field(default="", env="FIREBASE_CREDENTIALS_JSON")
     firebase_credentials_path: str = Field(default="", env="FIREBASE_CREDENTIALS_PATH")

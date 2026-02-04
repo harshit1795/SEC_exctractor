@@ -146,15 +146,5 @@ export const api = {
     apiClient.post('/data-pipeline/update-batch', tickers ? { tickers } : {}),
   getDataStatus: (ticker?: string) =>
     apiClient.get('/data-pipeline/status', { params: ticker ? { ticker } : {} }),
-
-  // User API Keys (BYOK - Bring Your Own Key)
-  getAPIKeysStatus: (userId: string) =>
-    apiClient.get('/user-api-keys/status', { params: { user_id: userId } }),
-  setAPIKey: (userId: string, keyType: 'gemini' | 'fred', apiKey: string) =>
-    apiClient.post('/user-api-keys/set', { user_id: userId, key_type: keyType, api_key: apiKey }),
-  validateAPIKey: (userId: string, keyType: 'gemini' | 'fred') =>
-    apiClient.post('/user-api-keys/validate', { user_id: userId, key_type: keyType }),
-  deleteAPIKey: (userId: string, keyType: 'gemini' | 'fred') =>
-    apiClient.delete('/user-api-keys/delete', { params: { user_id: userId, key_type: keyType } }),
 };
 
