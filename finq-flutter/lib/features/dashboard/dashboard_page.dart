@@ -28,12 +28,9 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   static const _periodOptions = ['1m', '3m', '6m', '1y', '5y'];
   static const _categories = [
-    '',
-    'Profitability',
-    'Liquidity',
-    'Efficiency',
-    'Leverage',
-    'Growth',
+    'IncomeStatement',
+    'BalanceSheet',
+    'CashFlow',
   ];
 
   @override
@@ -140,6 +137,19 @@ class _FiltersCard extends StatelessWidget {
   final ValueChanged<String> onCategoryChanged;
   final VoidCallback onApply;
 
+  String _formatCategoryName(String category) {
+    switch (category) {
+      case 'IncomeStatement':
+        return 'Income Statement';
+      case 'BalanceSheet':
+        return 'Balance Sheet';
+      case 'CashFlow':
+        return 'Cash Flow Statement';
+      default:
+        return category;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -168,7 +178,7 @@ class _FiltersCard extends StatelessWidget {
                   .map(
                     (value) => DropdownMenuItem(
                       value: value,
-                      child: Text(value.isEmpty ? 'Select category' : value),
+                      child: Text(_formatCategoryName(value)),
                     ),
                   )
                   .toList(),
