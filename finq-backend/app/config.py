@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     firebase_credentials_json: str = Field(default="", env="FIREBASE_CREDENTIALS_JSON")
     firebase_credentials_path: str = Field(default="", env="FIREBASE_CREDENTIALS_PATH")
     
+    # Encryption (for BYOK - Bring Your Own Key)
+    encryption_key: str = Field(default="", env="ENCRYPTION_KEY")
+    
     # CORS (comma-separated string, will be split)
     cors_origins: str = Field(
         default="http://localhost:8501,http://localhost:3000,http://localhost:8080",

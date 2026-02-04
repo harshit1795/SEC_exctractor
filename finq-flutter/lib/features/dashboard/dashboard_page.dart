@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import 'dashboard_providers.dart';
 import 'price_chart.dart';
+import 'tabs/earnings_tab.dart';
+import 'tabs/trend_tab.dart';
+import 'tabs/snapshot_tab.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -259,17 +262,15 @@ class _DashboardContent extends StatelessWidget {
                 height: 540,
                 child: TabBarView(
                   children: [
-                    _PlaceholderTab(
-                      title: 'Metrics Trend Analysis',
-                      message: category.isEmpty
-                          ? 'Select a category to view trend analysis.'
-                          : 'Trend analysis will load for $category.',
+                    TrendTab(
+                      ticker: ticker,
+                      category: category,
                     ),
-                    _StatusTab(healthStatus: healthStatus),
-                    _PlaceholderTab(
-                      title: 'Earning Summary',
-                      message: 'Earnings summary coming next.',
+                    SnapshotTab(
+                      ticker: ticker,
+                      category: category,
                     ),
+                    EarningsTab(ticker: ticker),
                     _PriceTab(
                       period: period,
                       periods: periods,
