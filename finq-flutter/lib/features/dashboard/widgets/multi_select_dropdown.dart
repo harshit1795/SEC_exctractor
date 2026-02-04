@@ -257,32 +257,29 @@ class _MultiSelectDropdownState<T> extends State<MultiSelectDropdown<T>> {
                   : Wrap(
                       spacing: 4,
                       runSpacing: 4,
-                      children: widget.selectedItems.take(3).map((item) {
-                        return Chip(
-                          label: Text(
-                            widget.itemLabel(item),
-                            style: const TextStyle(fontSize: 12),
+                      children: [
+                        ...widget.selectedItems.take(3).map((item) {
+                          return Chip(
+                            label: Text(
+                              widget.itemLabel(item),
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            visualDensity: VisualDensity.compact,
+                          );
+                        }),
+                        if (widget.selectedItems.length > 3)
+                          Chip(
+                            label: Text(
+                              '+${widget.selectedItems.length - 3} more',
+                              style: const TextStyle(fontSize: 12),
+                            ),
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            visualDensity: VisualDensity.compact,
                           ),
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          visualDensity: VisualDensity.compact,
-                        );
-                      }).toList()
-                        ..add(
-                          widget.selectedItems.length > 3
-                              ? Chip(
-                                  label: Text(
-                                    '+${widget.selectedItems.length - 3} more',
-                                    style: const TextStyle(fontSize: 12),
-                                  ),
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  padding:
-                                      const EdgeInsets.symmetric(horizontal: 4),
-                                  visualDensity: VisualDensity.compact,
-                                )
-                              : const SizedBox.shrink(),
-                        ),
+                      ],
                     ),
             ),
             const SizedBox(width: 8),
