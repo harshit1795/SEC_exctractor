@@ -9,6 +9,8 @@ import 'price_chart.dart';
 import 'tabs/earnings_tab.dart';
 import 'tabs/trend_tab.dart';
 import 'tabs/snapshot_tab.dart';
+import 'tabs/disclosures_tab.dart';
+import 'tabs/macroeconomic_tab.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -279,14 +281,8 @@ class _DashboardContent extends StatelessWidget {
                       tickerData: tickerData,
                       fundamentals: fundamentals,
                     ),
-                    _PlaceholderTab(
-                      title: 'Disclosures',
-                      message: 'SEC 10-K/10-Q disclosures coming next.',
-                    ),
-                    _PlaceholderTab(
-                      title: 'Macroeconomic Data',
-                      message: 'FRED series view coming next.',
-                    ),
+                    DisclosuresTab(ticker: ticker),
+                    const MacroeconomicTab(),
                     _PlaceholderTab(
                       title: 'FinQ 360',
                       message: '360 view coming next.',
