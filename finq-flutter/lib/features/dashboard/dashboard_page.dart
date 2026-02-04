@@ -11,6 +11,8 @@ import 'tabs/trend_tab.dart';
 import 'tabs/snapshot_tab.dart';
 import 'tabs/disclosures_tab.dart';
 import 'tabs/macroeconomic_tab.dart';
+import 'tabs/finq360_tab.dart';
+import 'tabs/finq_chat_tab.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -283,14 +285,11 @@ class _DashboardContent extends StatelessWidget {
                     ),
                     DisclosuresTab(ticker: ticker),
                     const MacroeconomicTab(),
-                    _PlaceholderTab(
-                      title: 'FinQ 360',
-                      message: '360 view coming next.',
+                    FinQ360Tab(
+                      ticker: ticker,
+                      category: category,
                     ),
-                    _PlaceholderTab(
-                      title: 'FinQ Bot',
-                      message: 'Chatbot module coming next.',
-                    ),
+                    FinQChatTab(ticker: ticker),
                   ],
                 ),
               ),
