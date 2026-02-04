@@ -1,15 +1,54 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class HealthPage extends StatelessWidget {
+import 'tabs/health_score_tab.dart';
+import 'tabs/custom_metrics_tab.dart';
+
+class HealthPage extends ConsumerWidget {
   const HealthPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return const SafeArea(
-      child: Center(
-        child: Text(
-          'Financial Health Module',
-          textAlign: TextAlign.center,
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SafeArea(
+      child: DefaultTabController(
+        length: 2,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Row(
+                children: [
+                  Icon(Icons.health_and_safety, size: 28, color: Colors.green.shade700),
+                  const SizedBox(width: 12),
+                  const Text(
+                    'Financial Health Monitoring',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const TabBar(
+              labelColor: Colors.indigo,
+              unselectedLabelColor: Colors.black54,
+              indicatorColor: Colors.indigo,
+              tabs: [
+                Tab(text: 'FinQ Suggestions', icon: Icon(Icons.recommend)),
+                Tab(text: 'Custom Health Score', icon: Icon(Icons.settings_suggest)),
+              ],
+            ),
+            const Expanded(
+              child: TabBarView(
+                children: [
+                  HealthScoreTab(),
+                  CustomMetricsTab(),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

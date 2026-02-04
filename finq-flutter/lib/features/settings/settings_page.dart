@@ -12,23 +12,125 @@ class SettingsPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userAsync = ref.watch(authUserProvider);
     return SafeArea(
-      child: Padding(
+      child: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Settings',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            Row(
+              children: [
+                Icon(Icons.settings, size: 28, color: Colors.grey.shade700),
+                const SizedBox(width: 12),
+                const Text(
+                  'Settings',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 24),
             userAsync.when(
-              data: (user) => _AuthSection(user: user),
-              loading: () => const Text('Loading user...'),
+              data: (user) => Column(
+                children: [
+                  _AuthSection(user: user),
+                  if (user != null) ...[
+                    const SizedBox(height: 24),
+                    _PreferencesSection(),
+                    const SizedBox(height: 24),
+                    _AppInfoSection(),
+                  ],
+                ],
+              ),
+              loading: () => const Center(child: CircularProgressIndicator()),
               error: (error, _) => Text('Error: $error'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PreferencesSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.palette),
+            title: const Text('Theme'),
+            subtitle: const Text('Light'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Theme switching coming soon!')),
+              );
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.notifications),
+            title: const Text('Notifications'),
+            subtitle: const Text('Manage notification preferences'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Notification settings coming soon!')),
+              );
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.data_usage),
+            title: const Text('Data Preferences'),
+            subtitle: const Text('Default ticker, period, category'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Data preferences coming soon!')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AppInfoSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Column(
+        children: [
+          const ListTile(
+            leading: Icon(Icons.info),
+            title: Text('About'),
+            subtitle: Text('FinQ v1.0.0 (Flutter)'),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.privacy_tip),
+            title: const Text('Privacy Policy'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Opening privacy policy...')),
+              );
+            },
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.description),
+            title: const Text('Terms of Service'),
+            trailing: const Icon(Icons.open_in_new),
+            onTap: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Opening terms of service...')),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
