@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/config/app_config.dart';
 import 'dashboard_providers.dart';
 import 'price_chart.dart';
+import 'company_header.dart';
+import 'data_pipeline_banner.dart';
 import 'tabs/earnings_tab.dart';
 import 'tabs/trend_tab.dart';
 import 'tabs/snapshot_tab.dart';
@@ -224,14 +226,14 @@ class _DashboardContent extends StatelessWidget {
   final String category;
 
   static const _tabs = [
-    ('trend', 'Metrics Trend Analysis', Icons.show_chart),
-    ('snapshot', 'Snapshot & Changes', Icons.camera_alt_outlined),
-    ('earnings', 'Earning Summary', Icons.attach_money),
-    ('price', 'Price Chart', Icons.stacked_line_chart),
-    ('disclosures', 'Disclosures', Icons.article_outlined),
-    ('macro', 'Macroeconomic Data', Icons.public),
-    ('finq360', 'FinQ 360', Icons.auto_awesome),
-    ('bot', 'FinQ Bot', Icons.smart_toy_outlined),
+    ('trend', '📈 Metrics Trend Analysis'),
+    ('snapshot', '📷 Snapshot & Changes'),
+    ('earnings', '💰 Earning Summary'),
+    ('price', '📊 Price Chart'),
+    ('disclosures', '📄 Disclosures'),
+    ('macro', '🌐 Macroeconomic Data'),
+    ('finq360', '🔍 FinQ 360'),
+    ('bot', '🤖 FinQ Bot'),
   ];
 
   @override
@@ -249,9 +251,8 @@ class _DashboardContent extends StatelessWidget {
           style: const TextStyle(fontSize: 12, color: Colors.black54),
         ),
         const SizedBox(height: 12),
-        _DataPipelineCard(ticker: ticker),
-        const SizedBox(height: 12),
-        _CompanyHeader(ticker: ticker),
+        DataPipelineBanner(ticker: ticker),
+        CompanyHeader(tickerData: tickerData),
         const SizedBox(height: 12),
         DefaultTabController(
           length: _tabs.length,
@@ -260,14 +261,20 @@ class _DashboardContent extends StatelessWidget {
             children: [
               TabBar(
                 isScrollable: true,
-                labelColor: Colors.indigo,
-                unselectedLabelColor: Colors.black54,
+                labelColor: Colors.green.shade700,
+                unselectedLabelColor: Colors.grey.shade600,
+                indicatorColor: Colors.green.shade500,
+                labelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+                unselectedLabelStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.normal,
+                ),
                 tabs: _tabs
                     .map(
-                      (tab) => Tab(
-                        text: tab.$2,
-                        icon: Icon(tab.$3),
-                      ),
+                      (tab) => Tab(text: tab.$2),
                     )
                     .toList(),
               ),
@@ -307,78 +314,6 @@ class _DashboardContent extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _DataPipelineCard extends StatelessWidget {
-  const _DataPipelineCard({required this.ticker});
-
-  final String ticker;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.blue.shade50,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            const Icon(Icons.sync, color: Colors.blue),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'Data pipeline for $ticker. Update button will trigger refresh.',
-                style: const TextStyle(fontSize: 13),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {},
-              child: const Text('Update Data'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _CompanyHeader extends StatelessWidget {
-  const _CompanyHeader({required this.ticker});
-
-  final String ticker;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.indigo.shade100,
-              child: Text(ticker.isEmpty ? '?' : ticker[0]),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  ticker.isEmpty ? 'Select a ticker' : ticker,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const Text(
-                  'Company overview and metadata',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
