@@ -27,6 +27,15 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
     'Debt to Equity': 0.25,
   };
 
+  final _tickerController = TextEditingController(text: 'AAPL');
+  String _ticker = 'AAPL';
+
+  @override
+  void dispose() {
+    _tickerController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final totalWeight = _selectedMetrics.values.fold(0.0, (sum, val) => sum + val);
