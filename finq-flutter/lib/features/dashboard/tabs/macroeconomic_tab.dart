@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
+import '../widgets/tab_description_tooltip.dart';
 
 class MacroeconomicTab extends ConsumerStatefulWidget {
   const MacroeconomicTab({super.key});
@@ -48,6 +49,22 @@ class _MacroeconomicTabState extends ConsumerState<MacroeconomicTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Tab description tooltip
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Row(
+              children: [
+                Text(
+                  'Macroeconomic Analysis',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                const TabDescriptionTooltip(tabId: 'macro'),
+              ],
+            ),
+          ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),

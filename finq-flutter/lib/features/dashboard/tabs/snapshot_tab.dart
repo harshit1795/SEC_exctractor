@@ -3,6 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../dashboard_providers.dart';
 import '../widgets/multi_select_dropdown.dart';
+import '../widgets/metric_tooltip.dart';
+import '../widgets/tab_description_tooltip.dart';
+import '../widgets/loading_skeleton.dart';
+import '../widgets/error_view.dart';
+import '../providers/preferences_provider.dart';
+import '../../../services/csv_export_service.dart';
 
 class SnapshotTab extends ConsumerStatefulWidget {
   const SnapshotTab({
@@ -21,6 +27,112 @@ class SnapshotTab extends ConsumerStatefulWidget {
 class _SnapshotTabState extends ConsumerState<SnapshotTab> {
   var _displayMode = _DisplayMode.latest;
   final _selectedMetrics = <String>{};
+  var _preferencesLoaded = false;
+  String _lastTickerCategory = '';
+
+  void _loadPreferences(List<String> allMetrics) {
+    // Only load once per ticker/category combination
+    final key = '${widget.ticker}_${widget.category}';
+    if (_preferencesLoaded && _lastTickerCategory == key) {
+      return;
+    }
+    
+    _lastTickerCategory = key;
+    _preferencesLoaded = true;
+    
+    final service = ref.read(preferencesServiceProvider);
+    final saved = service.getMetrics(widget.ticker, widget.category);
+    
+    if (saved.isNotEmpty && mounted) {
+      // Filter to only include available metrics
+      final validSaved = saved.where((m) => allMetrics.contains(m)).toSet();
+      if (validSaved.isNotEmpty) {
+        setState(() {
+          _selectedMetrics.clear();
+          _selectedMetrics.addAll(validSaved);
+        });
+        return;
+      }
+    }
+    
+    // Auto-select first 10 metrics if no saved preferences
+    if (_selectedMetrics.isEmpty && allMetrics.isNotEmpty) {
+      setState(() {
+        _selectedMetrics.addAll(allMetrics.take(10));
+      });
+      // Save as default
+      service.saveMetrics(widget.ticker, widget.category, _selectedMetrics.toList());
+    }
+  }
+
+  void _onMetricsChanged(Set<String> metrics) {
+    setState(() {
+      _selectedMetrics.clear();
+      _selectedMetrics.addAll(metrics);
+    });
+    // Auto-save preferences
+    ref.read(preferencesServiceProvider).saveMetrics(
+      widget.ticker,
+      widget.category,
+      metrics.toList(),
+    );
+  }
+
+  Future<void> _clearPreferences() async {
+    await ref.read(preferencesServiceProvider).clearCategory(
+      widget.ticker,
+      widget.category,
+    );
+    setState(() {
+      _selectedMetrics.clear();
+      _preferencesLoaded = false;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences cleared')),
+      );
+    }
+  }
+
+  Future<void> _exportToCsv(List<_SnapshotRow> snapshotData) async {
+    if (snapshotData.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No data to export')),
+      );
+      return;
+    }
+
+    try {
+      // Convert snapshot rows to export format
+      final exportRows = snapshotData.map((row) {
+        return SnapshotRow(
+          metric: row.metric,
+          latestValue: row.value.toString(),
+          previousValue: row.delta != null ? (row.value - row.delta!).toString() : null,
+          change: row.delta?.toString(),
+          percentChange: row.deltaPercent?.toStringAsFixed(2),
+        );
+      }).toList();
+
+      await CsvExportService.exportSnapshotData(
+        ticker: widget.ticker,
+        category: widget.category,
+        rows: exportRows,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('CSV exported successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -53,12 +165,10 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
           );
         }
 
-        // Auto-select first 10 metrics if none selected
-        if (_selectedMetrics.isEmpty && allMetrics.isNotEmpty) {
+        // Load saved preferences or auto-select defaults
+        if (!_preferencesLoaded && allMetrics.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() {
-              _selectedMetrics.addAll(allMetrics.take(10));
-            });
+            _loadPreferences(allMetrics);
           });
         }
 
@@ -69,6 +179,22 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Tab description tooltip
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Snapshot Analysis',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    const TabDescriptionTooltip(tabId: 'snapshot'),
+                  ],
+                ),
+              ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -117,13 +243,41 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                         searchHint: 'Search metrics...',
                         items: allMetrics,
                         selectedItems: _selectedMetrics,
-                        onSelectionChanged: (selected) {
-                          setState(() {
-                            _selectedMetrics.clear();
-                            _selectedMetrics.addAll(selected);
-                          });
-                        },
+                        onSelectionChanged: _onMetricsChanged,
                         itemLabel: (metric) => metric,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          if (_selectedMetrics.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () => _exportToCsv(snapshotData),
+                              icon: const Icon(Icons.download, size: 18),
+                              label: const Text('Export CSV'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.blue.shade700,
+                              ),
+                            ),
+                          if (_selectedMetrics.isNotEmpty &&
+                              ref.read(preferencesServiceProvider).hasPreferences(
+                                    widget.ticker,
+                                    widget.category,
+                                  ))
+                            const SizedBox(width: 8),
+                          if (ref.read(preferencesServiceProvider).hasPreferences(
+                                widget.ticker,
+                                widget.category,
+                              ))
+                            TextButton.icon(
+                              onPressed: _clearPreferences,
+                              icon: const Icon(Icons.clear, size: 18),
+                              label: const Text('Clear Preferences'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.orange.shade700,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -152,7 +306,16 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                       rows: snapshotData.map((row) {
                         return DataRow(
                           cells: [
-                            DataCell(Text(row.metric)),
+                            DataCell(
+                              Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(row.metric),
+                                  const SizedBox(width: 4),
+                                  MetricTooltip(metricName: row.metric, iconSize: 16),
+                                ],
+                              ),
+                            ),
                             DataCell(Text(_formatValue(row.value))),
                             if (_displayMode != _DisplayMode.latest) ...[
                               DataCell(
@@ -184,36 +347,14 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 16),
-                Text(
-                  'Failed to load snapshot data',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  error.toString(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
-        ),
+      loading: () => const DataTableSkeleton(rowCount: 10, columnCount: 5),
+      error: (error, _) => ErrorView(
+        error: error,
+        title: 'Failed to load snapshot data',
+        onRetry: () {
+          // Force a refresh by invalidating the provider
+          ref.invalidate(fundamentalsProvider);
+        },
       ),
     );
   }

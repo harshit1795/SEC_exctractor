@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
 import '../dashboard_providers.dart';
+import '../widgets/tab_description_tooltip.dart';
 
 class EarningsTab extends ConsumerStatefulWidget {
   const EarningsTab({
@@ -51,6 +52,22 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Tab description tooltip
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Earnings Analysis',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    const TabDescriptionTooltip(tabId: 'earnings'),
+                  ],
+                ),
+              ),
               // Historical EPS Trend Chart
               Card(
                 child: Padding(

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
 
 import '../auth/auth_service.dart';
 import '../config/app_config.dart';
@@ -8,6 +9,7 @@ class ApiClientDio implements ApiClient {
   ApiClientDio({
     required AuthService authService,
     Dio? dio,
+    CacheStore? cacheStore,
   })  : _authService = authService,
         _dio = dio ??
             Dio(
@@ -17,6 +19,7 @@ class ApiClientDio implements ApiClient {
                 receiveTimeout: const Duration(seconds: 30),
               ),
             ) {
+    // Add authentication interceptor
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
@@ -28,6 +31,24 @@ class ApiClientDio implements ApiClient {
         },
       ),
     );
+
+    // Add cache interceptor if cacheStore is provided
+    if (cacheStore != null) {
+      final cacheOptions = CacheOptions(
+        store: cacheStore,
+        // Cache GET requests for 5 minutes by default
+        policy: CachePolicy.request,
+        maxStale: const Duration(minutes: 5),
+        hitCacheOnErrorExcept: [401, 403], // Use cache on errors except auth errors
+        priority: CachePriority.normal,
+        // Use request-specific cache policies for different endpoints
+        keyBuilder: (request) {
+          return request.uri.toString();
+        },
+        allowPostMethod: false,
+      );
+      _dio.interceptors.add(DioCacheInterceptor(options: cacheOptions));
+    }
   }
 
   final AuthService _authService;

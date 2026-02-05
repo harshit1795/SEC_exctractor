@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../dashboard_providers.dart';
+import '../widgets/tab_description_tooltip.dart';
 
 class FinQ360Tab extends ConsumerWidget {
   const FinQ360Tab({
@@ -23,6 +24,22 @@ class FinQ360Tab extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Tab description tooltip
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 8),
+            child: Row(
+              children: [
+                Text(
+                  'FinQ 360° Analysis',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(width: 8),
+                const TabDescriptionTooltip(tabId: 'finq360'),
+              ],
+            ),
+          ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),

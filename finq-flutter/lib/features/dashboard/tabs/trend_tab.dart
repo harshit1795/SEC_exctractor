@@ -4,6 +4,12 @@ import 'package:fl_chart/fl_chart.dart';
 
 import '../dashboard_providers.dart';
 import '../widgets/multi_select_dropdown.dart';
+import '../widgets/metric_tooltip.dart';
+import '../widgets/tab_description_tooltip.dart';
+import '../widgets/loading_skeleton.dart';
+import '../widgets/error_view.dart';
+import '../providers/preferences_provider.dart';
+import '../../../services/csv_export_service.dart';
 
 class TrendTab extends ConsumerStatefulWidget {
   const TrendTab({
@@ -22,6 +28,115 @@ class TrendTab extends ConsumerStatefulWidget {
 class _TrendTabState extends ConsumerState<TrendTab> {
   var _chartType = _ChartType.line;
   final _selectedMetrics = <String>{};
+  var _preferencesLoaded = false;
+  String _lastTickerCategory = '';
+
+  void _loadPreferences(List<String> allMetrics) {
+    // Only load once per ticker/category combination
+    final key = '${widget.ticker}_${widget.category}';
+    if (_preferencesLoaded && _lastTickerCategory == key) {
+      return;
+    }
+    
+    _lastTickerCategory = key;
+    _preferencesLoaded = true;
+    
+    final service = ref.read(preferencesServiceProvider);
+    final saved = service.getMetrics(widget.ticker, widget.category);
+    
+    if (saved.isNotEmpty && mounted) {
+      // Filter to only include available metrics
+      final validSaved = saved.where((m) => allMetrics.contains(m)).toSet();
+      if (validSaved.isNotEmpty) {
+        setState(() {
+          _selectedMetrics.clear();
+          _selectedMetrics.addAll(validSaved);
+        });
+        return;
+      }
+    }
+    
+    // Auto-select first 3 metrics if no saved preferences
+    if (_selectedMetrics.isEmpty && allMetrics.isNotEmpty) {
+      setState(() {
+        _selectedMetrics.addAll(allMetrics.take(3));
+      });
+      // Save as default
+      service.saveMetrics(widget.ticker, widget.category, _selectedMetrics.toList());
+    }
+  }
+
+  void _onMetricsChanged(Set<String> metrics) {
+    setState(() {
+      _selectedMetrics.clear();
+      _selectedMetrics.addAll(metrics);
+    });
+    // Auto-save preferences
+    ref.read(preferencesServiceProvider).saveMetrics(
+      widget.ticker,
+      widget.category,
+      metrics.toList(),
+    );
+  }
+
+  Future<void> _clearPreferences() async {
+    await ref.read(preferencesServiceProvider).clearCategory(
+      widget.ticker,
+      widget.category,
+    );
+    setState(() {
+      _selectedMetrics.clear();
+      _preferencesLoaded = false;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Preferences cleared')),
+      );
+    }
+  }
+
+  Future<void> _exportToCsv(_FundamentalsData parsed) async {
+    if (_selectedMetrics.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please select at least one metric to export')),
+      );
+      return;
+    }
+
+    try {
+      // Extract periods from data
+      final periods = parsed.data.map((pd) => pd.period).toList();
+      
+      // Prepare metrics data for export
+      final metricsData = <String, List<double?>>{};
+      for (final metric in _selectedMetrics) {
+        final values = <double?>[];
+        for (final periodData in parsed.data) {
+          values.add(periodData.metrics[metric]);
+        }
+        metricsData[metric] = values;
+      }
+
+      await CsvExportService.exportTrendData(
+        ticker: widget.ticker,
+        category: widget.category,
+        periods: periods,
+        metricsData: metricsData,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('CSV exported successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export failed: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,12 +169,10 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           );
         }
 
-        // Auto-select first 3 metrics if none selected
-        if (_selectedMetrics.isEmpty && allMetrics.isNotEmpty) {
+        // Load saved preferences or auto-select defaults
+        if (!_preferencesLoaded && allMetrics.isNotEmpty) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() {
-              _selectedMetrics.addAll(allMetrics.take(3));
-            });
+            _loadPreferences(allMetrics);
           });
         }
 
@@ -67,6 +180,22 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Tab description tooltip
+              Padding(
+                padding: const EdgeInsets.only(left: 4, bottom: 8),
+                child: Row(
+                  children: [
+                    Text(
+                      'Trend Analysis',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(width: 8),
+                    const TabDescriptionTooltip(tabId: 'trend'),
+                  ],
+                ),
+              ),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -110,13 +239,41 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                         searchHint: 'Search metrics...',
                         items: allMetrics,
                         selectedItems: _selectedMetrics,
-                        onSelectionChanged: (selected) {
-                          setState(() {
-                            _selectedMetrics.clear();
-                            _selectedMetrics.addAll(selected);
-                          });
-                        },
+                        onSelectionChanged: _onMetricsChanged,
                         itemLabel: (metric) => metric,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          if (_selectedMetrics.isNotEmpty)
+                            TextButton.icon(
+                              onPressed: () => _exportToCsv(parsed),
+                              icon: const Icon(Icons.download, size: 18),
+                              label: const Text('Export CSV'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.blue.shade700,
+                              ),
+                            ),
+                          if (_selectedMetrics.isNotEmpty &&
+                              ref.read(preferencesServiceProvider).hasPreferences(
+                                    widget.ticker,
+                                    widget.category,
+                                  ))
+                            const SizedBox(width: 8),
+                          if (ref.read(preferencesServiceProvider).hasPreferences(
+                                widget.ticker,
+                                widget.category,
+                              ))
+                            TextButton.icon(
+                              onPressed: _clearPreferences,
+                              icon: const Icon(Icons.clear, size: 18),
+                              label: const Text('Clear Preferences'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.orange.shade700,
+                              ),
+                            ),
+                        ],
                       ),
                     ],
                   ),
@@ -139,12 +296,19 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            metric,
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  metric,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                              MetricTooltip(metricName: metric),
+                            ],
                           ),
                           const SizedBox(height: 16),
                           SizedBox(
@@ -163,36 +327,22 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           ),
         );
       },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (error, _) => Center(
-        child: Card(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 16),
-                Text(
-                  'Failed to load trend data',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  error.toString(),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey.shade600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-          ),
+      loading: () => SingleChildScrollView(
+        child: Column(
+          children: [
+            const ChartSkeleton(height: 300),
+            const SizedBox(height: 16),
+            const ChartSkeleton(height: 300),
+          ],
         ),
+      ),
+      error: (error, _) => ErrorView(
+        error: error,
+        title: 'Failed to load trend data',
+        onRetry: () {
+          // Force a refresh by invalidating the provider
+          ref.invalidate(fundamentalsProvider);
+        },
       ),
     );
   }

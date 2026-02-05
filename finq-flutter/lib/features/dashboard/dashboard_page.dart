@@ -279,9 +279,16 @@ class _DashboardContent extends StatelessWidget {
                     .toList(),
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                height: 600,
-                child: TabBarView(
+              // Use LayoutBuilder to get available space and prevent overflow
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  // Calculate available height (minimum 400, but adapt to screen)
+                  final availableHeight = MediaQuery.of(context).size.height - 400;
+                  final tabHeight = availableHeight.clamp(400.0, 800.0);
+                  
+                  return SizedBox(
+                    height: tabHeight,
+                    child: TabBarView(
                   children: [
                     TrendTab(
                       ticker: ticker,
@@ -308,7 +315,9 @@ class _DashboardContent extends StatelessWidget {
                     ),
                     FinQChatTab(ticker: ticker),
                   ],
-                ),
+                    ),
+                  );
+                },
               ),
             ],
           ),

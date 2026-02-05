@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
+import '../widgets/tab_description_tooltip.dart';
 
 class FinQChatTab extends ConsumerStatefulWidget {
   const FinQChatTab({
@@ -98,6 +99,22 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Tab description tooltip
+        Padding(
+          padding: const EdgeInsets.only(left: 4, top: 8, bottom: 8),
+          child: Row(
+            children: [
+              Text(
+                'FinQ AI Assistant',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+              const SizedBox(width: 8),
+              const TabDescriptionTooltip(tabId: 'bot'),
+            ],
+          ),
+        ),
         Expanded(
           child: _messages.isEmpty
               ? Center(
