@@ -8,8 +8,13 @@ import '../widgets/metric_tooltip.dart';
 import '../widgets/tab_description_tooltip.dart';
 import '../widgets/loading_skeleton.dart';
 import '../widgets/error_view.dart';
+import '../widgets/hierarchy_view.dart';
 import '../providers/preferences_provider.dart';
+import '../utils/metric_calculations.dart';
+import '../../../data/financial_hierarchies.dart';
 import '../../../services/csv_export_service.dart';
+
+enum TrendViewMode { chart, hierarchy }
 
 class TrendTab extends ConsumerStatefulWidget {
   const TrendTab({
@@ -26,6 +31,7 @@ class TrendTab extends ConsumerStatefulWidget {
 }
 
 class _TrendTabState extends ConsumerState<TrendTab> {
+  var _viewMode = TrendViewMode.chart;
   var _chartType = _ChartType.line;
   final _selectedMetrics = <String>{};
   var _preferencesLoaded = false;
@@ -138,6 +144,80 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     }
   }
 
+  /// Prepare metrics data for hierarchy view
+  Map<String, MetricData> _prepareMetricsData(_FundamentalsData parsed) {
+    final metricsData = <String, MetricData>{};
+    
+    // Convert period data to PeriodData format
+    final periods = parsed.data.map((pd) {
+      return PeriodData(
+        period: pd.period,
+        metrics: pd.metrics,
+      );
+    }).toList();
+
+    // Helper function to process a node and its children recursively
+    void processNode(FinancialNode node) {
+      // Try to get metric data from backend
+      MetricData? data;
+      
+      if (node.metricName != null) {
+        data = MetricCalculations.calculateMetricData(
+          periods,
+          node.metricName!,
+          node.alternativeNames,
+        );
+      }
+      
+      // If this is a calculated or parent node, compute it from children
+      if (data == null && node.children.isNotEmpty) {
+        // First process all children
+        for (final child in node.children) {
+          processNode(child);
+        }
+        
+        // Then calculate parent value from children
+        if (node.calculationType != CalculationType.none) {
+          data = MetricCalculations.calculateDerivedMetric(
+            node,
+            metricsData,
+            periods,
+          );
+          
+          // If still null, try rollup
+          if (data == null && node.children.isNotEmpty) {
+            data = MetricCalculations.rollupChildMetrics(
+              node.children,
+              metricsData,
+              periods.isNotEmpty ? periods.first.period : '',
+            );
+          }
+        }
+      }
+      
+      if (data != null) {
+        metricsData[node.id] = data;
+      }
+      
+      // Process children if not already done
+      for (final child in node.children) {
+        if (!metricsData.containsKey(child.id)) {
+          processNode(child);
+        }
+      }
+    }
+
+    // Process all Balance Sheet roots
+    for (final root in BalanceSheetHierarchy.roots) {
+      processNode(root);
+    }
+    
+    // Process Income Statement root
+    processNode(IncomeStatementHierarchy.root);
+
+    return metricsData;
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.category.isEmpty) {
@@ -180,7 +260,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Tab description tooltip
+              // Tab description tooltip and view mode toggle
               Padding(
                 padding: const EdgeInsets.only(left: 4, bottom: 8),
                 child: Row(
@@ -193,10 +273,44 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                     ),
                     const SizedBox(width: 8),
                     const TabDescriptionTooltip(tabId: 'trend'),
+                    const Spacer(),
+                    // View mode toggle
+                    SegmentedButton<TrendViewMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: TrendViewMode.chart,
+                          icon: Icon(Icons.show_chart, size: 18),
+                          label: Text('Chart View'),
+                        ),
+                        ButtonSegment(
+                          value: TrendViewMode.hierarchy,
+                          icon: Icon(Icons.account_tree, size: 18),
+                          label: Text('Hierarchy View'),
+                        ),
+                      ],
+                      selected: {_viewMode},
+                      onSelectionChanged: (Set<TrendViewMode> selection) {
+                        setState(() => _viewMode = selection.first);
+                      },
+                      style: ButtonStyle(
+                        textStyle: WidgetStateProperty.all(
+                          const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
-              Card(
+              
+              // Conditional rendering based on view mode
+              if (_viewMode == TrendViewMode.hierarchy)
+                HierarchyView(
+                  ticker: widget.ticker,
+                  category: widget.category,
+                  metricsData: _prepareMetricsData(parsed),
+                )
+              else
+                Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
