@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     
     # Cache
     cache_ttl: int = Field(default=300, env="CACHE_TTL")  # 5 minutes
+    cache_dir: str = Field(default=".cache", env="CACHE_DIR")
     
     # Data Paths (relative to project root)
     data_dir: str = Field(default="../data", env="DATA_DIR")

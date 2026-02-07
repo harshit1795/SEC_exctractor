@@ -9,6 +9,7 @@ This service provides unified access to multiple financial data sources:
 - Fundamentals Data
 """
 import logging
+import diskcache as dc
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,12 +34,14 @@ class DataSourceManager:
     """
     MCP-style data source manager for accessing financial data.
     Migrated from Streamlit with async support added.
+    Uses diskcache for persistence across restarts.
     """
     
-    def __init__(self, cik_df: Optional[pd.DataFrame] = None):
-        self.cache: Dict[str, tuple] = {}
+    def __init__(self, cik_df: Any = None):
+        self.cache_dir = settings.cache_dir
+        self.cache = dc.Cache(self.cache_dir)
         self.cache_ttl = settings.cache_ttl  # 5 minutes default
-        self.cik_df = cik_df
+        self.cik_df = cik_df if cik_df is not None else pd.DataFrame()
         
         # Load CIK mapping if not provided
         if self.cik_df is None or self.cik_df.empty:
@@ -61,15 +64,16 @@ class DataSourceManager:
                 self.cik_df = pd.DataFrame()
     
     def _is_cache_valid(self, key: str) -> bool:
-        """Check if cached data is still valid"""
-        if key not in self.cache:
-            return False
-        cache_time, _ = self.cache[key]
-        return (datetime.now() - cache_time).seconds < self.cache_ttl
+        """
+        Check if cached data is still valid.
+        Note: diskcache handles TTL automatically if passed during set(),
+        but we keep this for compatibility with existing logic or custom checks.
+        """
+        return key in self.cache
     
     def _cache_data(self, key: str, data: Any) -> None:
-        """Cache data with timestamp"""
-        self.cache[key] = (datetime.now(), data)
+        """Cache data with configured TTL"""
+        self.cache.set(key, data, expire=self.cache_ttl)
     
     def clear_cache(self, key_pattern: Optional[str] = None) -> None:
         """
@@ -80,9 +84,10 @@ class DataSourceManager:
                         If None, clears all cache
         """
         if key_pattern:
-            keys_to_remove = [k for k in self.cache.keys() if key_pattern in k]
+            # diskcache doesn't have a direct 'matching' delete, so we iterate
+            keys_to_remove = [k for k in self.cache.iter_keys() if isinstance(k, str) and key_pattern in k]
             for key in keys_to_remove:
-                del self.cache[key]
+                self.cache.delete(key)
             logger.info(f"Cleared {len(keys_to_remove)} cache entries matching '{key_pattern}'")
         else:
             self.cache.clear()
@@ -102,7 +107,7 @@ class DataSourceManager:
         cache_key = f"yf_{ticker}_{period}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             ticker_obj = yf.Ticker(ticker)
@@ -166,7 +171,7 @@ class DataSourceManager:
         cache_key = f"fred_{'_'.join(series_ids)}_{start_date}_{end_date}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             # Convert list to dict format expected by get_multiple_fred_series
@@ -202,7 +207,7 @@ class DataSourceManager:
         cache_key = f"sec_{ticker}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             if self.cik_df.empty:
@@ -263,7 +268,7 @@ class DataSourceManager:
         """
         cache_key = f"10k_{ticker}_{'_'.join(sections)}"
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
 
         try:
             if self.cik_df.empty:
@@ -321,7 +326,7 @@ class DataSourceManager:
         """
         cache_key = f"10q_{ticker}_{'_'.join(sections)}"
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
 
         try:
             if self.cik_df.empty:
@@ -377,7 +382,7 @@ class DataSourceManager:
         cache_key = f"fundamentals_{ticker}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             # Try multiple possible paths
