@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'core/widgets/global_sidebar.dart';
 
 class AppShell extends StatelessWidget {
   const AppShell({
@@ -11,67 +12,38 @@ class AppShell extends StatelessWidget {
   final Widget child;
   final String location;
 
-  int _indexForLocation(String location) {
-    if (location.startsWith('/nexus')) {
-      return 1;
-    }
-    if (location.startsWith('/health')) {
-      return 2;
-    }
-    if (location.startsWith('/settings')) {
-      return 3;
-    }
-    return 0;
-  }
-
-  void _onDestinationSelected(BuildContext context, int index) {
-    switch (index) {
-      case 0:
-        context.go('/');
-        break;
-      case 1:
-        context.go('/nexus');
-        break;
-      case 2:
-        context.go('/health');
-        break;
-      case 3:
-        context.go('/settings');
-        break;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final selectedIndex = _indexForLocation(location);
-    return Scaffold(
-      body: child,
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: selectedIndex,
-        onDestinationSelected: (index) => _onDestinationSelected(context, index),
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 900;
+
+        if (isMobile) {
+          return Scaffold(
+            appBar: AppBar(
+              title: const Text('FinQ', style: TextStyle(fontWeight: FontWeight.bold)),
+              backgroundColor: Colors.white,
+              elevation: 0,
+              iconTheme: const IconThemeData(color: Colors.black),
+              titleTextStyle: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+            drawer: const Drawer(
+              child: GlobalSidebar(),
+            ),
+            body: child,
+          );
+        }
+
+        return Scaffold(
+          body: Row(
+            children: [
+              const GlobalSidebar(),
+              const VerticalDivider(width: 1, thickness: 1),
+              Expanded(child: child),
+            ],
           ),
-          NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'Nexus',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.health_and_safety_outlined),
-            selectedIcon: Icon(Icons.health_and_safety),
-            label: 'Health',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
-            selectedIcon: Icon(Icons.settings),
-            label: 'Settings',
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

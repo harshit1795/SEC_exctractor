@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio_cache_interceptor/dio_cache_interceptor.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api/api_client.dart';
 import '../api/api_client_dio.dart';
@@ -21,4 +22,9 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     authService: ref.read(authServiceProvider),
     cacheStore: ref.read(cacheStoreProvider),
   );
+});
+
+/// Shared Preferences instance (must be overridden in main.dart)
+final sharedPreferencesProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError();
 });

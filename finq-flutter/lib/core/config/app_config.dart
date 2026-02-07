@@ -23,4 +23,8 @@ class AppConfig {
     }
     return buffer.toString();
   }
+  static const String apiNinjaKey = String.fromEnvironment(
+    'API_NINJA_KEY',
+    defaultValue: 'livTDbNkoOMN7yeNkNIhNA==4OpEMBaOVHwqOn8g',
+  );
 }

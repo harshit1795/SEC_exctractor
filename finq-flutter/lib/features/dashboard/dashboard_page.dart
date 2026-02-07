@@ -15,6 +15,9 @@ import 'tabs/disclosures_tab.dart';
 import 'tabs/macroeconomic_tab.dart';
 import 'tabs/finq360_tab.dart';
 import 'tabs/finq_chat_tab.dart';
+import 'tabs/price_chart_tab.dart';
+
+import 'widgets/dashboard_filters.dart';
 
 class DashboardPage extends ConsumerStatefulWidget {
   const DashboardPage({super.key});
@@ -24,176 +27,72 @@ class DashboardPage extends ConsumerStatefulWidget {
 }
 
 class _DashboardPageState extends ConsumerState<DashboardPage> {
-  late TextEditingController _tickerController;
   late String _period;
-  late String _category;
 
   static const _periodOptions = ['1m', '3m', '6m', '1y', '5y'];
-  static const _categories = [
-    'IncomeStatement',
-    'BalanceSheet',
-    'CashFlow',
-  ];
 
   @override
   void initState() {
     super.initState();
-    _tickerController = TextEditingController(
-      text: ref.read(tickerProvider),
-    );
     _period = ref.read(periodProvider);
-    _category = ref.read(categoryProvider);
-  }
-
-  @override
-  void dispose() {
-    _tickerController.dispose();
-    super.dispose();
   }
 
   void _loadData() {
-    final ticker = _tickerController.text.trim().toUpperCase();
-    if (ticker.isEmpty) {
-      return;
+    // Just refresh the providers by setting state, triggering watchers. 
+    // Persisted state is already updated if changed via UI.
+    // For period passed to PriceChart, we update the global provider to persist it.
+    if (ref.read(periodProvider) != _period) {
+        ref.read(periodProvider.notifier).setPeriod(_period);
     }
-    _tickerController.text = ticker;
-    ref.read(tickerProvider.notifier).state = ticker;
-    ref.read(periodProvider.notifier).state = _period;
-    ref.read(categoryProvider.notifier).state = _category;
   }
 
   @override
   Widget build(BuildContext context) {
+    // Watch global providers
     final ticker = ref.watch(tickerProvider);
+    final category = ref.watch(categoryProvider);
+    
+    // Watch data providers (which depend on ticker/period)
     final healthStatus = ref.watch(healthStatusProvider);
     final tickerData = ref.watch(tickerDataProvider);
     final fundamentals = ref.watch(fundamentalsProvider);
 
     return SafeArea(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final isWide = constraints.maxWidth >= 900;
-          final filters = _FiltersCard(
-            tickerController: _tickerController,
-            category: _category,
-            categories: _categories,
-            onCategoryChanged: (value) => setState(() => _category = value),
-            onApply: _loadData,
-          );
-
-          final mainContent = _DashboardContent(
-            ticker: ticker,
-            period: _period,
-            periods: _periodOptions,
-            onPeriodChanged: (value) => setState(() => _period = value),
-            onSubmit: _loadData,
-            healthStatus: healthStatus,
-            tickerData: tickerData,
-            fundamentals: fundamentals,
-            category: _category,
-          );
-
-          if (isWide) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(width: 280, child: filters),
-                  const SizedBox(width: 24),
-                  Expanded(child: mainContent),
-                ],
-              ),
-            );
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                filters,
-                const SizedBox(height: 20),
-                mainContent,
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _FiltersCard extends StatelessWidget {
-  const _FiltersCard({
-    required this.tickerController,
-    required this.category,
-    required this.categories,
-    required this.onCategoryChanged,
-    required this.onApply,
-  });
-
-  final TextEditingController tickerController;
-  final String category;
-  final List<String> categories;
-  final ValueChanged<String> onCategoryChanged;
-  final VoidCallback onApply;
-
-  String _formatCategoryName(String category) {
-    switch (category) {
-      case 'IncomeStatement':
-        return 'Income Statement';
-      case 'BalanceSheet':
-        return 'Balance Sheet';
-      case 'CashFlow':
-        return 'Cash Flow Statement';
-      default:
-        return category;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Filter Widget at the top
+            const DashboardFilters(),
+            const SizedBox(height: 20),
+            
             const Text(
-              'Filters',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              'Dashboard',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'API Base URL: ${AppConfig.apiBaseUrl}',
+              style: const TextStyle(fontSize: 12, color: Colors.black54),
             ),
             const SizedBox(height: 12),
-            TextField(
-              controller: tickerController,
-              decoration: const InputDecoration(
-                labelText: 'Ticker',
-                hintText: 'AAPL',
-              ),
-            ),
+            DataPipelineBanner(ticker: ticker),
+            CompanyHeader(tickerData: tickerData),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: category,
-              decoration: const InputDecoration(labelText: 'Category'),
-              items: categories
-                  .map(
-                    (value) => DropdownMenuItem(
-                      value: value,
-                      child: Text(_formatCategoryName(value)),
-                    ),
-                  )
-                  .toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  onCategoryChanged(value);
-                }
+            _DashboardContent(
+              ticker: ticker,
+              period: _period,
+              periods: _periodOptions,
+              category: category,
+              onPeriodChanged: (value) {
+                setState(() => _period = value);
+                _loadData();
               },
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: onApply,
-              child: const Text('Apply'),
+              onSubmit: _loadData,
+              healthStatus: healthStatus,
+              tickerData: tickerData,
+              fundamentals: fundamentals,
             ),
           ],
         ),
@@ -207,23 +106,23 @@ class _DashboardContent extends StatelessWidget {
     required this.ticker,
     required this.period,
     required this.periods,
+    required this.category,
     required this.onPeriodChanged,
     required this.onSubmit,
     required this.healthStatus,
     required this.tickerData,
     required this.fundamentals,
-    required this.category,
   });
 
   final String ticker;
   final String period;
   final List<String> periods;
+  final String category;
   final ValueChanged<String> onPeriodChanged;
   final VoidCallback onSubmit;
   final AsyncValue<Map<String, dynamic>> healthStatus;
   final AsyncValue<Map<String, dynamic>> tickerData;
   final AsyncValue<Map<String, dynamic>> fundamentals;
-  final String category;
 
   static const _tabs = [
     ('trend', '📈 Metrics Trend Analysis'),
@@ -238,57 +137,35 @@ class _DashboardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Dashboard',
-          style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'API Base URL: ${AppConfig.apiBaseUrl}',
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
-        ),
-        const SizedBox(height: 12),
-        DataPipelineBanner(ticker: ticker),
-        CompanyHeader(tickerData: tickerData),
-        const SizedBox(height: 12),
-        DefaultTabController(
-          length: _tabs.length,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              TabBar(
-                isScrollable: true,
-                labelColor: Colors.green.shade700,
-                unselectedLabelColor: Colors.grey.shade600,
-                indicatorColor: Colors.green.shade500,
-                labelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-                unselectedLabelStyle: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.normal,
-                ),
-                tabs: _tabs
-                    .map(
-                      (tab) => Tab(text: tab.$2),
-                    )
-                    .toList(),
-              ),
-              const SizedBox(height: 12),
-              // Use LayoutBuilder to get available space and prevent overflow
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  // Calculate available height (minimum 400, but adapt to screen)
-                  final availableHeight = MediaQuery.of(context).size.height - 400;
-                  final tabHeight = availableHeight.clamp(400.0, 800.0);
-                  
-                  return SizedBox(
-                    height: tabHeight,
-                    child: TabBarView(
+    return DefaultTabController(
+      length: _tabs.length,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TabBar(
+            isScrollable: true,
+            labelColor: Colors.green.shade700,
+            unselectedLabelColor: Colors.grey.shade600,
+            indicatorColor: Colors.green.shade500,
+            labelStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.normal,
+            ),
+            tabs: _tabs.map((tab) => Tab(text: tab.$2)).toList(),
+          ),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final availableHeight = MediaQuery.of(context).size.height - 300;
+              final tabHeight = availableHeight.clamp(400.0, 1200.0); // Increased max height
+              
+              return SizedBox(
+                height: tabHeight,
+                child: TabBarView(
                   children: [
                     TrendTab(
                       ticker: ticker,
@@ -299,7 +176,7 @@ class _DashboardContent extends StatelessWidget {
                       category: category,
                     ),
                     EarningsTab(ticker: ticker),
-                    _PriceTab(
+                    PriceChartTab(
                       period: period,
                       periods: periods,
                       onPeriodChanged: onPeriodChanged,
@@ -315,14 +192,12 @@ class _DashboardContent extends StatelessWidget {
                     ),
                     FinQChatTab(ticker: ticker),
                   ],
-                    ),
-                  );
-                },
-              ),
-            ],
+                ),
+              );
+            },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -342,198 +217,6 @@ class _StatusTab extends StatelessWidget {
           error: (error, _) => _ErrorCard(message: error.toString()),
         ),
       ],
-    );
-  }
-}
-
-class _PriceTab extends StatelessWidget {
-  const _PriceTab({
-    required this.period,
-    required this.periods,
-    required this.onPeriodChanged,
-    required this.onSubmit,
-    required this.tickerData,
-    required this.fundamentals,
-  });
-
-  final String period;
-  final List<String> periods;
-  final ValueChanged<String> onPeriodChanged;
-  final VoidCallback onSubmit;
-  final AsyncValue<Map<String, dynamic>> tickerData;
-  final AsyncValue<Map<String, dynamic>> fundamentals;
-
-  @override
-  Widget build(BuildContext context) {
-    final points = parsePriceSeries(tickerData.valueOrNull);
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          _QueryCard(
-            period: period,
-            periods: periods,
-            onPeriodChanged: onPeriodChanged,
-            onSubmit: onSubmit,
-          ),
-          const SizedBox(height: 12),
-          _InfoCard(
-            title: 'Price Chart',
-            child: PriceChart(points: points),
-          ),
-          const SizedBox(height: 12),
-          _DataCard(title: 'Ticker Data', value: tickerData),
-          const SizedBox(height: 12),
-          _DataCard(title: 'Fundamentals', value: fundamentals),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlaceholderTab extends StatelessWidget {
-  const _PlaceholderTab({required this.title, required this.message});
-
-  final String title;
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            Text(message),
-          ],
-        ),
-      ),
-    );
-  }
-}
-class _QueryCard extends StatelessWidget {
-  const _QueryCard({
-    required this.period,
-    required this.periods,
-    required this.onPeriodChanged,
-    required this.onSubmit,
-  });
-
-  final String period;
-  final List<String> periods;
-  final ValueChanged<String> onPeriodChanged;
-  final VoidCallback onSubmit;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Data Query',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Text('Period'),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
-                  value: period,
-                  items: periods
-                      .map((value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) {
-                      onPeriodChanged(value);
-                    }
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: onSubmit,
-              child: const Text('Load Data'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _DataCard extends StatelessWidget {
-  const _DataCard({required this.title, required this.value});
-
-  final String title;
-  final AsyncValue<Map<String, dynamic>> value;
-
-  @override
-  Widget build(BuildContext context) {
-    return value.when(
-      loading: () => _InfoCard(
-        title: title,
-        child: const LinearProgressIndicator(),
-      ),
-      error: (error, _) => _InfoCard(
-        title: title,
-        child: Text(
-          error.toString(),
-          style: TextStyle(color: Colors.red.shade700),
-        ),
-      ),
-      data: (data) {
-        final formatted = const JsonEncoder.withIndent('  ').convert(data);
-        final preview = formatted.length > 800
-            ? '${formatted.substring(0, 800)}\n...'
-            : formatted;
-        return _InfoCard(
-          title: title,
-          child: Text(
-            preview,
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _InfoCard extends StatelessWidget {
-  const _InfoCard({required this.title, required this.child});
-
-  final String title;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            child,
-          ],
-        ),
-      ),
     );
   }
 }

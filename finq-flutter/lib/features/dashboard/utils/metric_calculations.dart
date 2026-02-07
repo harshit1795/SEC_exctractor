@@ -77,10 +77,10 @@ class MetricCalculations {
     double? currentValue;
     
     // Try to find the metric by name or alternative names
-    currentValue = latestPeriod.metrics[metricName];
+    currentValue = _getValue(latestPeriod.metrics, metricName);
     if (currentValue == null) {
       for (final altName in alternativeNames) {
-        currentValue = latestPeriod.metrics[altName];
+        currentValue = _getValue(latestPeriod.metrics, altName);
         if (currentValue != null) break;
       }
     }
@@ -91,10 +91,10 @@ class MetricCalculations {
     double? previousValue;
     if (periods.length > 1) {
       final prevPeriod = periods[1];
-      previousValue = prevPeriod.metrics[metricName];
+      previousValue = _getValue(prevPeriod.metrics, metricName);
       if (previousValue == null) {
         for (final altName in alternativeNames) {
-          previousValue = prevPeriod.metrics[altName];
+          previousValue = _getValue(prevPeriod.metrics, altName);
           if (previousValue != null) break;
         }
       }
@@ -229,13 +229,16 @@ class MetricCalculations {
 
     for (final entry in metricsData.entries) {
       final nodeData = entry.value;
+      
+      final key = entry.key.toLowerCase().replaceAll('_', ' ').replaceAll(' ', '');
+      final min = minuendName.toLowerCase().replaceAll('_', ' ').replaceAll(' ', '');
+      final sub = subtrahendName.toLowerCase().replaceAll('_', ' ').replaceAll(' ', '');
+
       // Check if this metric matches minuend or subtrahend
-      if (entry.key.contains(minuendName) || 
-          minuendName.contains(entry.key)) {
+      if (key.contains(min) || min.contains(key)) {
         minuendData = nodeData;
       }
-      if (entry.key.contains(subtrahendName) || 
-          subtrahendName.contains(entry.key)) {
+      if (key.contains(sub) || sub.contains(key)) {
         subtrahendData = nodeData;
       }
     }
@@ -474,4 +477,16 @@ class PeriodData {
 
   final String period;
   final Map<String, double> metrics;
+}
+
+/// Helper method for case-insensitive metric lookup
+double? _getValue(Map<String, double> metrics, String name) {
+  if (metrics.containsKey(name)) return metrics[name];
+  
+  // Case-insensitive fallback
+  final lowerName = name.toLowerCase();
+  for (final key in metrics.keys) {
+    if (key.toLowerCase() == lowerName) return metrics[key];
+  }
+  return null;
 }

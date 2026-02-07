@@ -207,13 +207,54 @@ class _TrendTabState extends ConsumerState<TrendTab> {
       }
     }
 
+    // 1. Collect all known metrics from standard hierarchies
+    final knownMetrics = <String>{};
+    void collectKnownMetrics(FinancialNode node) {
+      if (node.metricName != null) knownMetrics.add(node.metricName!);
+      knownMetrics.addAll(node.alternativeNames);
+      for (final child in node.children) {
+        collectKnownMetrics(child);
+      }
+    }
+
     // Process all Balance Sheet roots
     for (final root in BalanceSheetHierarchy.roots) {
+      collectKnownMetrics(root);
       processNode(root);
     }
     
     // Process Income Statement root
+    collectKnownMetrics(IncomeStatementHierarchy.root);
     processNode(IncomeStatementHierarchy.root);
+
+    // 2. Identify metrics not in the standard hierarchies (case-insensitive check)
+    final unknownMetrics = parsed.metrics.where((m) {
+      final lowerM = m.toLowerCase();
+      // Check if this metric or any case-variant is already known
+      return !knownMetrics.any((k) => k.toLowerCase() == lowerM);
+    }).toList()
+      ..sort();
+
+    // 3. Create "Other Metrics" node if needed
+    if (unknownMetrics.isNotEmpty) {
+      final otherMetricsNode = FinancialNode(
+        id: 'other_metrics',
+        displayName: 'Other Metrics',
+        category: NodeCategory.profit, // Use generic category
+        type: NodeType.root,
+        children: unknownMetrics.map((metric) {
+          return FinancialNode(
+            id: 'other_${metric.toLowerCase().replaceAll(' ', '_')}',
+            displayName: metric,
+            metricName: metric,
+            category: NodeCategory.profit,
+            type: NodeType.leaf,
+          );
+        }).toList(),
+      );
+
+      processNode(otherMetricsNode);
+    }
 
     return metricsData;
   }
@@ -309,134 +350,148 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                   category: widget.category,
                   metricsData: _prepareMetricsData(parsed),
                 )
-              else
+              else ...[
+                // Metric selection card - only in Chart View
                 Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Metrics to Plot',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                          DropdownButton<_ChartType>(
-                            value: _chartType,
-                            items: const [
-                              DropdownMenuItem(
-                                value: _ChartType.line,
-                                child: Text('Line Chart'),
-                              ),
-                              DropdownMenuItem(
-                                value: _ChartType.bar,
-                                child: Text('Bar Chart'),
-                              ),
-                            ],
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _chartType = value);
-                              }
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      MultiSelectDropdown<String>(
-                        label: 'Select metrics to plot',
-                        searchHint: 'Search metrics...',
-                        items: allMetrics,
-                        selectedItems: _selectedMetrics,
-                        onSelectionChanged: _onMetricsChanged,
-                        itemLabel: (metric) => metric,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Spacer(),
-                          if (_selectedMetrics.isNotEmpty)
-                            TextButton.icon(
-                              onPressed: () => _exportToCsv(parsed),
-                              icon: const Icon(Icons.download, size: 18),
-                              label: const Text('Export CSV'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.blue.shade700,
-                              ),
-                            ),
-                          if (_selectedMetrics.isNotEmpty &&
-                              ref.read(preferencesServiceProvider).hasPreferences(
-                                    widget.ticker,
-                                    widget.category,
-                                  ))
-                            const SizedBox(width: 8),
-                          if (ref.read(preferencesServiceProvider).hasPreferences(
-                                widget.ticker,
-                                widget.category,
-                              ))
-                            TextButton.icon(
-                              onPressed: _clearPreferences,
-                              icon: const Icon(Icons.clear, size: 18),
-                              label: const Text('Clear Preferences'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.orange.shade700,
-                              ),
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              ..._selectedMetrics.map((metric) {
-                final metricData = parsed.data
-                    .map((period) => _MetricDataPoint(
-                          period: period.period,
-                          value: period.metrics[metric] ?? 0,
-                        ))
-                    .toList();
-
-                return Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  metric,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Expanded(
+                              child: Text(
+                                'Metrics to Plot',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
                                 ),
                               ),
-                              MetricTooltip(metricName: metric),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          SizedBox(
-                            height: 250,
-                            child: _chartType == _ChartType.line
-                                ? _buildLineChart(metricData)
-                                : _buildBarChart(metricData),
-                          ),
-                        ],
-                      ),
+                            ),
+                            DropdownButton<_ChartType>(
+                              value: _chartType,
+                              items: const [
+                                DropdownMenuItem(
+                                  value: _ChartType.line,
+                                  child: Text('Line Chart'),
+                                ),
+                                DropdownMenuItem(
+                                  value: _ChartType.bar,
+                                  child: Text('Bar Chart'),
+                                ),
+                              ],
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _chartType = value);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        MultiSelectDropdown<String>(
+                          label: 'Select metrics to plot',
+                          searchHint: 'Search metrics...',
+                          items: allMetrics,
+                          selectedItems: _selectedMetrics,
+                          onSelectionChanged: _onMetricsChanged,
+                          itemLabel: (metric) => metric,
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Spacer(),
+                            if (_selectedMetrics.isNotEmpty)
+                              TextButton.icon(
+                                onPressed: () => _exportToCsv(parsed),
+                                icon: const Icon(Icons.download, size: 18),
+                                label: const Text('Export CSV'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.blue.shade700,
+                                ),
+                              ),
+                            if (_selectedMetrics.isNotEmpty &&
+                                ref.read(preferencesServiceProvider).hasPreferences(
+                                      widget.ticker,
+                                      widget.category,
+                                    ))
+                              const SizedBox(width: 8),
+                            if (ref.read(preferencesServiceProvider).hasPreferences(
+                                  widget.ticker,
+                                  widget.category,
+                                ))
+                              TextButton.icon(
+                                onPressed: _clearPreferences,
+                                icon: const Icon(Icons.clear, size: 18),
+                                label: const Text('Clear Preferences'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.orange.shade700,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
                     ),
                   ),
-                );
-              }),
+                ),
+                const SizedBox(height: 16),
+                // Charts - only in Chart View
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 900;
+                    return Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: _selectedMetrics.map((metric) {
+                        final metricData = parsed.data
+                            .map((period) => _MetricDataPoint(
+                                  period: period.period,
+                                  value: period.metrics[metric] ?? 0,
+                                ))
+                            .toList();
+
+                        return SizedBox(
+                          width: isWide
+                              ? (constraints.maxWidth - 16) / 2
+                              : constraints.maxWidth,
+                          child: Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          metric,
+                                          style: const TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                      MetricTooltip(metricName: metric),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 16),
+                                  SizedBox(
+                                    height: 250,
+                                    child: _chartType == _ChartType.line
+                                        ? _buildLineChart(metricData)
+                                        : _buildBarChart(metricData),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         );
@@ -501,6 +556,21 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
         ),
         borderData: FlBorderData(show: true),
+        lineTouchData: LineTouchData(
+          touchTooltipData: LineTouchTooltipData(
+            getTooltipItems: (touchedSpots) {
+              return touchedSpots.map((LineBarSpot touchedSpot) {
+                return LineTooltipItem(
+                  _formatValue(touchedSpot.y),
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
+                );
+              }).toList();
+            },
+          ),
+        ),
         lineBarsData: [
           LineChartBarData(
             spots: data
@@ -518,60 +588,76 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     );
   }
 
+
+
   Widget _buildBarChart(List<_MetricDataPoint> data) {
     return BarChart(
-      BarChartData(
-        gridData: FlGridData(show: true),
-        titlesData: FlTitlesData(
-          leftTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 60,
-              getTitlesWidget: (value, meta) {
-                return Text(
-                  _formatValue(value),
-                  style: const TextStyle(fontSize: 10),
+        BarChartData(
+          barTouchData: BarTouchData(
+            touchTooltipData: BarTouchTooltipData(
+              getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                return BarTooltipItem(
+                  _formatValue(rod.toY),
+                  const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 );
               },
             ),
           ),
-          bottomTitles: AxisTitles(
-            sideTitles: SideTitles(
-              showTitles: true,
-              reservedSize: 30,
-              getTitlesWidget: (value, meta) {
-                final index = value.toInt();
-                if (index >= 0 && index < data.length) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      data[index].period,
-                      style: const TextStyle(fontSize: 10),
-                    ),
+          gridData: FlGridData(show: true),
+          // ... rest of the chart configuration
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 60,
+                getTitlesWidget: (value, meta) {
+                  return Text(
+                    _formatValue(value),
+                    style: const TextStyle(fontSize: 10),
                   );
-                }
-                return const Text('');
-              },
-            ),
-          ),
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        ),
-        borderData: FlBorderData(show: true),
-        barGroups: data.asMap().entries.map((e) {
-          return BarChartGroupData(
-            x: e.key,
-            barRods: [
-              BarChartRodData(
-                toY: e.value.value,
-                color: Colors.blue,
-                width: 20,
+                },
               ),
-            ],
-          );
-        }).toList(),
-      ),
-    );
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 30,
+                getTitlesWidget: (value, meta) {
+                  final index = value.toInt();
+                  if (index >= 0 && index < data.length) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        data[index].period,
+                        style: const TextStyle(fontSize: 10),
+                      ),
+                    );
+                  }
+                  return const Text('');
+                },
+              ),
+            ),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: true),
+          barGroups: data.asMap().entries.map((e) {
+            return BarChartGroupData(
+              x: e.key,
+              barRods: [
+                BarChartRodData(
+                  toY: e.value.value,
+                  color: Colors.blue,
+                  width: 20,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ],
+            );
+          }).toList(),
+        ));
   }
 
   String _formatValue(double value) {

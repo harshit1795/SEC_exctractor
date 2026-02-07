@@ -1,5 +1,6 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import 'utils/technical_indicators.dart';
 
 class PricePoint {
   PricePoint({required this.date, required this.close});
@@ -8,7 +9,7 @@ class PricePoint {
   final double close;
 }
 
-class PriceChart extends StatelessWidget {
+class PriceChart extends StatefulWidget {
   const PriceChart({
     super.key,
     required this.points,
@@ -17,80 +18,295 @@ class PriceChart extends StatelessWidget {
   final List<PricePoint> points;
 
   @override
+  State<PriceChart> createState() => _PriceChartState();
+}
+
+class _PriceChartState extends State<PriceChart> {
+  bool _showBollinger = true;
+  bool _showMACD = true;
+  bool _showRSI = true;
+
+  late BollingerResult _bollinger;
+  late MacdResult _macd;
+  late RsiResult _rsi;
+
+  @override
+  void initState() {
+    super.initState();
+    _calculateIndicators();
+  }
+
+  @override
+  void didUpdateWidget(PriceChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.points != oldWidget.points) {
+      _calculateIndicators();
+    }
+  }
+
+  void _calculateIndicators() {
+    _bollinger = TechnicalIndicators.calculateBollingerBands(widget.points);
+    _macd = TechnicalIndicators.calculateMACD(widget.points);
+    _rsi = TechnicalIndicators.calculateRSI(widget.points);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (points.isEmpty) {
+    if (widget.points.isEmpty) {
       return const SizedBox(
-        height: 260,
+        height: 400,
         child: Center(child: Text('No price data available.')),
       );
     }
 
-    final minY = points.map((e) => e.close).reduce((a, b) => a < b ? a : b);
-    final maxY = points.map((e) => e.close).reduce((a, b) => a > b ? a : b);
+    return Column(
+      children: [
+        _buildKPIs(),
+        const SizedBox(height: 16),
+        _buildControls(),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 300,
+          child: _buildMainChart(),
+        ),
+        if (_showMACD) ...[
+            const SizedBox(height: 16),
+            const Text('MACD', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            SizedBox(
+                height: 150,
+                child: _buildMacdChart(),
+            ),
+        ],
+        if (_showRSI) ...[
+            const SizedBox(height: 16),
+            const Text('RSI', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            SizedBox(
+                height: 150,
+                child: _buildRsiChart(),
+            ),
+        ]
+      ],
+    );
+  }
+
+  Widget _buildKPIs() {
+    final lastIdx = widget.points.length - 1;
+    final close = widget.points.last.close;
+    final rsi = _rsi.values[lastIdx];
+    final macd = _macd.macd[lastIdx];
+    final macdSignal = _macd.signal[lastIdx];
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      children: [
+        _KpiCard(label: 'Close', value: '\$${close.toStringAsFixed(2)}'),
+        if (rsi != null)
+          _KpiCard(label: 'RSI (14)', value: rsi.toStringAsFixed(2), color: _getRsiColor(rsi)),
+        if (macd != null && macdSignal != null)
+           _KpiCard(
+            label: 'MACD', 
+            value: '${macd.toStringAsFixed(2)} / ${macdSignal.toStringAsFixed(2)}',
+            subtitle: 'MACD / Signal',
+           ),
+      ],
+    );
+  }
+
+  Color _getRsiColor(double rsi) {
+      if (rsi > 70) return Colors.red;
+      if (rsi < 30) return Colors.green;
+      return Colors.black;
+  }
+
+  Widget _buildControls() {
+    return Wrap(
+      spacing: 8,
+      children: [
+        FilterChip(
+          label: const Text('Bollinger Bands'),
+          selected: _showBollinger,
+          onSelected: (v) => setState(() => _showBollinger = v),
+        ),
+        FilterChip(
+          label: const Text('MACD'),
+          selected: _showMACD,
+          onSelected: (v) => setState(() => _showMACD = v),
+        ),
+        FilterChip(
+          label: const Text('RSI'),
+          selected: _showRSI,
+          onSelected: (v) => setState(() => _showRSI = v),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMainChart() {
+    final points = widget.points;
+    final spots = points.asMap().entries.map((e) {
+      return FlSpot(e.key.toDouble(), e.value.close);
+    }).toList();
+
+    var minY = points.map((e) => e.close).reduce((a, b) => a < b ? a : b);
+    var maxY = points.map((e) => e.close).reduce((a, b) => a > b ? a : b);
+
+    // Adjust min/max for Bollinger
+    if (_showBollinger) {
+        final lowers = _bollinger.lower.where((e) => e != null).cast<double>();
+        final uppers = _bollinger.upper.where((e) => e != null).cast<double>();
+        if (lowers.isNotEmpty) {
+            final minLower = lowers.reduce((a, b) => a < b ? a : b);
+            if (minLower < minY) minY = minLower;
+        }
+        if (uppers.isNotEmpty) {
+            final maxUpper = uppers.reduce((a, b) => a > b ? a : b);
+            if (maxUpper > maxY) maxY = maxUpper;
+        }
+    }
+
     final range = (maxY - minY).abs();
     final padding = range == 0 ? maxY * 0.1 : range * 0.1;
 
-    final spots = <FlSpot>[];
-    for (var i = 0; i < points.length; i++) {
-      spots.add(FlSpot(i.toDouble(), points[i].close));
-    }
-
-    return SizedBox(
-      height: 260,
-      child: LineChart(
-        LineChartData(
-          minY: minY - padding,
-          maxY: maxY + padding,
-          gridData: const FlGridData(show: true),
-          borderData: FlBorderData(show: false),
-          titlesData: FlTitlesData(
-            leftTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                reservedSize: 42,
-                getTitlesWidget: (value, meta) => Text(
-                  value.toStringAsFixed(2),
-                  style: const TextStyle(fontSize: 10),
-                ),
-              ),
-            ),
-            rightTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            topTitles: const AxisTitles(
-              sideTitles: SideTitles(showTitles: false),
-            ),
-            bottomTitles: AxisTitles(
-              sideTitles: SideTitles(
-                showTitles: true,
-                interval: points.length > 10 ? (points.length / 4).floorToDouble() : 1,
-                getTitlesWidget: (value, meta) {
-                  final index = value.toInt();
-                  if (index < 0 || index >= points.length) {
-                    return const SizedBox.shrink();
-                  }
-                  final date = points[index].date;
-                  return Text(
-                    '${date.month}/${date.day}',
-                    style: const TextStyle(fontSize: 10),
-                  );
-                },
-              ),
-            ),
-          ),
-          lineBarsData: [
-            LineChartBarData(
-              spots: spots,
-              isCurved: true,
-              barWidth: 2,
-              dotData: const FlDotData(show: false),
-              color: Colors.indigo,
-            ),
-          ],
+    return LineChart(
+      LineChartData(
+        minY: minY - padding,
+        maxY: maxY + padding,
+        gridData: const FlGridData(show: true),
+        titlesData: FlTitlesData(
+            leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40)),
+            rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), // Share x-axis logic
         ),
+        borderData: FlBorderData(show: true),
+        lineBarsData: [
+          // Close Price
+          LineChartBarData(
+            spots: spots,
+            isCurved: false,
+            barWidth: 2,
+            color: Colors.black,
+            dotData: const FlDotData(show: false),
+          ),
+          // Bollinger Upper
+          if (_showBollinger)
+             LineChartBarData(
+                spots: _toSpots(_bollinger.upper),
+                isCurved: true,
+                barWidth: 1,
+                color: Colors.blue.withOpacity(0.5),
+                dotData: const FlDotData(show: false),
+             ),
+          // Bollinger Middle
+          if (_showBollinger)
+             LineChartBarData(
+                spots: _toSpots(_bollinger.middle),
+                isCurved: true,
+                barWidth: 1,
+                color: Colors.blue.withOpacity(0.3),
+                dotData: const FlDotData(show: false),
+                dashArray: [5, 5],
+             ),
+          // Bollinger Lower
+          if (_showBollinger)
+             LineChartBarData(
+                spots: _toSpots(_bollinger.lower),
+                isCurved: true,
+                barWidth: 1,
+                color: Colors.blue.withOpacity(0.5),
+                dotData: const FlDotData(show: false),
+             ),
+        ],
       ),
     );
   }
+
+  Widget _buildMacdChart() {
+      // MACD uses bar chart for histogram? Or Line? Usually Histogram.
+      // FL Chart supports Combo? No. We can use BarChart for Histogram and LineChart for MACD lines.
+      // But overlaying is hard in FL Chart without Stack.
+      // Let's use LineChart for MACD/Signal and BarChart for Histogram in a Stack?
+      // Or just LineChart for all, calculating Histogram as bars...
+      // Simplest for now: Use LineCharts for MACD and Signal.
+      
+      final macdSpots = _toSpots(_macd.macd);
+      final signalSpots = _toSpots(_macd.signal);
+      
+      return LineChart(
+          LineChartData(
+             gridData: const FlGridData(show: true),
+             titlesData: const FlTitlesData(show: false),
+             lineBarsData: [
+                 LineChartBarData(spots: macdSpots, color: Colors.blue, barWidth: 1.5, dotData: const FlDotData(show: false)),
+                 LineChartBarData(spots: signalSpots, color: Colors.orange, barWidth: 1.5, dotData: const FlDotData(show: false)),
+             ],
+             lineTouchData: const LineTouchData(enabled: true),
+          ),
+      );
+  }
+
+  Widget _buildRsiChart() {
+      final rsiSpots = _toSpots(_rsi.values);
+      return LineChart(
+          LineChartData(
+              minY: 0,
+              maxY: 100,
+              gridData: const FlGridData(show: true), // Add horizontal lines at 30/70?
+              titlesData: const FlTitlesData(show: false),
+              extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                      HorizontalLine(y: 70, color: Colors.red.withOpacity(0.3), strokeWidth: 1, dashArray: [5,5]),
+                      HorizontalLine(y: 30, color: Colors.green.withOpacity(0.3), strokeWidth: 1, dashArray: [5,5]),
+                  ],
+              ),
+              lineBarsData: [
+                  LineChartBarData(
+                      spots: rsiSpots,
+                      color: Colors.purple,
+                      barWidth: 1.5,
+                      dotData: const FlDotData(show: false),
+                  ),
+              ],
+          ),
+      );
+  }
+
+  List<FlSpot> _toSpots(List<double?> values) {
+      final spots = <FlSpot>[];
+      for (int i=0; i<values.length; i++) {
+          if (values[i] != null) {
+              spots.add(FlSpot(i.toDouble(), values[i]!));
+          }
+      }
+      return spots;
+  }
+}
+
+class _KpiCard extends StatelessWidget {
+    const _KpiCard({required this.label, required this.value, this.subtitle, this.color});
+    final String label;
+    final String value;
+    final String? subtitle;
+    final Color? color;
+
+    @override
+    Widget build(BuildContext context) {
+        return Column(
+            children: [
+                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(
+                    value, 
+                    style: TextStyle(
+                        fontSize: 16, 
+                        fontWeight: FontWeight.bold,
+                        color: color ?? Colors.black
+                    )
+                ),
+                if (subtitle != null)
+                   Text(subtitle!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+            ],
+        );
+    }
 }
 
 List<PricePoint> parsePriceSeries(Map<String, dynamic>? payload) {
