@@ -1,85 +1,91 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 850 350">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 350" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
   <defs>
-    <linearGradient id="light-grad-main" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#005c97;stop-opacity:1" /> <stop offset="100%" style="stop-color:#363795;stop-opacity:1" /> </linearGradient>
+    <linearGradient id="light-grad-primary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0A2342;stop-opacity:1" /> <stop offset="100%" style="stop-color:#007EA7;stop-opacity:1" /> </linearGradient>
     <linearGradient id="light-grad-accent" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#00d2ff;stop-opacity:1" /> <stop offset="100%" style="stop-color:#3a7bd5;stop-opacity:1" /> </linearGradient>
-    
-    <linearGradient id="dark-grad-main" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#2196F3;stop-opacity:1" /> <stop offset="100%" style="stop-color:#00FFFF;stop-opacity:1" /> </linearGradient>
-    <linearGradient id="dark-grad-accent" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#00FFFF;stop-opacity:1" /> <stop offset="100%" style="stop-color:#64FFDA;stop-opacity:1" /> </linearGradient>
+      <stop offset="0%" style="stop-color:#007EA7;stop-opacity:1" /> <stop offset="100%" style="stop-color:#00A8E8;stop-opacity:1" /> </linearGradient>
 
-    <filter id="neon-glow-intense" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur5" />
-      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur10" />
+    <linearGradient id="dark-grad-primary" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#004e92;stop-opacity:1" /> <stop offset="100%" style="stop-color:#00c6ff;stop-opacity:1" /> </linearGradient>
+    <linearGradient id="dark-grad-accent" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#00c6ff;stop-opacity:1" /> <stop offset="100%" style="stop-color:#E0FFFF;stop-opacity:1" /> </linearGradient>
+
+    <filter id="tech-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur5" />
       <feMerge>
-        <feMergeNode in="blur10" opacity="0.7"/>
-        <feMergeNode in="blur5"/>
+        <feMergeNode in="blur5" opacity="0.6"/>
         <feMergeNode in="SourceGraphic"/>
       </feMerge>
     </filter>
 
-    <g id="intuitive-q-symbol">
-       <g class="nexus-ring" fill="none" stroke-width="3" opacity="0.7">
-         <circle cx="60" cy="60" r="45" stroke-dasharray="5,5" />
-         <circle cx="60" cy="15" r="5" fill="currentColor" stroke="none"/>
-         <circle cx="105" cy="60" r="5" fill="currentColor" stroke="none"/>
-         <circle cx="60" cy="105" r="5" fill="currentColor" stroke="none"/>
-         <circle cx="15" cy="60" r="5" fill="currentColor" stroke="none"/>
-         <path d="M60,15 L105,60 M105,60 L60,105 M60,105 L15,60 M15,60 L60,15" opacity="0.4"/>
-       </g>
-       
-       <g class="finance-arrow" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" fill="none">
-         <path d="M40,80 C50,80 60,75 70,60 L110,20" /> <path d="M110,20 L85,25 M110,20 L105,45" /> </g>
+    <g id="finq-emblem">
+      <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" stroke-width="6" />
+      
+      <g class="accent-fill" fill="currentColor" stroke="none">
+          <circle cx="60" cy="60" r="7" />
+          <circle cx="35" cy="45" r="3.5" opacity="0.8"/>
+          <circle cx="85" cy="45" r="3.5" opacity="0.8"/>
+          <circle cx="40" cy="85" r="3.5" opacity="0.8"/>
+          <circle cx="80" cy="80" r="3.5" opacity="0.8"/>
+          <circle cx="60" cy="25" r="3.5" opacity="0.8"/>
+          <path d="M60,60 L35,45 M60,60 L85,45 M60,60 L40,85 M60,60 L80,80 M60,60 L60,25" stroke="currentColor" stroke-width="2" opacity="0.4" />
+      </g>
+
+      <g class="accent-stroke" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
+         <path d="M75,95 C85,95 100,80 115,40" /> <path d="M115,40 L95,42 M115,40 L112,60" /> </g>
     </g>
   </defs>
 
-  <g transform="translate(30, 60)">
-    <g transform="translate(0, 20)">
-        <g stroke="url(#light-grad-main)" fill="url(#light-grad-main)">
-           <use href="#intuitive-q-symbol" class="nexus-ring"/>
+  <g transform="translate(40, 70)">
+    <g transform="translate(0, 10)">
+        <g color="url(#light-grad-primary)">
+           <use href="#finq-emblem" />
         </g>
-        <g stroke="url(#light-grad-accent)">
-           <use href="#intuitive-q-symbol" class="finance-arrow"/>
+        <g color="url(#light-grad-accent)">
+           <use href="#finq-emblem" style="fill:none; stroke:none;"><svg class="accent-fill" fill="url(#light-grad-accent)"/>
+             <svg class="accent-stroke" stroke="url(#light-grad-accent)"/>
+           </use>
         </g>
     </g>
 
-    <g transform="translate(140, 100)">
-      <text font-family="'Montserrat', sans-serif" font-size="70" font-weight="900" fill="#1a237e">
+    <g transform="translate(150, 80)">
+      <text font-size="80" font-weight="800" fill="#0A2342" letter-spacing="-1">
         Fin<tspan fill="url(#light-grad-accent)">Q</tspan>
       </text>
-      <text x="5" y="40" font-family="'Montserrat', sans-serif" font-size="20" font-weight="600" letter-spacing="4" fill="#5c6bc0">
-        NEXUS AI
+      <text x="5" y="45" font-size="18" font-weight="500" fill="#007EA7" letter-spacing="0.5">
+        EMPOWERING SMARTER INVESTMENT DECISIONS
       </text>
     </g>
-     <text x="160" y="-30" font-family="sans-serif" font-size="18" fill="#999" font-weight="bold">LIGHT MODE</text>
+     <text x="180" y="-30" font-size="16" fill="#99abbb" font-weight="700" letter-spacing="1">PROFESSIONAL LIGHT</text>
   </g>
 
 
-  <rect x="425" y="0" width="425" height="350" fill="#0a0e17"/>
+  <rect x="450" y="0" width="450" height="350" fill="#050A14"/>
 
-  <g transform="translate(460, 60)">
-    <g transform="translate(0, 20)" filter="url(#neon-glow-intense)">
-       <g stroke="url(#dark-grad-main)" fill="url(#dark-grad-main)">
-           <use href="#intuitive-q-symbol" class="nexus-ring"/>
+  <g transform="translate(490, 70)">
+    <g transform="translate(0, 10)" filter="url(#tech-glow)">
+         <g color="url(#dark-grad-primary)">
+           <use href="#finq-emblem" />
         </g>
-        <g stroke="url(#dark-grad-accent)">
-           <use href="#intuitive-q-symbol" class="finance-arrow"/>
+        <g color="url(#dark-grad-accent)">
+           <use href="#finq-emblem" style="fill:none; stroke:none;">
+             <svg class="accent-fill" fill="url(#dark-grad-accent)"/>
+             <svg class="accent-stroke" stroke="url(#dark-grad-accent)"/>
+           </use>
         </g>
     </g>
 
-    <g transform="translate(140, 100)">
-      <text font-family="'Montserrat', sans-serif" font-size="70" font-weight="900" fill="#ffffff">
-        Fin<tspan fill="url(#dark-grad-accent)" filter="url(#neon-glow-intense)">Q</tspan>
+    <g transform="translate(150, 80)">
+      <text font-size="80" font-weight="800" fill="#ffffff" letter-spacing="-1">
+        Fin<tspan fill="url(#dark-grad-accent)" filter="url(#tech-glow)">Q</tspan>
       </text>
-      <text x="5" y="40" font-family="'Montserrat', sans-serif" font-size="20" font-weight="600" letter-spacing="4" fill="#80d8ff">
-        NEXUS AI
+      <text x="5" y="45" font-size="18" font-weight="500" fill="#7FDAF4" letter-spacing="0.5" opacity="0.9">
+        EMPOWERING SMARTER INVESTMENT DECISIONS
       </text>
     </g>
-    <text x="160" y="-30" font-family="sans-serif" font-size="18" fill="#555" font-weight="bold">DARK MODE</text>
+    <text x="180" y="-30" font-size="16" fill="#50657e" font-weight="700" letter-spacing="1">FUTURE DARK</text>
   </g>
 
-  <line x1="425" y1="30" x2="425" y2="320" stroke="#37474f" stroke-width="2" stroke-dasharray="5,5"/>
+  <line x1="450" y1="40" x2="450" y2="310" stroke="#2c3e50" stroke-width="1" stroke-dasharray="4,6" opacity="0.5"/>
 
 </svg>
