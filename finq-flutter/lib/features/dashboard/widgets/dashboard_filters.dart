@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../dashboard_providers.dart';
 import 'ticker_search_autocomplete.dart';
+import 'data_pipeline_button.dart';
 
 class DashboardFilters extends ConsumerWidget {
   const DashboardFilters({super.key});
@@ -21,8 +22,16 @@ class DashboardFilters extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Ticker Search - First thing at the top
-        const TickerSearchAutocomplete(),
+        // Ticker Search and Data Pipeline Management
+        Row(
+          children: [
+            const Expanded(child: TickerSearchAutocomplete()),
+            const SizedBox(width: 12),
+            DataPipelineButton(
+              ticker: selectedTickers.isNotEmpty ? selectedTickers.first : '',
+            ),
+          ],
+        ),
         
         const SizedBox(height: 12),
         

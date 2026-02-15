@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../price_chart.dart';
+import '../widgets/floating_filter_panel.dart';
 
-class PriceChartTab extends StatelessWidget {
+class PriceChartTab extends StatefulWidget {
   const PriceChartTab({
     super.key,
     required this.period,
@@ -23,13 +24,42 @@ class PriceChartTab extends StatelessWidget {
   final AsyncValue<Map<String, dynamic>> fundamentals;
 
   @override
+  State<PriceChartTab> createState() => _PriceChartTabState();
+}
+
+class _PriceChartTabState extends State<PriceChartTab> {
+  DateTime? _startDate;
+  DateTime? _endDate;
+  String _aggregation = 'Daily';
+  bool _showBollinger = true;
+  bool _showRSI = true;
+  bool _showMACD = true;
+
+  @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       child: Column(
         children: [
           _FilterPanel(
-            tickerData: tickerData,
-            fundamentals: fundamentals,
+            tickerData: widget.tickerData,
+            fundamentals: widget.fundamentals,
+            startDate: _startDate,
+            endDate: _endDate,
+            aggregation: _aggregation,
+            showBollinger: _showBollinger,
+            showRSI: _showRSI,
+            showMACD: _showMACD,
+            selectedPeriod: widget.period,
+            periods: widget.periods,
+            onDateRangeChanged: (start, end) => setState(() {
+              _startDate = start;
+              _endDate = end;
+            }),
+            onAggregationChanged: (v) => setState(() => _aggregation = v),
+            onBollingerChanged: (v) => setState(() => _showBollinger = v),
+            onRsiChanged: (v) => setState(() => _showRSI = v),
+            onMacdChanged: (v) => setState(() => _showMACD = v),
+            onPeriodChanged: widget.onPeriodChanged,
           ),
           const SizedBox(height: 12),
           _InfoCard(
@@ -42,7 +72,7 @@ class PriceChartTab extends StatelessWidget {
   }
 
   Widget _buildChartContent() {
-    return tickerData.when(
+    return widget.tickerData.when(
       data: (data) {
         final seriesList = <PriceSeries>[];
         
@@ -62,7 +92,16 @@ class PriceChartTab extends StatelessWidget {
             int colorIdx = 0;
             for (final ticker in tickers) {
                 final tickerPayload = tickersData[ticker];
-                final points = parsePriceSeries(tickerPayload);
+                var points = parsePriceSeries(tickerPayload);
+                
+                // Filter by date range
+                if (_startDate != null && _endDate != null) {
+                  points = points.where((p) => 
+                    p.date.isAfter(_startDate!.subtract(const Duration(days: 1))) && 
+                    p.date.isBefore(_endDate!.add(const Duration(days: 1)))
+                  ).toList();
+                }
+
                 if (points.isNotEmpty) {
                     seriesList.add(PriceSeries(
                         name: ticker,
@@ -74,7 +113,16 @@ class PriceChartTab extends StatelessWidget {
             }
         } else {
             // Single ticker
-            final points = parsePriceSeries(data);
+            var points = parsePriceSeries(data);
+            
+             // Filter by date range
+            if (_startDate != null && _endDate != null) {
+              points = points.where((p) => 
+                p.date.isAfter(_startDate!.subtract(const Duration(days: 1))) && 
+                p.date.isBefore(_endDate!.add(const Duration(days: 1)))
+              ).toList();
+            }
+
             if (points.isNotEmpty) {
                 final ticker = data['ticker'] as String? ?? 'Stock';
                 seriesList.add(PriceSeries(
@@ -85,7 +133,12 @@ class PriceChartTab extends StatelessWidget {
             }
         }
         
-        return PriceChart(seriesList: seriesList);
+        return PriceChart(
+          seriesList: seriesList,
+          showBollinger: _showBollinger,
+          showMACD: _showMACD,
+          showRSI: _showRSI,
+        );
       },
       loading: () => const SizedBox(height: 300, child: Center(child: CircularProgressIndicator())),
       error: (e, s) => SizedBox(height: 300, child: Center(child: Text('Error: $e'))),
@@ -93,245 +146,284 @@ class PriceChartTab extends StatelessWidget {
   }
 }
 
-class _FilterPanel extends StatefulWidget {
+class _FilterPanel extends StatelessWidget {
   const _FilterPanel({
     required this.tickerData,
     required this.fundamentals,
+    required this.startDate,
+    required this.endDate,
+    required this.aggregation,
+    required this.showBollinger,
+    required this.showRSI,
+    required this.showMACD,
+    required this.selectedPeriod,
+    required this.periods,
+    required this.onDateRangeChanged,
+    required this.onAggregationChanged,
+    required this.onBollingerChanged,
+    required this.onRsiChanged,
+    required this.onMacdChanged,
+    required this.onPeriodChanged,
   });
 
   final AsyncValue<Map<String, dynamic>> tickerData;
   final AsyncValue<Map<String, dynamic>> fundamentals;
-
-  @override
-  State<_FilterPanel> createState() => _FilterPanelState();
-}
-
-class _FilterPanelState extends State<_FilterPanel> {
-  DateTime? _startDate;
-  DateTime? _endDate;
-  String _chartType = 'Line';
-  String _aggregation = 'Daily';
-  bool _showBollinger = true;
-  bool _showRSI = true;
-  bool _showMACD = true;
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String aggregation;
+  final bool showBollinger;
+  final bool showRSI;
+  final bool showMACD;
+  final String selectedPeriod;
+  final List<String> periods;
+  
+  final Function(DateTime?, DateTime?) onDateRangeChanged;
+  final ValueChanged<String> onAggregationChanged;
+  final ValueChanged<bool> onBollingerChanged;
+  final ValueChanged<bool> onRsiChanged;
+  final ValueChanged<bool> onMacdChanged;
+  final ValueChanged<String> onPeriodChanged;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Date Range Filter
-            const Text(
-              'Date Range Filter',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Start Date', style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 4),
-                      InkWell(
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: _startDate ?? DateTime.now().subtract(const Duration(days: 365)),
-                            firstDate: DateTime(2000),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            setState(() => _startDate = date);
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          child: Text(
-                            _startDate != null
-                                ? '${_startDate!.month}/${_startDate!.day}/${_startDate!.year}'
-                                : 'mm/dd/yyyy',
-                            style: TextStyle(
-                              color: _startDate != null ? Colors.black : Colors.grey,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('End Date', style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 4),
-                      InkWell(
-                        onTap: () async {
-                          final date = await showDatePicker(
-                            context: context,
-                            initialDate: _endDate ?? DateTime.now(),
-                            firstDate: _startDate ?? DateTime(2000),
-                            lastDate: DateTime.now(),
-                          );
-                          if (date != null) {
-                            setState(() => _endDate = date);
-                          }
-                        },
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            border: OutlineInputBorder(),
-                            isDense: true,
-                          ),
-                          child: Text(
-                            _endDate != null
-                                ? '${_endDate!.month}/${_endDate!.day}/${_endDate!.year}'
-                                : 'mm/dd/yyyy',
-                            style: TextStyle(
-                              color: _endDate != null ? Colors.black : Colors.grey,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Padding(
-                  padding: const EdgeInsets.only(top: 20),
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        _startDate = null;
-                        _endDate = null;
-                      });
+    return FloatingFilterPanel(
+      title: 'Price Chart Filters',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+           // Period Selector
+          const Text(
+            'Time Period',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: periods.map((p) {
+                final isSelected = p == selectedPeriod;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(p),
+                    selected: isSelected,
+                    onSelected: (selected) {
+                      if (selected) onPeriodChanged(p);
                     },
-                    child: const Text('Clear Filter'),
+                    selectedColor: Theme.of(context).primaryColor.withOpacity(0.2),
+                    labelStyle: TextStyle(
+                      color: isSelected ? Theme.of(context).primaryColor : Colors.black87,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Date Range Filter
+          const Text(
+            'Date Range Filter',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: InkWell(
+                  onTap: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime.now(),
+                      initialDateRange: startDate != null && endDate != null
+                          ? DateTimeRange(start: startDate!, end: endDate!)
+                          : DateTimeRange(
+                              start: DateTime.now().subtract(const Duration(days: 365)),
+                              end: DateTime.now(),
+                            ),
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: Theme.of(context).colorScheme.copyWith(
+                              primary: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                          child: child!,
+                        );
+                      },
+                    );
+                    if (picked != null) {
+                      onDateRangeChanged(picked.start, picked.end);
+                    }
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: startDate != null ? Theme.of(context).colorScheme.primary : Colors.grey.shade400,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                      color: startDate != null
+                          ? Theme.of(context).colorScheme.primary.withOpacity(0.05)
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.date_range,
+                          size: 20,
+                          color: startDate != null
+                              ? Theme.of(context).colorScheme.primary
+                              : Colors.grey,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            startDate != null && endDate != null
+                                ? '${startDate!.month}/${startDate!.day}/${startDate!.year}  →  ${endDate!.month}/${endDate!.day}/${endDate!.year}'
+                                : 'Select date range...',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: startDate != null ? Colors.black87 : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (startDate != null) ...[
+                const SizedBox(width: 12),
+                IconButton(
+                  onPressed: () => onDateRangeChanged(null, null),
+                  icon: const Icon(Icons.clear, size: 20),
+                  tooltip: 'Clear date range',
+                  style: IconButton.styleFrom(
+                    foregroundColor: Colors.red.shade600,
                   ),
                 ),
               ],
+            ],
+          ),
+          const SizedBox(height: 16),
+          // Controls - responsive layout
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isNarrow = constraints.maxWidth < 600;
+
+              final aggregationWidget = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Aggregation', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 8),
+                  DropdownButton<String>(
+                    value: aggregation,
+                    isExpanded: true,
+                    items: ['Daily', 'Weekly', 'Monthly']
+                        .map((value) => DropdownMenuItem(
+                              value: value,
+                              child: Text(value),
+                            ))
+                        .toList(),
+                    onChanged: (value) {
+                      if (value != null) onAggregationChanged(value);
+                    },
+                  ),
+                ],
+              );
+
+              final indicatorsWidget = Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Indicators', style: TextStyle(fontSize: 12)),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 16,
+                    runSpacing: 4,
+                    children: [
+                      _CompactCheckbox(
+                        label: 'Bollinger Bands',
+                        value: showBollinger,
+                        onChanged: (v) => onBollingerChanged(v ?? true),
+                      ),
+                      _CompactCheckbox(
+                        label: 'RSI',
+                        value: showRSI,
+                        onChanged: (v) => onRsiChanged(v ?? true),
+                      ),
+                      _CompactCheckbox(
+                        label: 'MACD',
+                        value: showMACD,
+                        onChanged: (v) => onMacdChanged(v ?? true),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+
+              if (isNarrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    aggregationWidget,
+                    const SizedBox(height: 16),
+                    indicatorsWidget,
+                  ],
+                );
+              }
+
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: aggregationWidget),
+                  const SizedBox(width: 24),
+                  Expanded(flex: 2, child: indicatorsWidget),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CompactCheckbox extends StatelessWidget {
+  const _CompactCheckbox({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 24,
+            height: 24,
+            child: Checkbox(
+              value: value,
+              onChanged: onChanged,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              visualDensity: VisualDensity.compact,
             ),
-            const SizedBox(height: 16),
-            // Controls Row
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Chart Type
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Chart Type', style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          Radio<String>(
-                            value: 'Line',
-                            groupValue: _chartType,
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _chartType = value);
-                              }
-                            },
-                          ),
-                          const Text('Line'),
-                          const SizedBox(width: 16),
-                          Radio<String>(
-                            value: 'Candlestick',
-                            groupValue: _chartType,
-                            onChanged: (value) {
-                              if (value != null) {
-                                setState(() => _chartType = value);
-                              }
-                            },
-                          ),
-                          const Text('Candlestick'),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Aggregation
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Aggregation', style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 8),
-                      DropdownButton<String>(
-                        value: _aggregation,
-                        isExpanded: true,
-                        items: ['Daily', 'Weekly', 'Monthly']
-                            .map((value) => DropdownMenuItem(
-                                  value: value,
-                                  child: Text(value),
-                                ))
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _aggregation = value);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                // Indicators
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Indicators', style: TextStyle(fontSize: 12)),
-                      const SizedBox(height: 4),
-                      CheckboxListTile(
-                        title: const Text('Bollinger Bands', style: TextStyle(fontSize: 14)),
-                        value: _showBollinger,
-                        onChanged: (value) {
-                          setState(() => _showBollinger = value ?? true);
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
-                      CheckboxListTile(
-                        title: const Text('RSI', style: TextStyle(fontSize: 14)),
-                        value: _showRSI,
-                        onChanged: (value) {
-                          setState(() => _showRSI = value ?? true);
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
-                      CheckboxListTile(
-                        title: const Text('MACD', style: TextStyle(fontSize: 14)),
-                        value: _showMACD,
-                        onChanged: (value) {
-                          setState(() => _showMACD = value ?? true);
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        controlAffinity: ListTileControlAffinity.leading,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(width: 4),
+          Text(label, style: const TextStyle(fontSize: 14)),
+        ],
       ),
     );
   }

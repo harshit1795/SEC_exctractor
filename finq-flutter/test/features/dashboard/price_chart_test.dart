@@ -12,7 +12,11 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
-        body: SingleChildScrollView(child: PriceChart(points: points)),
+        body: SingleChildScrollView(child: PriceChart(
+            seriesList: [
+                PriceSeries(name: 'Test', points: points, color: Colors.blue),
+            ],
+        )),
       ),
     ));
     

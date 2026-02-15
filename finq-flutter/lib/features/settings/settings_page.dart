@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 
 import '../auth/auth_providers.dart';
+import '../auth/widgets/user_profile_card.dart';
 import '../../core/di/providers.dart';
 import '../../core/theme/theme_provider.dart';
 
@@ -183,19 +184,8 @@ class _AuthSection extends ConsumerWidget {
       );
     }
 
-    final currentUser = user;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('User ID: ${currentUser?.uid ?? "Unknown"}'),
-        if (currentUser?.email != null) Text('Email: ${currentUser!.email}'),
-        const SizedBox(height: 20),
-        ElevatedButton(
-          onPressed: () => ref.read(authControllerProvider).signOut(),
-          child: const Text('Sign Out'),
-        ),
-      ],
-    );
+    final currentUser = user!;
+    return UserProfileCard(user: currentUser);
   }
 }
 
@@ -391,6 +381,24 @@ class _ConnectionSettingsTile extends ConsumerWidget {
           ],
         ),
         actions: [
+          TextButton(
+            onPressed: () async {
+              // Reset to default (clear preference)
+              final prefs = ref.read(sharedPreferencesProvider);
+              await prefs.remove('api_base_url');
+              // Refresh provider to get default from AppConfig
+              ref.invalidate(baseUrlProvider);
+              
+              if (context.mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Reset to default API URL')),
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Reset'),
+          ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             child: const Text('Cancel'),

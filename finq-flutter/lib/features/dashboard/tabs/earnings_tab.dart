@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../dashboard_providers.dart';
 import '../widgets/tab_description_tooltip.dart';
+import '../widgets/floating_filter_panel.dart';
 
 class EarningsTab extends ConsumerStatefulWidget {
   const EarningsTab({
@@ -19,7 +20,7 @@ class EarningsTab extends ConsumerStatefulWidget {
 }
 
 class _EarningsTabState extends ConsumerState<EarningsTab> {
-  var _chartType = _ChartType.line;
+  var _chartType = _ChartType.bar;
   var _aggregation = _Aggregation.quarterly;
   
   final List<Color> _tickerColors = [
@@ -118,11 +119,13 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
                         ),
                       ),
                       const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          // Aggregation selector
-                          Expanded(
-                            child: Column(
+                  FloatingFilterPanel(
+                        title: 'Earnings Filters',
+                        child: Wrap(
+                          spacing: 24,
+                          runSpacing: 16,
+                          children: [
+                            Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
@@ -151,11 +154,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(width: 16),
-                          // Chart type selector
-                          Expanded(
-                            child: Column(
+                            Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 const Text(
@@ -184,8 +183,8 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
                                 ),
                               ],
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                       const SizedBox(height: 24),
                       if (chartDataMap.isNotEmpty)
@@ -481,7 +480,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
             
           lines.add(LineChartBarData(
               spots: spots,
-              isCurved: true,
+              isCurved: false,
               color: color,
               barWidth: 2,
               dotData: FlDotData(
@@ -511,7 +510,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
              
              lines.add(LineChartBarData(
                 spots: estimatedSpots,
-                isCurved: true,
+                isCurved: false,
                 color: Colors.green,
                 barWidth: 2,
                 dotData: FlDotData(
@@ -685,10 +684,10 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
+              interval: (allPeriods.length / 5).ceil().toDouble(),
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index >= 0 && index < allPeriods.length) {
-                  if (allPeriods.length > 10 && index % 2 != 0) return const Text('');
                   return Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(

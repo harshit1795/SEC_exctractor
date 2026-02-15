@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:go_router/go_router.dart';
-import '../../features/dashboard/dashboard_providers.dart';
+import '../../features/auth/auth_providers.dart';
 
 class GlobalSidebar extends ConsumerWidget {
   const GlobalSidebar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-
+    final userAsync = ref.watch(authUserProvider);
 
     // Using a ScrollView to ensure it fits on smaller vertical screens
     return Container(
@@ -56,7 +56,7 @@ class GlobalSidebar extends ConsumerWidget {
             ),
           ),
           const Divider(height: 1),
-          _buildFooter(),
+          _buildFooter(userAsync),
         ],
       ),
     );
@@ -88,26 +88,68 @@ class GlobalSidebar extends ConsumerWidget {
     );
   }
 
+  Widget _buildFooter(AsyncValue userAsync) {
+    return userAsync.when(
+      data: (user) {
+        final displayName = user?.displayName ?? 'User';
+        final email = user?.email ?? '';
+        final photoUrl = user?.photoURL;
 
-
-  Widget _buildFooter() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: Colors.grey.shade200,
-            child: const Icon(Icons.person, color: Colors.grey),
-          ),
-          const SizedBox(width: 12),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        return Container(
+          padding: const EdgeInsets.all(24),
+          child: Row(
             children: [
-              Text('User', style: TextStyle(fontWeight: FontWeight.bold)),
-              Text('Basic Plan', style: TextStyle(color: Colors.grey, fontSize: 12)),
+              if (photoUrl != null && photoUrl.isNotEmpty)
+                CircleAvatar(
+                  backgroundImage: NetworkImage(photoUrl),
+                  backgroundColor: Colors.grey.shade200,
+                  radius: 20,
+                )
+              else
+                CircleAvatar(
+                  backgroundColor: Colors.grey.shade200,
+                  radius: 20,
+                  child: const Icon(Icons.person, color: Colors.grey),
+                ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      displayName,
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (email.isNotEmpty)
+                      Text(
+                        email,
+                        style: const TextStyle(color: Colors.grey, fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
-        ],
+        );
+      },
+      loading: () => Container(
+        padding: const EdgeInsets.all(24),
+        child: const CircularProgressIndicator(strokeWidth: 2),
+      ),
+      error: (_, __) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.grey.shade200,
+              child: const Icon(Icons.person, color: Colors.grey),
+            ),
+            const SizedBox(width: 12),
+            const Text('User', style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../auth/widgets/user_profile_card.dart';
 import '../auth/auth_providers.dart';
 import 'nexus_feed_controller.dart';
 import 'nexus_feed_state.dart';
 
-import '../core/di/providers.dart';
+import '../../core/di/providers.dart';
 
 final nexusFeedControllerProvider =
     StateNotifierProvider<NexusFeedController, NexusFeedState>((ref) {
@@ -36,12 +37,28 @@ class _NexusPageState extends ConsumerState<NexusPage> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(nexusFeedControllerProvider);
+    final userAsync = ref.watch(authUserProvider);
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // User profile header
+            userAsync.when(
+              data: (user) {
+                if (user == null) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: UserProfileCard(
+                    user: user,
+                    showSignOut: false,
+                  ),
+                );
+              },
+              loading: () => const SizedBox.shrink(),
+              error: (_, __) => const SizedBox.shrink(),
+            ),
             const Text(
               'Nexus Feed',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),

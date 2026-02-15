@@ -7,7 +7,6 @@ import '../../core/config/app_config.dart';
 import 'dashboard_providers.dart';
 import 'price_chart.dart';
 import 'company_header.dart';
-import 'data_pipeline_banner.dart';
 import 'tabs/earnings_tab.dart';
 import 'tabs/trend_tab.dart';
 import 'tabs/snapshot_tab.dart';
@@ -71,17 +70,6 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
             const DashboardFilters(),
             const SizedBox(height: 20),
             
-            const Text(
-              'Dashboard',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'API Base URL: ${AppConfig.apiBaseUrl}',
-              style: const TextStyle(fontSize: 12, color: Colors.black54),
-            ),
-            const SizedBox(height: 12),
-            DataPipelineBanner(ticker: primaryTicker),
             CompanyHeader(tickerData: tickerData),
             const SizedBox(height: 12),
             _DashboardContent(

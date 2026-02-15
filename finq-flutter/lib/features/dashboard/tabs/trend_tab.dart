@@ -11,6 +11,7 @@ import '../widgets/error_view.dart';
 import '../widgets/hierarchy_view.dart';
 import '../providers/preferences_provider.dart';
 import '../utils/metric_calculations.dart';
+import '../widgets/floating_filter_panel.dart';
 import '../../../data/financial_hierarchies.dart';
 import '../../../services/csv_export_service.dart';
 
@@ -32,7 +33,7 @@ class TrendTab extends ConsumerStatefulWidget {
 
 class _TrendTabState extends ConsumerState<TrendTab> {
   var _viewMode = TrendViewMode.chart;
-  var _chartType = _ChartType.line;
+  var _chartType = _ChartType.bar;
   final _selectedMetrics = <String>{};
   var _preferencesLoaded = false;
   String _lastTickerCategory = '';
@@ -326,43 +327,70 @@ class _TrendTabState extends ConsumerState<TrendTab> {
               // Tab description tooltip and view mode toggle
               Padding(
                 padding: const EdgeInsets.only(left: 4, bottom: 8),
-                child: Row(
-                  children: [
-                    Text(
-                      'Trend Analysis',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                    const SizedBox(width: 8),
-                    const TabDescriptionTooltip(tabId: 'trend'),
-                    const Spacer(),
-                    // View mode toggle (disabled in multi-ticker)
-                    if (!isMulti)
-                        SegmentedButton<TrendViewMode>(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isNarrow = constraints.maxWidth < 500;
+                    final titleRow = Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Trend Analysis',
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                        ),
+                        const SizedBox(width: 8),
+                        const TabDescriptionTooltip(tabId: 'trend'),
+                      ],
+                    );
+
+                    if (!isMulti) {
+                      final viewToggle = SegmentedButton<TrendViewMode>(
                         segments: const [
-                            ButtonSegment(
+                          ButtonSegment(
                             value: TrendViewMode.chart,
                             icon: Icon(Icons.show_chart, size: 18),
                             label: Text('Chart View'),
-                            ),
-                            ButtonSegment(
+                          ),
+                          ButtonSegment(
                             value: TrendViewMode.hierarchy,
                             icon: Icon(Icons.account_tree, size: 18),
                             label: Text('Hierarchy View'),
-                            ),
+                          ),
                         ],
                         selected: {_viewMode},
                         onSelectionChanged: (Set<TrendViewMode> selection) {
-                            setState(() => _viewMode = selection.first);
+                          setState(() => _viewMode = selection.first);
                         },
                         style: ButtonStyle(
-                            textStyle: WidgetStateProperty.all(
+                          textStyle: WidgetStateProperty.all(
                             const TextStyle(fontSize: 13),
-                            ),
+                          ),
                         ),
-                        ),
-                  ],
+                      );
+
+                      if (isNarrow) {
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            titleRow,
+                            const SizedBox(height: 12),
+                            viewToggle,
+                          ],
+                        );
+                      }
+
+                      return Row(
+                        children: [
+                          titleRow,
+                          const Spacer(),
+                          viewToggle,
+                        ],
+                      );
+                    }
+
+                    return titleRow;
+                  },
                 ),
               ),
               
@@ -394,87 +422,85 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                 )
               else ...[
                 // Metric selection card - only in Chart View
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Expanded(
-                              child: Text(
-                                'Metrics to Plot',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                ),
+                FloatingFilterPanel(
+                  title: 'Trend Filters',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Metrics to Plot',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
-                            DropdownButton<_ChartType>(
-                              value: _chartType,
-                              items: const [
-                                DropdownMenuItem(
-                                  value: _ChartType.line,
-                                  child: Text('Line Chart'),
-                                ),
-                                DropdownMenuItem(
-                                  value: _ChartType.bar,
-                                  child: Text('Bar Chart'),
-                                ),
-                              ],
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _chartType = value);
-                                }
-                              },
+                          ),
+                          DropdownButton<_ChartType>(
+                            value: _chartType,
+                            items: const [
+                              DropdownMenuItem(
+                                value: _ChartType.line,
+                                child: Text('Line Chart'),
+                              ),
+                              DropdownMenuItem(
+                                value: _ChartType.bar,
+                                child: Text('Bar Chart'),
+                              ),
+                            ],
+                            onChanged: (value) {
+                              if (value != null) {
+                                setState(() => _chartType = value);
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      MultiSelectDropdown<String>(
+                        label: 'Select metrics to plot',
+                        searchHint: 'Search metrics...',
+                        items: allMetrics,
+                        selectedItems: _selectedMetrics,
+                        onSelectionChanged: _onMetricsChanged,
+                        itemLabel: (metric) => metric,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          if (_selectedMetrics.isNotEmpty && !isMulti)
+                            TextButton.icon(
+                              onPressed: () => _exportToCsv(parsed),
+                              icon: const Icon(Icons.download, size: 18),
+                              label: const Text('Export CSV'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.blue.shade700,
+                              ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        MultiSelectDropdown<String>(
-                          label: 'Select metrics to plot',
-                          searchHint: 'Search metrics...',
-                          items: allMetrics,
-                          selectedItems: _selectedMetrics,
-                          onSelectionChanged: _onMetricsChanged,
-                          itemLabel: (metric) => metric,
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            const Spacer(),
-                            if (_selectedMetrics.isNotEmpty && !isMulti)
-                              TextButton.icon(
-                                onPressed: () => _exportToCsv(parsed),
-                                icon: const Icon(Icons.download, size: 18),
-                                label: const Text('Export CSV'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue.shade700,
-                                ),
+                          if (_selectedMetrics.isNotEmpty &&
+                              ref.read(preferencesServiceProvider).hasPreferences(
+                                    widget.ticker,
+                                    widget.category,
+                                  ))
+                            const SizedBox(width: 8),
+                          if (ref.read(preferencesServiceProvider).hasPreferences(
+                                widget.ticker,
+                                widget.category,
+                              ))
+                            TextButton.icon(
+                              onPressed: _clearPreferences,
+                              icon: const Icon(Icons.clear, size: 18),
+                              label: const Text('Clear Preferences'),
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.orange.shade700,
                               ),
-                            if (_selectedMetrics.isNotEmpty &&
-                                ref.read(preferencesServiceProvider).hasPreferences(
-                                      widget.ticker,
-                                      widget.category,
-                                    ))
-                              const SizedBox(width: 8),
-                            if (ref.read(preferencesServiceProvider).hasPreferences(
-                                  widget.ticker,
-                                  widget.category,
-                                ))
-                              TextButton.icon(
-                                onPressed: _clearPreferences,
-                                icon: const Icon(Icons.clear, size: 18),
-                                label: const Text('Clear Preferences'),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.orange.shade700,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                            ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -586,7 +612,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
         
         lines.add(LineChartBarData(
             spots: spots,
-            isCurved: true,
+            isCurved: false,
             color: color,
             barWidth: 2,
             dotData: FlDotData(
@@ -624,6 +650,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
             sideTitles: SideTitles(
               showTitles: true,
               reservedSize: 30,
+              interval: (allPeriods.length / 5).ceil().toDouble(),
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
                 if (index >= 0 && index < allPeriods.length) {
@@ -747,6 +774,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 30,
+                interval: (allPeriods.length / 5).ceil().toDouble(),
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
                   if (index >= 0 && index < allPeriods.length) {
@@ -927,14 +955,6 @@ class _PeriodData {
   final Map<String, double> metrics;
 }
 
-class _MetricDataPoint {
-  const _MetricDataPoint({
-    required this.period,
-    required this.value,
-  });
 
-  final String period;
-  final double value;
-}
 
 enum _ChartType { line, bar }

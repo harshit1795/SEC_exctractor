@@ -9,6 +9,7 @@ import '../widgets/loading_skeleton.dart';
 import '../widgets/error_view.dart';
 import '../providers/preferences_provider.dart';
 import '../../../services/csv_export_service.dart';
+import '../widgets/floating_filter_panel.dart';
 
 class SnapshotTab extends ConsumerStatefulWidget {
   const SnapshotTab({
@@ -163,7 +164,7 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
       data: (data) {
         final parsed = _parseFundamentalsData(data);
         final allMetrics = parsed.metrics.toList()..sort();
-        final isMulti = parsed.tickers.length > 1;
+
 
         if (allMetrics.isEmpty) {
           return const Center(
@@ -206,92 +207,90 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                   ],
                 ),
               ),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Display Mode (Period: $latestPeriod)',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+              FloatingFilterPanel(
+                title: 'Snapshot Filters',
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Display Mode (Period: $latestPeriod)',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<_DisplayMode>(
+                      segments: const [
+                        ButtonSegment(
+                          value: _DisplayMode.latest,
+                          label: Text('Latest'),
                         ),
-                      ),
-                      const SizedBox(height: 8),
-                      SegmentedButton<_DisplayMode>(
-                        segments: const [
-                          ButtonSegment(
-                            value: _DisplayMode.latest,
-                            label: Text('Latest'),
-                          ),
-                          ButtonSegment(
-                            value: _DisplayMode.qoq,
-                            label: Text('QoQ Δ'),
-                          ),
-                          ButtonSegment(
-                            value: _DisplayMode.yoy,
-                            label: Text('YoY Δ'),
-                          ),
-                        ],
-                        selected: {_displayMode},
-                        onSelectionChanged: (values) {
-                          setState(() => _displayMode = values.first);
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Metrics to Show',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w500,
+                        ButtonSegment(
+                          value: _DisplayMode.qoq,
+                          label: Text('QoQ Δ'),
                         ),
+                        ButtonSegment(
+                          value: _DisplayMode.yoy,
+                          label: Text('YoY Δ'),
+                        ),
+                      ],
+                      selected: {_displayMode},
+                      onSelectionChanged: (values) {
+                        setState(() => _displayMode = values.first);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Metrics to Show',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
-                      const SizedBox(height: 8),
-                      MultiSelectDropdown<String>(
-                        label: 'Select metrics to show',
-                        searchHint: 'Search metrics...',
-                        items: allMetrics,
-                        selectedItems: _selectedMetrics,
-                        onSelectionChanged: _onMetricsChanged,
-                        itemLabel: (metric) => metric,
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          const Spacer(),
-                          if (_selectedMetrics.isNotEmpty)
-                            TextButton.icon(
-                              onPressed: () => _exportToCsv(snapshotData, parsed.tickers),
-                              icon: const Icon(Icons.download, size: 18),
-                              label: const Text('Export CSV'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.blue.shade700,
-                              ),
+                    ),
+                    const SizedBox(height: 8),
+                    MultiSelectDropdown<String>(
+                      label: 'Select metrics to show',
+                      searchHint: 'Search metrics...',
+                      items: allMetrics,
+                      selectedItems: _selectedMetrics,
+                      onSelectionChanged: _onMetricsChanged,
+                      itemLabel: (metric) => metric,
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Spacer(),
+                        if (_selectedMetrics.isNotEmpty)
+                          TextButton.icon(
+                            onPressed: () => _exportToCsv(snapshotData, parsed.tickers),
+                            icon: const Icon(Icons.download, size: 18),
+                            label: const Text('Export CSV'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.blue.shade700,
                             ),
-                          if (_selectedMetrics.isNotEmpty &&
-                              ref.read(preferencesServiceProvider).hasPreferences(
-                                    widget.ticker,
-                                    widget.category,
-                                  ))
-                            const SizedBox(width: 8),
-                          if (ref.read(preferencesServiceProvider).hasPreferences(
-                                widget.ticker,
-                                widget.category,
-                              ))
-                            TextButton.icon(
-                              onPressed: _clearPreferences,
-                              icon: const Icon(Icons.clear, size: 18),
-                              label: const Text('Clear Preferences'),
-                              style: TextButton.styleFrom(
-                                foregroundColor: Colors.orange.shade700,
-                              ),
+                          ),
+                        if (_selectedMetrics.isNotEmpty &&
+                            ref.read(preferencesServiceProvider).hasPreferences(
+                                  widget.ticker,
+                                  widget.category,
+                                ))
+                          const SizedBox(width: 8),
+                        if (ref.read(preferencesServiceProvider).hasPreferences(
+                              widget.ticker,
+                              widget.category,
+                            ))
+                          TextButton.icon(
+                            onPressed: _clearPreferences,
+                            icon: const Icon(Icons.clear, size: 18),
+                            label: const Text('Clear Preferences'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.orange.shade700,
                             ),
-                        ],
-                      ),
-                    ],
-                  ),
+                          ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 16),

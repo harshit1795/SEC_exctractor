@@ -27,19 +27,21 @@ class PriceChart extends StatefulWidget {
   const PriceChart({
     super.key,
     required this.seriesList,
+    this.showBollinger = true,
+    this.showMACD = true,
+    this.showRSI = true,
   });
 
   final List<PriceSeries> seriesList;
+  final bool showBollinger;
+  final bool showMACD;
+  final bool showRSI;
 
   @override
   State<PriceChart> createState() => _PriceChartState();
 }
 
 class _PriceChartState extends State<PriceChart> {
-  bool _showBollinger = true;
-  bool _showMACD = true;
-  bool _showRSI = true;
-
   // Indicators are only calculated for the FIRST series (primary ticker)
   late BollingerResult _bollinger;
   late MacdResult _macd;
@@ -83,10 +85,7 @@ class _PriceChartState extends State<PriceChart> {
       children: [
         _buildKPIs(),
         const SizedBox(height: 16),
-        if (!isMulti) ...[
-            _buildControls(),
-            const SizedBox(height: 16),
-        ],
+
         if (isMulti)
              Wrap(
                  spacing: 12,
@@ -101,7 +100,7 @@ class _PriceChartState extends State<PriceChart> {
           height: 300,
           child: _buildMainChart(),
         ),
-        if (!isMulti && _showMACD) ...[
+        if (!isMulti && widget.showMACD) ...[
             const SizedBox(height: 16),
             const Text('MACD', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             SizedBox(
@@ -109,7 +108,7 @@ class _PriceChartState extends State<PriceChart> {
                 child: _buildMacdChart(),
             ),
         ],
-        if (!isMulti && _showRSI) ...[
+        if (!isMulti && widget.showRSI) ...[
             const SizedBox(height: 16),
             const Text('RSI', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             SizedBox(
@@ -141,9 +140,9 @@ class _PriceChartState extends State<PriceChart> {
       children: [
         _KpiCard(label: '${primary.name} Close', value: '\$${close.toStringAsFixed(2)}'),
         // Only show indicators if single ticker
-        if (!isMulti && rsi != null)
+        if (!isMulti && rsi != null && widget.showRSI)
           _KpiCard(label: 'RSI (14)', value: rsi.toStringAsFixed(2), color: _getRsiColor(rsi)),
-        if (!isMulti && macd != null && macdSignal != null)
+        if (!isMulti && macd != null && macdSignal != null && widget.showMACD)
            _KpiCard(
             label: 'MACD', 
             value: '${macd.toStringAsFixed(2)} / ${macdSignal.toStringAsFixed(2)}',
@@ -159,29 +158,6 @@ class _PriceChartState extends State<PriceChart> {
       return Colors.black;
   }
 
-  Widget _buildControls() {
-    return Wrap(
-      spacing: 8,
-      children: [
-        FilterChip(
-          label: const Text('Bollinger Bands'),
-          selected: _showBollinger,
-          onSelected: (v) => setState(() => _showBollinger = v),
-        ),
-        FilterChip(
-          label: const Text('MACD'),
-          selected: _showMACD,
-          onSelected: (v) => setState(() => _showMACD = v),
-        ),
-        FilterChip(
-          label: const Text('RSI'),
-          selected: _showRSI,
-          onSelected: (v) => setState(() => _showRSI = v),
-        ),
-      ],
-    );
-  }
-
   Widget _buildMainChart() {
     final allPoints = widget.seriesList.expand((s) => s.points).toList();
     if (allPoints.isEmpty) return const SizedBox.shrink();
@@ -192,7 +168,7 @@ class _PriceChartState extends State<PriceChart> {
     final isMulti = widget.seriesList.length > 1;
 
     // Adjust min/max for Bollinger (only if single)
-    if (!isMulti && _showBollinger) {
+    if (!isMulti && widget.showBollinger) {
         final lowers = _bollinger.lower.where((e) => e != null).cast<double>();
         final uppers = _bollinger.upper.where((e) => e != null).cast<double>();
         if (lowers.isNotEmpty) {
@@ -310,7 +286,7 @@ class _PriceChartState extends State<PriceChart> {
             }),
             
           // Bollinger Bands (Only if single ticker)
-          if (!isMulti && _showBollinger)
+          if (!isMulti && widget.showBollinger)
              LineChartBarData(
                 spots: _toSpots(_bollinger.upper),
                 isCurved: true,
@@ -318,7 +294,7 @@ class _PriceChartState extends State<PriceChart> {
                 color: Colors.blue.withOpacity(0.5),
                 dotData: const FlDotData(show: false),
              ),
-          if (!isMulti && _showBollinger)
+          if (!isMulti && widget.showBollinger)
              LineChartBarData(
                 spots: _toSpots(_bollinger.middle),
                 isCurved: true,
@@ -327,7 +303,7 @@ class _PriceChartState extends State<PriceChart> {
                 dotData: const FlDotData(show: false),
                 dashArray: [5, 5],
              ),
-          if (!isMulti && _showBollinger)
+          if (!isMulti && widget.showBollinger)
              LineChartBarData(
                 spots: _toSpots(_bollinger.lower),
                 isCurved: true,
@@ -432,11 +408,14 @@ List<PricePoint> parsePriceSeries(Map<String, dynamic>? payload) {
   
   // If data is just a bare map with 'history_df' or 'history'
   if (data is Map<String, dynamic>) {
-    final historyDf = data['history_df'];
+    // Check for history_df OR history as a List first
+    final historyData = data['history_df'] ?? data['history'];
     final points = <PricePoint>[];
-    if (historyDf is List) {
-      for (final item in historyDf) {
+    
+    if (historyData is List) {
+      for (final item in historyData) {
         if (item is Map) {
+          // Normalize keys (pandas to_dict('records') produces Title Case keys usually)
           final dateValue = item['Date'] ?? item['date'];
           final closeValue = item['Close'] ?? item['close'];
           final date = _parseDate(dateValue);
@@ -447,11 +426,13 @@ List<PricePoint> parsePriceSeries(Map<String, dynamic>? payload) {
         }
       }
     }
+    
     if (points.isNotEmpty) {
       points.sort((a, b) => a.date.compareTo(b.date));
       return points;
     }
 
+    // Legacy fallback: history as Map (column-oriented)
     final historyMap = data['history'];
     if (historyMap is Map) {
       final closeMap = historyMap['Close'] ?? historyMap['close'];
@@ -464,8 +445,10 @@ List<PricePoint> parsePriceSeries(Map<String, dynamic>? payload) {
           }
         }
       }
+      points.sort((a, b) => a.date.compareTo(b.date));
+      return points;
     }
-    points.sort((a, b) => a.date.compareTo(b.date));
+    
     return points;
   }
   return [];

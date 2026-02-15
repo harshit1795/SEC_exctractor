@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../dashboard_providers.dart';
 import '../widgets/tab_description_tooltip.dart';
+import '../widgets/floating_filter_panel.dart';
 
 class FinQ360Tab extends ConsumerStatefulWidget {
   const FinQ360Tab({
@@ -97,78 +98,101 @@ class _FinQ360TabState extends ConsumerState<FinQ360Tab> {
                   _buildMacroeconomicSelector(),
                   const Divider(height: 32),
                   // Filters
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildDatePicker('Start Date', _startDate, (date) {
-                          setState(() => _startDate = date);
-                        }),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildDatePicker('End Date', _endDate, (date) {
-                          setState(() => _endDate = date);
-                        }),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
+                  FloatingFilterPanel(
+                    title: 'FinQ360 Filters',
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final isNarrow = constraints.maxWidth < 600;
+
+                        final dateRangeWidget = Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Aggregation',
-                                style: TextStyle(fontSize: 12)),
+                            const Text('Date Range', style: TextStyle(fontSize: 12)),
+                            const SizedBox(height: 4),
+                            InkWell(
+                              onTap: () async {
+                                final picked = await showDateRangePicker(
+                                  context: context,
+                                  firstDate: DateTime(2000),
+                                  lastDate: DateTime.now(),
+                                  initialDateRange: DateTimeRange(
+                                    start: _startDate,
+                                    end: _endDate,
+                                  ),
+                                );
+                                if (picked != null) {
+                                  setState(() {
+                                    _startDate = picked.start;
+                                    _endDate = picked.end;
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                                decoration: BoxDecoration(
+                                  border: Border.all(color: Colors.grey.shade400),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.date_range, size: 18, color: Colors.grey),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        '${_startDate.month}/${_startDate.day}/${_startDate.year}  →  ${_endDate.month}/${_endDate.day}/${_endDate.year}',
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+
+                        final aggregationWidget = Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Aggregation', style: TextStyle(fontSize: 12)),
                             const SizedBox(height: 4),
                             DropdownButtonFormField<String>(
                               value: _aggregation,
                               decoration: const InputDecoration(
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                 border: OutlineInputBorder(),
                                 isDense: true,
                               ),
                               items: ['Quarterly', 'Yearly']
-                                  .map((e) =>
-                                      DropdownMenuItem(value: e, child: Text(e)))
+                                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                                   .toList(),
                               onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _aggregation = value);
-                                }
+                                if (value != null) setState(() => _aggregation = value);
                               },
                             ),
                           ],
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        );
+
+                        if (isNarrow) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              dateRangeWidget,
+                              const SizedBox(height: 16),
+                              aggregationWidget,
+                            ],
+                          );
+                        }
+
+                        return Row(
                           children: [
-                            const Text('Chart Type',
-                                style: TextStyle(fontSize: 12)),
-                            const SizedBox(height: 4),
-                            DropdownButtonFormField<String>(
-                              value: _chartType,
-                              decoration: const InputDecoration(
-                                contentPadding: EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 8),
-                                border: OutlineInputBorder(),
-                                isDense: true,
-                              ),
-                              items: ['Line', 'Bar']
-                                  .map((e) =>
-                                      DropdownMenuItem(value: e, child: Text(e)))
-                                  .toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => _chartType = value);
-                                }
-                              },
-                            ),
+                            Expanded(flex: 2, child: dateRangeWidget),
+                            const SizedBox(width: 16),
+                            Expanded(child: aggregationWidget),
                           ],
-                        ),
-                      ),
-                    ],
+                        );
+                      },
+                    ),
                   ),
                 ],
               ),
