@@ -51,14 +51,16 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
       final response = await apiClient.post(
         '/chat/analyze',
         body: {
-          'ticker': widget.ticker,
-          'query': message,
+          'prompt': message,
+          'context_data': {
+            'selected_tickers': [widget.ticker],
+          },
         },
       );
 
       if (response.data is Map<String, dynamic>) {
         final data = response.data as Map<String, dynamic>;
-        final analysis = data['analysis'] ?? 'No response received';
+        final analysis = data['response'] ?? 'No response received';
         setState(() {
           _messages.add(ChatMessage(
             text: analysis,

@@ -53,3 +53,15 @@ class FundamentalsResponse(BaseModel):
     data: List[Dict[str, Any]]  # DataFrame converted to list of dicts
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+
+class TickerSearchResult(BaseModel):
+    """Response schema for ticker search"""
+    ticker: str
+    name: str
+
+class TickerSearchResponse(BaseModel):
+    """Response wrapper for search results"""
+    query: str
+    results: List[TickerSearchResult]
+    count: int
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

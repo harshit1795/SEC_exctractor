@@ -28,6 +28,56 @@ class DashboardRepository {
     return _asMap(response.data, 'fundamentals');
   }
 
+  Future<Map<String, dynamic>> fetchMultipleFundamentals(List<String> tickers) async {
+    // If we had a bulk endpoint we'd use it, for now parallel requests
+    if (tickers.isEmpty) return {};
+    
+    final results = <String, dynamic>{};
+    final futures = tickers.map((ticker) async {
+      try {
+        final data = await fetchFundamentals(ticker);
+        results[ticker] = data;
+      } catch (e) {
+        // Log error but continue
+        print('Error fetching fundamentals for $ticker: $e');
+        results[ticker] = null;
+      }
+    });
+    
+    await Future.wait(futures);
+    return results;
+  }
+
+  Future<List<Map<String, dynamic>>> searchTickers(String query) async {
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/financial/search',
+      queryParameters: {'q': query, 'limit': 10},
+    );
+    
+    final data = response.data;
+    if (data == null) return [];
+    
+    // Response structure: { query: "...", results: [...], count: ... }
+    final results = data['results'] as List<dynamic>?;
+    if (results == null) return [];
+    
+    return results.cast<Map<String, dynamic>>();
+  }
+
+  Future<Map<String, dynamic>> fetchMultipleTickerData(
+    List<String> tickers,
+    String period,
+  ) async {
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/financial/tickers',
+      queryParameters: {
+        'tickers': tickers.join(','),
+        'period': period,
+      },
+    );
+    return _asMap(response.data, 'multiple tickers data');
+  }
+
   Map<String, dynamic> _asMap(Object? data, String label) {
     if (data is Map<String, dynamic>) {
       return data;

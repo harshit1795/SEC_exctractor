@@ -37,6 +37,14 @@ class _TrendTabState extends ConsumerState<TrendTab> {
   var _preferencesLoaded = false;
   String _lastTickerCategory = '';
 
+  final List<Color> _tickerColors = [
+    Colors.black,
+    Colors.blue.shade700,
+    Colors.orange.shade700,
+    Colors.purple.shade700,
+    Colors.green.shade700,
+  ];
+
   void _loadPreferences(List<String> allMetrics) {
     // Only load once per ticker/category combination
     final key = '${widget.ticker}_${widget.category}';
@@ -110,14 +118,16 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     }
 
     try {
-      // Extract periods from data
-      final periods = parsed.data.map((pd) => pd.period).toList();
+      // Extract periods from data (using first ticker's periods for simplicity)
+      final firstTickerData = parsed.tickerData.values.first;
+      final periods = firstTickerData.map((pd) => pd.period).toList();
       
-      // Prepare metrics data for export
+      // Prepare metrics data for export (currently only supports primary ticker exporting)
+      // TODO: Enhance export for multi-ticker
       final metricsData = <String, List<double?>>{};
       for (final metric in _selectedMetrics) {
         final values = <double?>[];
-        for (final periodData in parsed.data) {
+        for (final periodData in firstTickerData) {
           values.add(periodData.metrics[metric]);
         }
         metricsData[metric] = values;
@@ -144,12 +154,12 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     }
   }
 
-  /// Prepare metrics data for hierarchy view
-  Map<String, MetricData> _prepareMetricsData(_FundamentalsData parsed) {
+  /// Prepare metrics data for hierarchy view (Primary ticker only)
+  Map<String, MetricData> _prepareMetricsData(List<_PeriodData> periodData) {
     final metricsData = <String, MetricData>{};
     
     // Convert period data to PeriodData format
-    final periods = parsed.data.map((pd) {
+    final periods = periodData.map((pd) {
       return PeriodData(
         period: pd.period,
         metrics: pd.metrics,
@@ -228,7 +238,13 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     processNode(IncomeStatementHierarchy.root);
 
     // 2. Identify metrics not in the standard hierarchies (case-insensitive check)
-    final unknownMetrics = parsed.metrics.where((m) {
+    // We need to re-scan periodData for this
+    final availableMetrics = <String>{};
+    for(final p in periodData) {
+        availableMetrics.addAll(p.metrics.keys);
+    }
+
+    final unknownMetrics = availableMetrics.where((m) {
       final lowerM = m.toLowerCase();
       // Check if this metric or any case-variant is already known
       return !knownMetrics.any((k) => k.toLowerCase() == lowerM);
@@ -278,6 +294,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
       data: (data) {
         final parsed = _parseFundamentalsData(data);
         final allMetrics = parsed.metrics.toList()..sort();
+        final isMulti = parsed.tickers.length > 1;
 
         if (allMetrics.isEmpty) {
           return const Center(
@@ -295,6 +312,11 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _loadPreferences(allMetrics);
           });
+        }
+        
+        // Force chart view if multi-ticker
+        if (isMulti && _viewMode == TrendViewMode.hierarchy) {
+             _viewMode = TrendViewMode.chart;
         }
 
         return SingleChildScrollView(
@@ -315,40 +337,60 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                     const SizedBox(width: 8),
                     const TabDescriptionTooltip(tabId: 'trend'),
                     const Spacer(),
-                    // View mode toggle
-                    SegmentedButton<TrendViewMode>(
-                      segments: const [
-                        ButtonSegment(
-                          value: TrendViewMode.chart,
-                          icon: Icon(Icons.show_chart, size: 18),
-                          label: Text('Chart View'),
+                    // View mode toggle (disabled in multi-ticker)
+                    if (!isMulti)
+                        SegmentedButton<TrendViewMode>(
+                        segments: const [
+                            ButtonSegment(
+                            value: TrendViewMode.chart,
+                            icon: Icon(Icons.show_chart, size: 18),
+                            label: Text('Chart View'),
+                            ),
+                            ButtonSegment(
+                            value: TrendViewMode.hierarchy,
+                            icon: Icon(Icons.account_tree, size: 18),
+                            label: Text('Hierarchy View'),
+                            ),
+                        ],
+                        selected: {_viewMode},
+                        onSelectionChanged: (Set<TrendViewMode> selection) {
+                            setState(() => _viewMode = selection.first);
+                        },
+                        style: ButtonStyle(
+                            textStyle: WidgetStateProperty.all(
+                            const TextStyle(fontSize: 13),
+                            ),
                         ),
-                        ButtonSegment(
-                          value: TrendViewMode.hierarchy,
-                          icon: Icon(Icons.account_tree, size: 18),
-                          label: Text('Hierarchy View'),
                         ),
-                      ],
-                      selected: {_viewMode},
-                      onSelectionChanged: (Set<TrendViewMode> selection) {
-                        setState(() => _viewMode = selection.first);
-                      },
-                      style: ButtonStyle(
-                        textStyle: WidgetStateProperty.all(
-                          const TextStyle(fontSize: 13),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
               
+              if (isMulti)
+                Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                    child: Wrap(
+                        spacing: 8,
+                        children: parsed.tickers.asMap().entries.map((entry) {
+                            final idx = entry.key;
+                            final t = entry.value;
+                            return Chip(
+                                label: Text(t, style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                backgroundColor: _tickerColors[idx % _tickerColors.length],
+                                side: BorderSide.none,
+                                visualDensity: VisualDensity.compact,
+                            );
+                        }).toList(),
+                    ),
+                ),
+
               // Conditional rendering based on view mode
-              if (_viewMode == TrendViewMode.hierarchy)
+              if (_viewMode == TrendViewMode.hierarchy && !isMulti)
                 HierarchyView(
                   ticker: widget.ticker,
                   category: widget.category,
-                  metricsData: _prepareMetricsData(parsed),
+                  metricsData: _prepareMetricsData(parsed.tickerData.values.first),
                 )
               else ...[
                 // Metric selection card - only in Chart View
@@ -402,7 +444,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                         Row(
                           children: [
                             const Spacer(),
-                            if (_selectedMetrics.isNotEmpty)
+                            if (_selectedMetrics.isNotEmpty && !isMulti)
                               TextButton.icon(
                                 onPressed: () => _exportToCsv(parsed),
                                 icon: const Icon(Icons.download, size: 18),
@@ -444,13 +486,6 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                       spacing: 16,
                       runSpacing: 16,
                       children: _selectedMetrics.map((metric) {
-                        final metricData = parsed.data
-                            .map((period) => _MetricDataPoint(
-                                  period: period.period,
-                                  value: period.metrics[metric] ?? 0,
-                                ))
-                            .toList();
-
                         return SizedBox(
                           width: isWide
                               ? (constraints.maxWidth - 16) / 2
@@ -479,8 +514,8 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                                   SizedBox(
                                     height: 250,
                                     child: _chartType == _ChartType.line
-                                        ? _buildLineChart(metricData)
-                                        : _buildBarChart(metricData),
+                                        ? _buildLineChart(parsed, metric)
+                                        : _buildBarChart(parsed, metric),
                                   ),
                                 ],
                               ),
@@ -516,7 +551,59 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     );
   }
 
-  Widget _buildLineChart(List<_MetricDataPoint> data) {
+  Widget _buildLineChart(_FundamentalsData parsed, String metric) {
+    List<LineChartBarData> lines = [];
+    List<String> allPeriods = [];
+    
+    // Get unique sorted periods
+    final periodSet = <String>{};
+    for(final data in parsed.tickerData.values) {
+        periodSet.addAll(data.map((d) => d.period));
+    }
+    
+    // Sort periods
+    allPeriods = periodSet.toList()..sort((a, b) {
+        final aParts = _parsePeriod(a);
+        final bParts = _parsePeriod(b);
+        if (aParts.$1 != bParts.$1) return aParts.$1.compareTo(bParts.$1);
+        return aParts.$2.compareTo(bParts.$2);
+    });
+
+    int tickerIdx = 0;
+    for (final ticker in parsed.tickers) {
+        final data = parsed.tickerData[ticker] ?? [];
+        final color = _tickerColors[tickerIdx % _tickerColors.length];
+        
+        final spots = <FlSpot>[];
+        for (int i = 0; i < allPeriods.length; i++) {
+            final period = allPeriods[i];
+            // Find data for this period
+            final periodData = data.firstWhere((p) => p.period == period, orElse: () => _PeriodData(period: '', metrics: {}));
+            if (periodData.metrics.containsKey(metric)) {
+                spots.add(FlSpot(i.toDouble(), periodData.metrics[metric]!));
+            }
+        }
+        
+        lines.add(LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: color,
+            barWidth: 2,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                return FlDotCirclePainter(
+                  radius: 2,
+                  color: color,
+                  strokeWidth: 0,
+                );
+              },
+            ),
+        ));
+        
+        tickerIdx++;
+    }
+
     return LineChart(
       LineChartData(
         gridData: FlGridData(show: true),
@@ -539,11 +626,11 @@ class _TrendTabState extends ConsumerState<TrendTab> {
               reservedSize: 30,
               getTitlesWidget: (value, meta) {
                 final index = value.toInt();
-                if (index >= 0 && index < data.length) {
+                if (index >= 0 && index < allPeriods.length) {
                   return Padding(
                     padding: const EdgeInsets.only(top: 8),
                     child: Text(
-                      data[index].period,
+                      allPeriods[index],
                       style: const TextStyle(fontSize: 10),
                     ),
                   );
@@ -560,10 +647,12 @@ class _TrendTabState extends ConsumerState<TrendTab> {
           touchTooltipData: LineTouchTooltipData(
             getTooltipItems: (touchedSpots) {
               return touchedSpots.map((LineBarSpot touchedSpot) {
+                final tickerIndex = touchedSpot.barIndex;
+                final tickerName = tickerIndex < parsed.tickers.length ? parsed.tickers[tickerIndex] : '';
                 return LineTooltipItem(
-                  _formatValue(touchedSpot.y),
-                  const TextStyle(
-                    color: Colors.white,
+                  '$tickerName\n${_formatValue(touchedSpot.y)}',
+                  TextStyle(
+                    color: touchedSpot.bar.color ?? Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 );
@@ -571,35 +660,69 @@ class _TrendTabState extends ConsumerState<TrendTab> {
             },
           ),
         ),
-        lineBarsData: [
-          LineChartBarData(
-            spots: data
-                .asMap()
-                .entries
-                .map((e) => FlSpot(e.key.toDouble(), e.value.value))
-                .toList(),
-            isCurved: true,
-            color: Colors.blue,
-            barWidth: 2,
-            dotData: FlDotData(show: true),
-          ),
-        ],
+        lineBarsData: lines,
       ),
     );
   }
 
+  Widget _buildBarChart(_FundamentalsData parsed, String metric) {
+     // Get unique sorted periods as before
+    final periodSet = <String>{};
+    for(final data in parsed.tickerData.values) {
+        periodSet.addAll(data.map((d) => d.period));
+    }
+    
+    final allPeriods = periodSet.toList()..sort((a, b) {
+        final aParts = _parsePeriod(a);
+        final bParts = _parsePeriod(b);
+        if (aParts.$1 != bParts.$1) return aParts.$1.compareTo(bParts.$1);
+        return aParts.$2.compareTo(bParts.$2);
+    });
 
+    final barGroups = <BarChartGroupData>[];
+    
+    for (int i = 0; i < allPeriods.length; i++) {
+        final period = allPeriods[i];
+        final rods = <BarChartRodData>[];
+        
+        int tickerIdx = 0;
+        for (final ticker in parsed.tickers) {
+             final data = parsed.tickerData[ticker] ?? [];
+             final color = _tickerColors[tickerIdx % _tickerColors.length];
+             
+             final periodData = data.firstWhere((p) => p.period == period, orElse: () => _PeriodData(period: '', metrics: {}));
+             final val = periodData.metrics[metric] ?? 0;
+             
+             if (val != 0) {
+                 rods.add(BarChartRodData(
+                     toY: val,
+                     color: color,
+                     width: 12, // slightly thinner to fit
+                     borderRadius: BorderRadius.circular(4),
+                 ));
+             } else {
+                 // Add placeholder transparent rod to maintain spacing/alignment
+                 rods.add(BarChartRodData(toY: 0, color: Colors.transparent, width: 12));
+             }
+             tickerIdx++;
+        }
+        
+        barGroups.add(BarChartGroupData(x: i, barRods: rods, barsSpace: 4));
+    }
 
-  Widget _buildBarChart(List<_MetricDataPoint> data) {
     return BarChart(
         BarChartData(
           barTouchData: BarTouchData(
             touchTooltipData: BarTouchTooltipData(
               getTooltipItem: (group, groupIndex, rod, rodIndex) {
+                 final tickerIndex = rodIndex;
+                 final tickerName = tickerIndex < parsed.tickers.length ? parsed.tickers[tickerIndex] : '';
+                 if (rod.toY == 0) return null;
+                 
                 return BarTooltipItem(
-                  _formatValue(rod.toY),
-                  const TextStyle(
-                    color: Colors.white,
+                  '$tickerName\n${_formatValue(rod.toY)}',
+                  TextStyle(
+                    color: rod.color ?? Colors.white,
                     fontWeight: FontWeight.bold,
                   ),
                 );
@@ -607,7 +730,6 @@ class _TrendTabState extends ConsumerState<TrendTab> {
             ),
           ),
           gridData: FlGridData(show: true),
-          // ... rest of the chart configuration
           titlesData: FlTitlesData(
             leftTitles: AxisTitles(
               sideTitles: SideTitles(
@@ -627,11 +749,11 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                 reservedSize: 30,
                 getTitlesWidget: (value, meta) {
                   final index = value.toInt();
-                  if (index >= 0 && index < data.length) {
+                  if (index >= 0 && index < allPeriods.length) {
                     return Padding(
                       padding: const EdgeInsets.only(top: 8),
                       child: Text(
-                        data[index].period,
+                        allPeriods[index],
                         style: const TextStyle(fontSize: 10),
                       ),
                     );
@@ -644,20 +766,19 @@ class _TrendTabState extends ConsumerState<TrendTab> {
             rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: true),
-          barGroups: data.asMap().entries.map((e) {
-            return BarChartGroupData(
-              x: e.key,
-              barRods: [
-                BarChartRodData(
-                  toY: e.value.value,
-                  color: Colors.blue,
-                  width: 20,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-              ],
-            );
-          }).toList(),
+          barGroups: barGroups,
+          maxY: _calculateMaxY(barGroups),
         ));
+  }
+  
+  double _calculateMaxY(List<BarChartGroupData> groups) {
+      double max = 0;
+      for (final group in groups) {
+          for (final rod in group.barRods) {
+              if (rod.toY > max) max = rod.toY;
+          }
+      }
+      return max * 1.2; // Add some buffer
   }
 
   String _formatValue(double value) {
@@ -672,17 +793,48 @@ class _TrendTabState extends ConsumerState<TrendTab> {
   }
 
   _FundamentalsData _parseFundamentalsData(Map<String, dynamic> data) {
+    if (data.containsKey('tickers') && data['data'] is Map) {
+        // Multi-ticker response
+        final tickers = (data['tickers'] as List).cast<String>();
+        final rawDataMap = data['data'] as Map<String, dynamic>;
+        
+        final tickerData = <String, List<_PeriodData>>{};
+        final allMetrics = <String>{};
+        
+        for (final ticker in tickers) {
+             final singleData = rawDataMap[ticker];
+             if (singleData != null) {
+                 final parsedSingle = _parseSingleTickerData(singleData, ticker);
+                 tickerData[ticker] = parsedSingle.data;
+                 allMetrics.addAll(parsedSingle.metrics);
+             } else {
+                 tickerData[ticker] = [];
+             }
+        }
+        return _FundamentalsData(metrics: allMetrics, tickerData: tickerData, tickers: tickers);
+    } else {
+        // Single ticker response
+        final parsed = _parseSingleTickerData(data, widget.ticker);
+        return _FundamentalsData(
+            metrics: parsed.metrics,
+            tickerData: {widget.ticker: parsed.data},
+            tickers: [widget.ticker],
+        );
+    }
+  }
+  
+  // Helper to parse single ticker data returning temporary struct
+  _FundamentalsDataHelper _parseSingleTickerData(Map<String, dynamic> data, String ticker) {
     final dataArray = data['data'] ?? data;
     if (dataArray is! List) {
-      return _FundamentalsData(metrics: {}, data: []);
+      return _FundamentalsDataHelper(metrics: {}, data: []);
     }
 
     final filtered = dataArray.where((item) {
       if (item is! Map) return false;
       final itemCategory = item['Category'] ?? item['category'] ?? '';
-      final itemTicker = item['Ticker'] ?? item['ticker'] ?? '';
-      return itemCategory == widget.category &&
-          itemTicker.toString().toUpperCase() == widget.ticker.toUpperCase();
+      // Ticker check might need to be loose if data doesn't strictly have it or if we passed it
+      return itemCategory == widget.category; 
     }).toList();
 
     final metrics = <String>{};
@@ -713,7 +865,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
         final bParts = _parsePeriod(b);
         if (aParts.$1 != bParts.$1) return aParts.$1.compareTo(bParts.$1);
         return aParts.$2.compareTo(bParts.$2);
-      });
+    });
 
     final periodData = periods
         .map((period) => _PeriodData(
@@ -722,7 +874,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
             ))
         .toList();
 
-    return _FundamentalsData(metrics: metrics, data: periodData);
+    return _FundamentalsDataHelper(metrics: metrics, data: periodData);
   }
 
   (int, int) _parsePeriod(String period) {
@@ -747,11 +899,22 @@ class _TrendTabState extends ConsumerState<TrendTab> {
 class _FundamentalsData {
   const _FundamentalsData({
     required this.metrics,
-    required this.data,
+    required this.tickerData,
+    required this.tickers,
   });
 
   final Set<String> metrics;
-  final List<_PeriodData> data;
+  final Map<String, List<_PeriodData>> tickerData;
+  final List<String> tickers; 
+}
+
+class _FundamentalsDataHelper {
+    const _FundamentalsDataHelper({
+        required this.metrics,
+        required this.data,
+    });
+    final Set<String> metrics;
+    final List<_PeriodData> data;
 }
 
 class _PeriodData {

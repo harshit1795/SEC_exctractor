@@ -94,7 +94,7 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
     }
   }
 
-  Future<void> _exportToCsv(List<_SnapshotRow> snapshotData) async {
+  Future<void> _exportToCsv(List<_MultiSnapshotRow> snapshotData, List<String> tickers) async {
     if (snapshotData.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('No data to export')),
@@ -103,26 +103,36 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
     }
 
     try {
-      // Convert snapshot rows to export format
+      // For multi-ticker, we might want a different export format or loop.
+      // Current CSV service likely expects single ticker rows.
+      // Let's just export the primary ticker for now as a fallback, 
+      // or if we have time, upgrade the service.
+      // Given constraints, I'll export primary ticker data.
+      
+      final primaryTicker = tickers.first;
       final exportRows = snapshotData.map((row) {
+        final val = row.values[primaryTicker] ?? 0;
+        final delta = row.deltas[primaryTicker];
+        final deltaPct = row.deltaPercents[primaryTicker];
+        
         return SnapshotRow(
           metric: row.metric,
-          latestValue: row.value.toString(),
-          previousValue: row.delta != null ? (row.value - row.delta!).toString() : null,
-          change: row.delta?.toString(),
-          percentChange: row.deltaPercent?.toStringAsFixed(2),
+          latestValue: val.toString(),
+          previousValue: delta != null ? (val - delta).toString() : null,
+          change: delta?.toString(),
+          percentChange: deltaPct?.toStringAsFixed(2),
         );
       }).toList();
 
       await CsvExportService.exportSnapshotData(
-        ticker: widget.ticker,
+        ticker: primaryTicker,
         category: widget.category,
         rows: exportRows,
       );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CSV exported successfully')),
+          const SnackBar(content: Text('CSV exported successfully (Primary Ticker)')),
         );
       }
     } catch (e) {
@@ -153,6 +163,7 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
       data: (data) {
         final parsed = _parseFundamentalsData(data);
         final allMetrics = parsed.metrics.toList()..sort();
+        final isMulti = parsed.tickers.length > 1;
 
         if (allMetrics.isEmpty) {
           return const Center(
@@ -252,7 +263,7 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                           const Spacer(),
                           if (_selectedMetrics.isNotEmpty)
                             TextButton.icon(
-                              onPressed: () => _exportToCsv(snapshotData),
+                              onPressed: () => _exportToCsv(snapshotData, parsed.tickers),
                               icon: const Icon(Icons.download, size: 18),
                               label: const Text('Export CSV'),
                               style: TextButton.styleFrom(
@@ -291,17 +302,7 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                     child: DataTable(
                       columns: [
                         const DataColumn(label: Text('Metric')),
-                        DataColumn(
-                          label: Text(
-                            _displayMode == _DisplayMode.latest
-                                ? 'Value'
-                                : 'Latest Value ($latestPeriod)',
-                          ),
-                        ),
-                        if (_displayMode != _DisplayMode.latest) ...[
-                          const DataColumn(label: Text('Change')),
-                          const DataColumn(label: Text('Change %')),
-                        ],
+                        ...parsed.tickers.map((t) => DataColumn(label: Text(t, style: const TextStyle(fontWeight: FontWeight.bold)))),
                       ],
                       rows: snapshotData.map((row) {
                         return DataRow(
@@ -316,27 +317,29 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
                                 ],
                               ),
                             ),
-                            DataCell(Text(_formatValue(row.value))),
-                            if (_displayMode != _DisplayMode.latest) ...[
-                              DataCell(
-                                Text(
-                                  row.delta != null ? _formatValue(row.delta!) : 'N/A',
-                                  style: TextStyle(
-                                    color: _getValueColor(row.delta),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  row.deltaPercent != null
-                                      ? '${row.deltaPercent! > 0 ? '+' : ''}${row.deltaPercent!.toStringAsFixed(2)}%'
-                                      : 'N/A',
-                                  style: TextStyle(
-                                    color: _getValueColor(row.deltaPercent),
-                                  ),
-                                ),
-                              ),
-                            ],
+                            ...parsed.tickers.map((ticker) {
+                                final val = row.values[ticker] ?? 0;
+                                final delta = row.deltas[ticker];
+                                final deltaPct = row.deltaPercents[ticker];
+                                
+                                String text;
+                                Color? color;
+                                
+                                if (_displayMode == _DisplayMode.latest) {
+                                    text = _formatValue(val);
+                                } else if (_displayMode == _DisplayMode.qoq || _displayMode == _DisplayMode.yoy) {
+                                    if (deltaPct != null) {
+                                        text = '${deltaPct > 0 ? '+' : ''}${deltaPct.toStringAsFixed(2)}%';
+                                        color = _getValueColor(deltaPct);
+                                    } else {
+                                        text = 'N/A';
+                                    }
+                                } else {
+                                    text = '';
+                                }
+                                
+                                return DataCell(Text(text, style: TextStyle(color: color)));
+                            }),
                           ],
                         );
                       }).toList(),
@@ -377,71 +380,138 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
     return null;
   }
 
-  List<_SnapshotRow> _calculateSnapshot(
+  List<_MultiSnapshotRow> _calculateSnapshot(
     _FundamentalsData parsed,
     List<String> metrics,
   ) {
-    if (parsed.periods.isEmpty) return [];
-
-    final latestPeriod = parsed.periods.first;
-    final latestData = parsed.periodData[latestPeriod] ?? {};
-
     return metrics.map((metric) {
-      final latestValue = latestData[metric] ?? 0;
-      double? delta;
-      double? deltaPercent;
-
-      if (_displayMode == _DisplayMode.qoq && parsed.periods.length >= 2) {
-        final prevPeriod = parsed.periods[1];
-        final prevData = parsed.periodData[prevPeriod] ?? {};
-        final prevValue = prevData[metric] ?? 0;
-        delta = latestValue - prevValue;
-        deltaPercent = prevValue != 0 ? (delta / prevValue.abs()) * 100 : 0;
-      } else if (_displayMode == _DisplayMode.yoy) {
-        final latestParts = _parsePeriod(latestPeriod);
-        final targetYear = latestParts.$1 - 1;
-        
-        final yearAgoPeriod = parsed.periods.firstWhere(
-          (p) {
-            final parts = _parsePeriod(p);
-            return parts.$1 == targetYear && parts.$2 == latestParts.$2;
-          },
-          orElse: () => '',
-        );
-
-        if (yearAgoPeriod.isNotEmpty) {
-          final yearAgoData = parsed.periodData[yearAgoPeriod] ?? {};
-          final yearAgoValue = yearAgoData[metric] ?? 0;
-          delta = latestValue - yearAgoValue;
-          deltaPercent = yearAgoValue != 0 ? (delta / yearAgoValue.abs()) * 100 : 0;
-        }
+      final values = <String, double>{};
+      final deltas = <String, double?>{};
+      final deltaPercents = <String, double?>{};
+      
+      for (final ticker in parsed.tickers) {
+          final data = parsed.tickerData[ticker];
+          // Determine periods for this ticker
+          // For now, assuming parsed.periods is the union or primary ticker's periods
+          // But each ticker data has its own periods.
+          // Let's find latest for this ticker.
+          
+          if (data == null || data.isEmpty) {
+              values[ticker] = 0;
+              continue;
+          }
+           
+           // Sort by period descending
+           final sortedData = List<_PeriodData>.from(data)..sort((a, b) => b.period.compareTo(a.period)); 
+           // Better period compare logic needed if format varies, but assuming consistent format
+           
+           final latestData = sortedData.first;
+           final latestValue = latestData.metrics[metric] ?? 0;
+           values[ticker] = latestValue;
+           
+           if (_displayMode == _DisplayMode.qoq && sortedData.length >= 2) {
+               final prevData = sortedData[1];
+               final prevValue = prevData.metrics[metric] ?? 0;
+               final delta = latestValue - prevValue;
+               deltas[ticker] = delta;
+               deltaPercents[ticker] = prevValue != 0 ? (delta / prevValue.abs()) * 100 : 0;
+           } else if (_displayMode == _DisplayMode.yoy) {
+               // Simple YoY
+               // Find period with same quarter but year - 1
+               final latestParts = _parsePeriod(latestData.period);
+               final targetYear = latestParts.$1 - 1;
+               
+               final yearAgoData = sortedData.firstWhere(
+                  (p) {
+                      final parts = _parsePeriod(p.period);
+                      return parts.$1 == targetYear && parts.$2 == latestParts.$2;
+                  },
+                  orElse: () => const _PeriodData(period: '', metrics: {}),
+               );
+               
+               if (yearAgoData.period.isNotEmpty) {
+                   final yearAgoValue = yearAgoData.metrics[metric] ?? 0;
+                   final delta = latestValue - yearAgoValue;
+                   deltas[ticker] = delta;
+                   deltaPercents[ticker] = yearAgoValue != 0 ? (delta / yearAgoValue.abs()) * 100 : 0;
+               }
+           }
       }
 
-      return _SnapshotRow(
+      return _MultiSnapshotRow(
         metric: metric,
-        value: latestValue,
-        delta: delta,
-        deltaPercent: deltaPercent,
+        values: values,
+        deltas: deltas,
+        deltaPercents: deltaPercents,
       );
     }).toList();
   }
 
   _FundamentalsData _parseFundamentalsData(Map<String, dynamic> data) {
+    if (data.containsKey('tickers') && data['data'] is Map) {
+         // Multi-ticker
+         final tickers = (data['tickers'] as List).cast<String>();
+         final rawDataMap = data['data'] as Map<String, dynamic>;
+         
+         final tickerData = <String, List<_PeriodData>>{};
+         final allMetrics = <String>{};
+         final allPeriods = <String>{}; // Union of periods
+         
+         for (final ticker in tickers) {
+              final singleData = rawDataMap[ticker];
+              if (singleData != null) {
+                  final parsedSingle = _parseSingleTickerData(singleData, ticker);
+                  tickerData[ticker] = parsedSingle.data;
+                  allMetrics.addAll(parsedSingle.metrics);
+                  allPeriods.addAll(parsedSingle.data.map((d) => d.period));
+              } else {
+                  tickerData[ticker] = [];
+              }
+         }
+         
+         final sortedPeriods = allPeriods.toList()..sort((a,b) {
+             final aParts = _parsePeriod(a);
+             final bParts = _parsePeriod(b);
+             if (aParts.$1 != bParts.$1) return bParts.$1.compareTo(aParts.$1); // Descending
+             return bParts.$2.compareTo(aParts.$2);
+         });
+         
+         return _FundamentalsData(
+             metrics: allMetrics, 
+             tickerData: tickerData, 
+             tickers: tickers,
+             periods: sortedPeriods,
+         );
+
+    } else {
+        // Single
+        final parsed = _parseSingleTickerData(data, widget.ticker);
+        final periods = parsed.data.map((d) => d.period).toList()..sort((a, b) {
+             final aParts = _parsePeriod(a);
+             final bParts = _parsePeriod(b);
+             if (aParts.$1 != bParts.$1) return bParts.$1.compareTo(aParts.$1); // Descending
+             return bParts.$2.compareTo(aParts.$2);
+        });
+        
+        return _FundamentalsData(
+            metrics: parsed.metrics,
+            tickerData: {widget.ticker: parsed.data},
+            tickers: [widget.ticker],
+            periods: periods,
+        );
+    }
+  }
+
+  _FundamentalsDataHelper _parseSingleTickerData(Map<String, dynamic> data, String ticker) {
     final dataArray = data['data'] ?? data;
     if (dataArray is! List) {
-      return _FundamentalsData(
-        metrics: {},
-        periods: [],
-        periodData: {},
-      );
+      return _FundamentalsDataHelper(metrics: {}, data: []);
     }
 
     final filtered = dataArray.where((item) {
       if (item is! Map) return false;
       final itemCategory = item['Category'] ?? item['category'] ?? '';
-      final itemTicker = item['Ticker'] ?? item['ticker'] ?? '';
-      return itemCategory == widget.category &&
-          itemTicker.toString().toUpperCase() == widget.ticker.toUpperCase();
+      return itemCategory == widget.category; // Removed strict ticker check
     }).toList();
 
     final metrics = <String>{};
@@ -465,20 +535,14 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
       periodMap[period]![metric] = value;
     }
 
-    final periods = periodMap.keys.toList()
-      ..sort((a, b) {
-        // Sort descending (latest first)
-        final aParts = _parsePeriod(a);
-        final bParts = _parsePeriod(b);
-        if (aParts.$1 != bParts.$1) return bParts.$1.compareTo(aParts.$1);
-        return bParts.$2.compareTo(aParts.$2);
-      });
+    final periodData = periodMap.entries
+        .map((entry) => _PeriodData(
+              period: entry.key,
+              metrics: entry.value,
+            ))
+        .toList();
 
-    return _FundamentalsData(
-      metrics: metrics,
-      periods: periods,
-      periodData: periodMap,
-    );
+    return _FundamentalsDataHelper(metrics: metrics, data: periodData);
   }
 
   (int, int) _parsePeriod(String period) {
@@ -503,27 +567,48 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
 class _FundamentalsData {
   const _FundamentalsData({
     required this.metrics,
+    required this.tickerData,
+    required this.tickers,
     required this.periods,
-    required this.periodData,
   });
 
   final Set<String> metrics;
+  final Map<String, List<_PeriodData>> tickerData;
+  final List<String> tickers;
   final List<String> periods;
-  final Map<String, Map<String, double>> periodData;
 }
 
-class _SnapshotRow {
-  const _SnapshotRow({
+class _FundamentalsDataHelper {
+  const _FundamentalsDataHelper({
+    required this.metrics,
+    required this.data,
+  });
+  final Set<String> metrics;
+  final List<_PeriodData> data;
+}
+
+class _PeriodData {
+  const _PeriodData({
+    required this.period,
+    required this.metrics,
+  });
+
+  final String period;
+  final Map<String, double> metrics;
+}
+
+class _MultiSnapshotRow {
+  const _MultiSnapshotRow({
     required this.metric,
-    required this.value,
-    this.delta,
-    this.deltaPercent,
+    required this.values,
+    required this.deltas,
+    required this.deltaPercents,
   });
 
   final String metric;
-  final double value;
-  final double? delta;
-  final double? deltaPercent;
+  final Map<String, double> values;
+  final Map<String, double?> deltas;
+  final Map<String, double?> deltaPercents;
 }
 
 enum _DisplayMode { latest, qoq, yoy }

@@ -7,6 +7,7 @@ import 'api_client.dart';
 
 class ApiClientDio implements ApiClient {
   ApiClientDio({
+    required String baseUrl,
     required AuthService authService,
     Dio? dio,
     CacheStore? cacheStore,
@@ -14,7 +15,7 @@ class ApiClientDio implements ApiClient {
         _dio = dio ??
             Dio(
               BaseOptions(
-                baseUrl: AppConfig.apiBaseUrl,
+                baseUrl: baseUrl,
                 connectTimeout: const Duration(seconds: 15),
                 receiveTimeout: const Duration(seconds: 30),
               ),

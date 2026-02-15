@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'package:intl/intl.dart';
 
 import '../dashboard_providers.dart';
 import '../widgets/tab_description_tooltip.dart';
 
-class FinQ360Tab extends ConsumerWidget {
+class FinQ360Tab extends ConsumerStatefulWidget {
   const FinQ360Tab({
     required this.ticker,
     required this.category,
@@ -15,10 +17,21 @@ class FinQ360Tab extends ConsumerWidget {
   final String category;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final healthStatus = ref.watch(healthStatusProvider);
-    final tickerData = ref.watch(tickerDataProvider);
+  ConsumerState<FinQ360Tab> createState() => _FinQ360TabState();
+}
+
+class _FinQ360TabState extends ConsumerState<FinQ360Tab> {
+  List<String> _selectedFundamentals = [];
+  List<String> _selectedEarnings = [];
+  DateTime _startDate = DateTime(2000, 1, 1);
+  DateTime _endDate = DateTime.now();
+  String _aggregation = 'Quarterly';
+  String _chartType = 'Line';
+
+  @override
+  Widget build(BuildContext context) {
     final fundamentals = ref.watch(fundamentalsProvider);
+    final tickerData = ref.watch(tickerDataProvider);
 
     return SingleChildScrollView(
       child: Column(
@@ -29,8 +42,10 @@ class FinQ360Tab extends ConsumerWidget {
             padding: const EdgeInsets.only(left: 4, bottom: 8),
             child: Row(
               children: [
+                Icon(Icons.search, size: 24, color: Colors.grey.shade700),
+                const SizedBox(width: 8),
                 Text(
-                  'FinQ 360° Analysis',
+                  'FinQ 360',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                       ),
@@ -46,24 +61,11 @@ class FinQ360Tab extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.auto_awesome, size: 28, color: Colors.purple.shade700),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'FinQ 360',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
                   Text(
-                    'Comprehensive 360° view of $ticker with multi-metric analysis.',
+                    'Create custom charts by combining company fundamentals, earnings, and macroeconomic data for ${widget.ticker}.',
                     style: TextStyle(
                       color: Colors.grey.shade600,
+                      fontSize: 14,
                     ),
                   ),
                 ],
@@ -71,286 +73,762 @@ class FinQ360Tab extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          // Health Status Section
-          _buildHealthSection(healthStatus),
+          // Metric Selection
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Company Fundamentals
+                  _buildMetricSelector(
+                    'Company Fundamentals',
+                    _selectedFundamentals,
+                    fundamentals,
+                    (selected) {
+                      setState(() => _selectedFundamentals = selected);
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // Earnings
+                  _buildEarningsSelector(),
+                  const SizedBox(height: 16),
+                  // Macroeconomic Data
+                  _buildMacroeconomicSelector(),
+                  const Divider(height: 32),
+                  // Filters
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildDatePicker('Start Date', _startDate, (date) {
+                          setState(() => _startDate = date);
+                        }),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildDatePicker('End Date', _endDate, (date) {
+                          setState(() => _endDate = date);
+                        }),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Aggregation',
+                                style: TextStyle(fontSize: 12)),
+                            const SizedBox(height: 4),
+                            DropdownButtonFormField<String>(
+                              value: _aggregation,
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              items: ['Quarterly', 'Yearly']
+                                  .map((e) =>
+                                      DropdownMenuItem(value: e, child: Text(e)))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _aggregation = value);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Chart Type',
+                                style: TextStyle(fontSize: 12)),
+                            const SizedBox(height: 4),
+                            DropdownButtonFormField<String>(
+                              value: _chartType,
+                              decoration: const InputDecoration(
+                                contentPadding: EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 8),
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              items: ['Line', 'Bar']
+                                  .map((e) =>
+                                      DropdownMenuItem(value: e, child: Text(e)))
+                                  .toList(),
+                              onChanged: (value) {
+                                if (value != null) {
+                                  setState(() => _chartType = value);
+                                }
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
-          // Ticker Info Section
-          _buildTickerSection(tickerData),
-          const SizedBox(height: 16),
-          // Fundamentals Summary
-          _buildFundamentalsSection(fundamentals, category),
+          // Combined Chart
+          _buildCombinedChart(fundamentals, tickerData),
         ],
       ),
     );
   }
 
-  Widget _buildHealthSection(AsyncValue<Map<String, dynamic>> healthStatus) {
-    return healthStatus.when(
-      data: (data) {
-        final status = data['status'] ?? 'unknown';
-        final color = status == 'healthy'
-            ? Colors.green
-            : status == 'degraded'
-                ? Colors.orange
-                : Colors.red;
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.health_and_safety, color: color),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'System Health',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 8,
-                  children: [
-                    _buildStatChip('Status', status.toUpperCase(), color),
-                    if (data['version'] != null)
-                      _buildStatChip('Version', data['version'], Colors.blue),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ),
-      error: (error, _) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildTickerSection(AsyncValue<Map<String, dynamic>> tickerData) {
-    return tickerData.when(
-      data: (data) {
-        final info = data['info'] as Map<String, dynamic>?;
-        final currentPrice = data['current_price'];
-        final priceData = data['price_data'] as List?;
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.trending_up, color: Colors.green.shade700),
-                    const SizedBox(width: 12),
-                    const Text(
-                      'Ticker Information',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (currentPrice != null)
-                  _buildStatItem(
-                    'Current Price',
-                    '\$${currentPrice.toStringAsFixed(2)}',
-                  ),
-                if (info != null) ...[
-                  const SizedBox(height: 8),
-                  if (info['longName'] != null)
-                    _buildStatItem('Company', info['longName']),
-                  if (info['sector'] != null) ...[
-                    const SizedBox(height: 8),
-                    _buildStatItem('Sector', info['sector']),
-                  ],
-                  if (info['industry'] != null) ...[
-                    const SizedBox(height: 8),
-                    _buildStatItem('Industry', info['industry']),
-                  ],
-                ],
-                if (priceData != null && priceData.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    '${priceData.length} price data points available',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
-      loading: () => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ),
-      error: (error, _) => const SizedBox.shrink(),
-    );
-  }
-
-  Widget _buildFundamentalsSection(
-    AsyncValue<Map<String, dynamic>> fundamentals,
-    String category,
+  Widget _buildMetricSelector(
+    String title,
+    List<String> selected,
+    AsyncValue<Map<String, dynamic>> data,
+    ValueChanged<List<String>> onChanged,
   ) {
-    if (category.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Text(
-            'Select a category to view fundamentals summary',
-            style: TextStyle(color: Colors.grey.shade600),
-          ),
-        ),
-      );
-    }
+    return data.when(
+      data: (dataMap) {
+        final dataArray = dataMap['data'];
+        final availableMetrics = <String>{};
+        
+        if (dataArray is List) {
+          for (final item in dataArray) {
+            if (item is Map) {
+              final metric = item['Metric'] ?? item['metric'];
+              if (metric != null) availableMetrics.add(metric.toString());
+            }
+          }
+        }
 
-    return fundamentals.when(
-      data: (data) {
-        final dataArray = data['data'] ?? [];
-        if (dataArray is! List || dataArray.isEmpty) {
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                'No fundamentals data available',
-                style: TextStyle(color: Colors.grey.shade600),
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 8),
+            InkWell(
+              onTap: () async {
+                await _showMetricSelectionDialog(
+                  title,
+                  availableMetrics.toList(),
+                  selected,
+                  onChanged,
+                );
+              },
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        selected.isEmpty
+                            ? 'Select metrics...'
+                            : '${selected.length} metric${selected.length != 1 ? 's' : ''} selected',
+                        style: TextStyle(
+                          color: selected.isEmpty ? Colors.grey : Colors.black,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.arrow_drop_down),
+                  ],
+                ),
               ),
             ),
-          );
-        }
-
-        final filtered = dataArray.where((item) {
-          if (item is! Map) return false;
-          final itemCategory = item['Category'] ?? item['category'] ?? '';
-          return itemCategory == category;
-        }).toList();
-
-        final metrics = <String>{};
-        for (final item in filtered) {
-          final metric = item['Metric'] ?? item['metric'];
-          if (metric != null) metrics.add(metric);
-        }
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.analytics, color: Colors.blue.shade700),
-                    const SizedBox(width: 12),
-                    Text(
-                      'Fundamentals - $category',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '${metrics.length} metrics available in $category category',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade700,
-                  ),
-                ),
-                if (metrics.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: metrics.take(5).map((metric) {
-                      return Chip(
-                        label: Text(
-                          metric,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        backgroundColor: Colors.blue.shade50,
-                      );
-                    }).toList(),
-                  ),
-                  if (metrics.length > 5)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        '...and ${metrics.length - 5} more',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey.shade600,
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ),
+            if (selected.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: selected
+                    .map((metric) => Chip(
+                          label: Text(metric, style: const TextStyle(fontSize: 12)),
+                          deleteIcon: const Icon(Icons.close, size: 16),
+                          onDeleted: () {
+                            final newList = List<String>.from(selected)
+                              ..remove(metric);
+                            onChanged(newList);
+                          },
+                        ))
+                    .toList(),
+              ),
+            ],
+          ],
         );
       },
-      loading: () => const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator()),
-        ),
-      ),
-      error: (error, _) => const SizedBox.shrink(),
+      loading: () => const CircularProgressIndicator(),
+      error: (_, __) => Text('Error loading $title'),
     );
   }
 
-  Widget _buildStatItem(String label, String value) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+  Widget _buildEarningsSelector() {
+    final earningsMetrics = ['Reported EPS', 'Estimated EPS'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '$label: ',
-          style: TextStyle(
-            fontSize: 14,
-            color: Colors.grey.shade600,
+        const Text('Earnings', style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () async {
+            await _showMetricSelectionDialog(
+              'Earnings',
+              earningsMetrics,
+              _selectedEarnings,
+              (selected) {
+                setState(() => _selectedEarnings = selected);
+              },
+            );
+          },
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Text(
+                    _selectedEarnings.isEmpty
+                        ? 'Select metrics...'
+                        : '${_selectedEarnings.length} metric${_selectedEarnings.length != 1 ? 's' : ''} selected',
+                    style: TextStyle(
+                      color:
+                          _selectedEarnings.isEmpty ? Colors.grey : Colors.black,
+                    ),
+                  ),
+                ),
+                const Icon(Icons.arrow_drop_down),
+              ],
+            ),
           ),
         ),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
+        if (_selectedEarnings.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _selectedEarnings
+                .map((metric) => Chip(
+                      label: Text(metric, style: const TextStyle(fontSize: 12)),
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                      onDeleted: () {
+                        setState(() {
+                          _selectedEarnings = List<String>.from(_selectedEarnings)
+                            ..remove(metric);
+                        });
+                      },
+                    ))
+                .toList(),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMacroeconomicSelector() {
+    // Placeholder for now
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Macroeconomic Data',
+            style: TextStyle(fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        InputDecorator(
+          decoration: const InputDecoration(
+            contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          child: Text(
+            'Select macroeconomic indicators...',
+            style: TextStyle(color: Colors.grey),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildStatChip(String label, String value, Color color) {
-    return Chip(
-      avatar: CircleAvatar(
-        backgroundColor: color,
-        radius: 8,
+  Future<void> _showMetricSelectionDialog(
+    String title,
+    List<String> available,
+    List<String> selected,
+    ValueChanged<List<String>> onChanged,
+  ) async {
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _MetricSelectionDialog(
+        title: title,
+        available: available,
+        initialSelected: selected,
       ),
-      label: Text('$label: $value'),
-      backgroundColor: color.withOpacity(0.1),
+    );
+    if (result != null) {
+      onChanged(result);
+    }
+  }
+
+  Widget _buildDatePicker(
+      String label, DateTime value, ValueChanged<DateTime> onChanged) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 12)),
+        const SizedBox(height: 4),
+        InkWell(
+          onTap: () async {
+            final date = await showDatePicker(
+              context: context,
+              initialDate: value,
+              firstDate: DateTime(2000),
+              lastDate: DateTime.now(),
+            );
+            if (date != null) {
+              onChanged(date);
+            }
+          },
+          child: InputDecorator(
+            decoration: const InputDecoration(
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+            child: Text(
+              '${value.month}/${value.day}/${value.year}',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCombinedChart(
+    AsyncValue<Map<String, dynamic>> fundamentals,
+    AsyncValue<Map<String, dynamic>> tickerData,
+  ) {
+    final totalSelected =
+        _selectedFundamentals.length + _selectedEarnings.length;
+    
+    if (totalSelected == 0) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(48),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(Icons.auto_graph, size: 64, color: Colors.grey.shade300),
+                const SizedBox(height: 16),
+                Text(
+                  'Select metrics above to create your custom chart',
+                  style: TextStyle(color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Combined Metric Analysis',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 400,
+              child: fundamentals.when(
+                data: (fundData) => tickerData.when(
+                  data: (tickerDataMap) {
+                    final chartData = _prepareCombinedData(fundData, tickerDataMap);
+                    if (chartData.isEmpty) {
+                      return Center(
+                        child: Text(
+                          'No data available for selected metrics',
+                          style: TextStyle(color: Colors.grey.shade600),
+                        ),
+                      );
+                    }
+                    return _renderCombinedChart(chartData);
+                  },
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Error: $e')),
+                ),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('Error: $e')),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<_CombinedDataPoint> _prepareCombinedData(
+    Map<String, dynamic> fundData,
+    Map<String, dynamic> tickerData,
+  ) {
+    final Map<DateTime, Map<String, double>> timeSeriesMap = {};
+    
+    // Extract fundamental metrics
+    if (_selectedFundamentals.isNotEmpty) {
+      final dataArray = fundData['data'];
+      if (dataArray is List) {
+        for (final item in dataArray) {
+          if (item is! Map) continue;
+          
+          final metric = item['Metric'] ?? item['metric'];
+          if (!_selectedFundamentals.contains(metric)) continue;
+          
+          final date = _parseDate(item['Date'] ?? item['date']);
+          if (date == null) continue;
+          
+          final value = _parseDouble(item['Value'] ?? item['value']);
+          if (value == null) continue;
+          
+          timeSeriesMap.putIfAbsent(date, () => {});
+          timeSeriesMap[date]![metric] = value;
+        }
+      }
+    }
+    
+    // Extract earnings metrics
+    if (_selectedEarnings.isNotEmpty) {
+      final earningsDates = tickerData['earnings_dates'];
+      if (earningsDates is List) {
+        for (final item in earningsDates) {
+          if (item is! Map) continue;
+          
+          final date = _parseDate(
+            item['Earnings Date'] ?? item['earningsDate'] ?? item['date']
+          );
+          if (date == null) continue;
+          
+          if (_selectedEarnings.contains('Reported EPS')) {
+            final value = _parseDouble(
+              item['Reported EPS'] ?? item['reportedEPS']
+            );
+            if (value != null) {
+              timeSeriesMap.putIfAbsent(date, () => {});
+              timeSeriesMap[date]!['Reported EPS'] = value;
+            }
+          }
+          
+          if (_selectedEarnings.contains('Estimated EPS')) {
+            final value = _parseDouble(
+              item['EPS Estimate'] ?? item['estimatedEPS']
+            );
+            if (value != null) {
+              timeSeriesMap.putIfAbsent(date, () => {});
+              timeSeriesMap[date]!['Estimated EPS'] = value;
+            }
+          }
+        }
+      }
+    }
+    
+    // Filter by date range
+    final filteredMap = Map.fromEntries(
+      timeSeriesMap.entries.where((entry) =>
+        entry.key.isAfter(_startDate.subtract(const Duration(days: 1))) &&
+        entry.key.isBefore(_endDate.add(const Duration(days: 1)))
+      )
+    );
+    
+    // Convert to list and sort
+    final dataPoints = filteredMap.entries
+        .map((e) => _CombinedDataPoint(date: e.key, values: e.value))
+        .toList();
+    dataPoints.sort((a, b) => a.date.compareTo(b.date));
+    
+    // Normalize values to 0-100 scale
+    for (final metric in [..._selectedFundamentals, ..._selectedEarnings]) {
+      final values = dataPoints
+          .where((p) => p.values.containsKey(metric))
+          .map((p) => p.values[metric]!)
+          .toList();
+      
+      if (values.isEmpty) continue;
+      
+      final min = values.reduce((a, b) => a < b ? a : b);
+      final max = values.reduce((a, b) => a > b ? a : b);
+      final range = max - min;
+      
+      if (range == 0) continue;
+      
+      for (final point in dataPoints) {
+        if (point.values.containsKey(metric)) {
+          final original = point.values[metric]!;
+          point.values['${metric}_normalized'] = ((original - min) / range) * 100;
+          point.values['${metric}_original'] = original;
+        }
+      }
+    }
+    
+    return dataPoints;
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is String) return DateTime.tryParse(value);
+    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    return null;
+  }
+
+  double? _parseDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Widget _renderCombinedChart(List<_CombinedDataPoint> data) {
+    final allMetrics = [..._selectedFundamentals, ..._selectedEarnings];
+    final colors = [
+      Colors.blue,
+      Colors.green,
+      Colors.orange,
+      Colors.purple,
+      Colors.red,
+      Colors.teal,
+    ];
+    
+    final lineBarsData = <LineChartBarData>[];
+    
+    for (int i = 0; i < allMetrics.length; i++) {
+      final metric = allMetrics[i];
+      final color = colors[i % colors.length];
+      
+      final spots = <FlSpot>[];
+      for (int j = 0; j < data.length; j++) {
+        final normalized = data[j].values['${metric}_normalized'];
+        if (normalized != null) {
+          spots.add(FlSpot(j.toDouble(), normalized));
+        }
+      }
+      
+      if (spots.isNotEmpty) {
+        lineBarsData.add(LineChartBarData(
+          spots: spots,
+          color: color,
+          barWidth: 2,
+          dotData: const FlDotData(show: false),
+          isCurved: true,
+        ));
+      }
+    }
+    
+    if (lineBarsData.isEmpty) {
+      return const Center(child: Text('No data to display'));
+    }
+    
+    return Column(
+      children: [
+        // Legend
+        Wrap(
+          spacing: 16,
+          runSpacing: 8,
+          children: allMetrics.asMap().entries.map((entry) {
+            final index = entry.key;
+            final metric = entry.value;
+            final color = colors[index % colors.length];
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 16,
+                  height: 3,
+                  color: color,
+                ),
+                const SizedBox(width: 4),
+                Text(metric, style: const TextStyle(fontSize: 12)),
+              ],
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 16),
+        Expanded(
+          child: LineChart(
+            LineChartData(
+              minY: 0,
+              maxY: 100,
+              gridData: const FlGridData(show: true),
+              titlesData: FlTitlesData(
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (value, meta) {
+                      return Text('${value.toInt()}%', style: const TextStyle(fontSize: 10));
+                    },
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 30,
+                    getTitlesWidget: (value, meta) {
+                      final index = value.toInt();
+                      if (index < 0 || index >= data.length) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      final interval = (data.length / 5).ceil();
+                      if (index % interval != 0 && index != data.length - 1) {
+                        return const SizedBox.shrink();
+                      }
+                      
+                      final date = data[index].date;
+                      return Text(
+                        DateFormat('MMM\nyy').format(date),
+                        style: const TextStyle(fontSize: 9),
+                        textAlign: TextAlign.center,
+                      );
+                    },
+                  ),
+                ),
+                rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              ),
+              borderData: FlBorderData(show: true),
+              lineTouchData: LineTouchData(
+                enabled: true,
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (touchedSpots) {
+                    return touchedSpots.map((spot) {
+                      final index = spot.x.toInt();
+                      if (index < 0 || index >= data.length) return null;
+                      
+                      final point = data[index];
+                      final metricIndex = lineBarsData.indexOf(
+                        lineBarsData.firstWhere((bar) => bar.spots.contains(spot))
+                      );
+                      final metric = allMetrics[metricIndex];
+                      final original = point.values['${metric}_original'];
+                      
+                      return LineTooltipItem(
+                        '$metric\n${original?.toStringAsFixed(2) ?? 'N/A'}',
+                        const TextStyle(color: Colors.white, fontSize: 11),
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
+              lineBarsData: lineBarsData,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CombinedDataPoint {
+  final DateTime date;
+  final Map<String, double> values; // metric name -> normalized value
+
+  _CombinedDataPoint({required this.date, required this.values});
+}
+
+class _MetricSelectionDialog extends StatefulWidget {
+  const _MetricSelectionDialog({
+    required this.title,
+    required this.available,
+    required this.initialSelected,
+  });
+
+  final String title;
+  final List<String> available;
+  final List<String> initialSelected;
+
+  @override
+  State<_MetricSelectionDialog> createState() => _MetricSelectionDialogState();
+}
+
+class _MetricSelectionDialogState extends State<_MetricSelectionDialog> {
+  late List<String> _selected;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selected = List.from(widget.initialSelected);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = widget.available
+        .where((m) => m.toLowerCase().contains(_searchQuery.toLowerCase()))
+        .toList();
+
+    return AlertDialog(
+      title: Text('Select ${widget.title}'),
+      content: SizedBox(
+        width: 400,
+        height: 500,
+        child: Column(
+          children: [
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Search metrics',
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (value) {
+                setState(() => _searchQuery = value);
+              },
+            ),
+            const SizedBox(height: 16),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filtered.length,
+                itemBuilder: (context, index) {
+                  final metric = filtered[index];
+                  final isSelected = _selected.contains(metric);
+                  return CheckboxListTile(
+                    title: Text(metric),
+                    value: isSelected,
+                    onChanged: (checked) {
+                      setState(() {
+                        if (checked == true) {
+                          _selected.add(metric);
+                        } else {
+                          _selected.remove(metric);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () => Navigator.of(context).pop(_selected),
+          child: const Text('Apply'),
+        ),
+      ],
     );
   }
 }

@@ -6,6 +6,7 @@ import '../api/api_client.dart';
 import '../api/api_client_dio.dart';
 import '../auth/auth_service.dart';
 import '../auth/firebase_auth_service.dart';
+import '../config/app_config.dart';
 
 final authServiceProvider = Provider<AuthService>((ref) {
   return FirebaseAuthService();
@@ -16,9 +17,18 @@ final cacheStoreProvider = Provider<CacheStore>((ref) {
   return MemCacheStore(maxSize: 10485760); // 10MB
 });
 
+
+/// Provider for the API Base URL
+final baseUrlProvider = StateProvider<String>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return prefs.getString('api_base_url') ?? AppConfig.apiBaseUrl;
+});
+
 /// API client with caching enabled
 final apiClientProvider = Provider<ApiClient>((ref) {
+  final baseUrl = ref.watch(baseUrlProvider);
   return ApiClientDio(
+    baseUrl: baseUrl,
     authService: ref.read(authServiceProvider),
     cacheStore: ref.read(cacheStoreProvider),
   );

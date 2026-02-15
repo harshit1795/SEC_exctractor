@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
+import '../dashboard_providers.dart';
 import '../widgets/tab_description_tooltip.dart';
 
 class DisclosuresTab extends ConsumerStatefulWidget {
@@ -21,14 +22,44 @@ class DisclosuresTab extends ConsumerStatefulWidget {
 class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
   var _reportType = _ReportType.tenK;
   String _selectedSection = 'business';
+  String? _activeTicker;
+
+  @override
+  void initState() {
+    super.initState();
+    _activeTicker = widget.ticker;
+  }
+
+  @override
+  void didUpdateWidget(DisclosuresTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.ticker != oldWidget.ticker) {
+      _activeTicker = widget.ticker;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final filingsFuture = ref.watch(_secFilingsProvider(widget.ticker));
+    final selectedTickers = ref.watch(selectedTickersProvider);
+    final isMulti = selectedTickers.length > 1;
+
+    // Ensure active ticker is in the selected list if multi-select
+    if (isMulti && !selectedTickers.contains(_activeTicker)) {
+       if (selectedTickers.isNotEmpty) {
+           // Schedule update to avoid build cycle
+           WidgetsBinding.instance.addPostFrameCallback((_) {
+               if (mounted) setState(() => _activeTicker = selectedTickers.first);
+           });
+       }
+    }
+    
+    final currentTicker = _activeTicker ?? widget.ticker;
+
+    final filingsFuture = ref.watch(_secFilingsProvider(currentTicker));
     final sectionsFuture = ref.watch(
       _reportType == _ReportType.tenK
-          ? _sec10KProvider(widget.ticker)
-          : _sec10QProvider(widget.ticker),
+          ? _sec10KProvider(currentTicker)
+          : _sec10QProvider(currentTicker),
     );
 
     return filingsFuture.when(
@@ -44,7 +75,7 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
         // Reset section if it's not valid for current report type
         if (!sectionOptions.any((opt) => opt.key == _selectedSection)) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            setState(() => _selectedSection = sectionOptions.first.key);
+            if (mounted) setState(() => _selectedSection = sectionOptions.first.key);
           });
         }
 
@@ -68,28 +99,65 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
                   ],
                 ),
               ),
+              
+              if (isMulti)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                           const Text(
+                            'Select Ticker',
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: currentTicker,
+                            decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            items: selectedTickers.map((t) => DropdownMenuItem(
+                                value: t,
+                                child: Text(t),
+                            )).toList(),
+                            onChanged: (value) {
+                                if (value != null) {
+                                    setState(() => _activeTicker = value);
+                                }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Row(
+                      Row(
                         children: [
-                          Icon(Icons.account_balance, size: 28),
-                          SizedBox(width: 12),
+                          const Icon(Icons.account_balance, size: 28),
+                          const SizedBox(width: 12),
                           Text(
-                            'Company Disclosures',
-                            style: TextStyle(
+                            'Company Disclosures ($currentTicker)',
+                            style: getAllowedTextStyle(const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.bold,
-                            ),
+                            )),
                           ),
                         ],
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'View key sections from the latest 10-K and 10-Q filings for ${widget.ticker}.',
+                        'View key sections from the latest 10-K and 10-Q filings for $currentTicker.',
                         style: TextStyle(
                           color: Colors.grey.shade600,
                         ),
@@ -194,7 +262,7 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
-                            'No ${_reportType == _ReportType.tenK ? '10-K' : '10-Q'} filings found for ${widget.ticker}.',
+                            'No ${_reportType == _ReportType.tenK ? '10-K' : '10-Q'} filings found for $currentTicker.',
                             style: TextStyle(
                               fontSize: 14,
                               color: Colors.yellow.shade900,
@@ -280,7 +348,7 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
                               ),
                               constraints: const BoxConstraints(maxHeight: 500),
                               child: SingleChildScrollView(
-                                child: Text(
+                                child: SelectableText( // Use SelectableText
                                   sectionContent,
                                   style: TextStyle(
                                     fontSize: 14,
@@ -404,6 +472,9 @@ class _DisclosuresTabState extends ConsumerState<DisclosuresTab> {
       ),
     );
   }
+
+  // Helper to allow certain text styles if needed (dummy for now)
+  TextStyle? getAllowedTextStyle(TextStyle style) => style;
 }
 
 // Providers for SEC data

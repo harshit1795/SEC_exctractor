@@ -48,8 +48,12 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+
     // Watch global providers
-    final ticker = ref.watch(tickerProvider);
+    final selectedTickers = ref.watch(selectedTickersProvider);
+    // Backward compatibility for single ticker components
+    final primaryTicker = selectedTickers.isNotEmpty ? selectedTickers.first : '';
+    
     final category = ref.watch(categoryProvider);
     
     // Watch data providers (which depend on ticker/period)
@@ -77,11 +81,11 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
               style: const TextStyle(fontSize: 12, color: Colors.black54),
             ),
             const SizedBox(height: 12),
-            DataPipelineBanner(ticker: ticker),
+            DataPipelineBanner(ticker: primaryTicker),
             CompanyHeader(tickerData: tickerData),
             const SizedBox(height: 12),
             _DashboardContent(
-              ticker: ticker,
+              tickers: selectedTickers,
               period: _period,
               periods: _periodOptions,
               category: category,
@@ -103,7 +107,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
 
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({
-    required this.ticker,
+    required this.tickers,
     required this.period,
     required this.periods,
     required this.category,
@@ -114,7 +118,7 @@ class _DashboardContent extends StatelessWidget {
     required this.fundamentals,
   });
 
-  final String ticker;
+  final List<String> tickers;
   final String period;
   final List<String> periods;
   final String category;
@@ -137,8 +141,12 @@ class _DashboardContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryTicker = tickers.isNotEmpty ? tickers.first : '';
+    final isMulti = tickers.length > 1;
+
     return DefaultTabController(
       length: _tabs.length,
+      initialIndex: 3, // Default to Price Chart
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -158,6 +166,26 @@ class _DashboardContent extends StatelessWidget {
             tabs: _tabs.map((tab) => Tab(text: tab.$2)).toList(),
           ),
           const SizedBox(height: 12),
+          // Show warning for single-ticker only tabs
+          if (isMulti)
+             Container(
+                 width: double.infinity,
+                 padding: const EdgeInsets.all(8),
+                 margin: const EdgeInsets.only(bottom: 8),
+                 color: Colors.orange.shade50,
+                 child: Row(
+                     children: [
+                         Icon(Icons.info_outline, size: 16, color: Colors.orange.shade800),
+                         const SizedBox(width: 8),
+                         Expanded(
+                             child: Text(
+                                 'Comparison mode active. Some tabs only show data for $primaryTicker.',
+                                 style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                             ),
+                         ),
+                     ],
+                 ),
+             ),
           LayoutBuilder(
             builder: (context, constraints) {
               final availableHeight = MediaQuery.of(context).size.height - 300;
@@ -168,14 +196,14 @@ class _DashboardContent extends StatelessWidget {
                 child: TabBarView(
                   children: [
                     TrendTab(
-                      ticker: ticker,
+                      ticker: primaryTicker,
                       category: category,
                     ),
                     SnapshotTab(
-                      ticker: ticker,
+                      ticker: primaryTicker,
                       category: category,
                     ),
-                    EarningsTab(ticker: ticker),
+                    EarningsTab(ticker: primaryTicker),
                     PriceChartTab(
                       period: period,
                       periods: periods,
@@ -184,13 +212,13 @@ class _DashboardContent extends StatelessWidget {
                       tickerData: tickerData,
                       fundamentals: fundamentals,
                     ),
-                    DisclosuresTab(ticker: ticker),
+                    DisclosuresTab(ticker: primaryTicker),
                     const MacroeconomicTab(),
                     FinQ360Tab(
-                      ticker: ticker,
+                      ticker: primaryTicker,
                       category: category,
                     ),
-                    FinQChatTab(ticker: ticker),
+                    FinQChatTab(ticker: primaryTicker),
                   ],
                 ),
               );

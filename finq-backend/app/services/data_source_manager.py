@@ -532,3 +532,48 @@ class DataSourceManager:
                 'WMT', 'JPM', 'MA', 'PG', 'UNH', 'HD', 'DIS', 'BAC', 'ADBE', 'NFLX'
             ]
 
+
+    def search_tickers(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
+        """
+        Search for tickers by symbol or company name using the CIK map.
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of dictionaries with 'ticker' and 'name'
+        """
+        if not query or self.cik_df.empty:
+            return []
+            
+        query = query.upper().strip()
+        
+        # Search in ticker column (exact match first, then starts with)
+        # Using string constraints for better performance
+        mask_ticker = self.cik_df['ticker'].astype(str).str.contains(query, case=False, na=False)
+        mask_name = self.cik_df['name'].astype(str).str.contains(query, case=False, na=False)
+        
+        # Combine masks
+        matches = self.cik_df[mask_ticker | mask_name]
+        
+        if matches.empty:
+            return []
+            
+        # Prioritize ticker matches that start with query
+        matches['score'] = 0
+        
+        # Exact ticker match gets highest score
+        matches.loc[matches['ticker'] == query, 'score'] = 3
+        # Ticker starts with query gets medium score
+        matches.loc[matches['ticker'].str.startswith(query), 'score'] = 2
+        # Name starts with query gets low score
+        matches.loc[matches['name'].str.upper().str.startswith(query), 'score'] = 1
+        
+        # Sort by score descending, then by ticker length (shorter tickers usually more popular)
+        matches = matches.sort_values(by=['score', 'ticker'], ascending=[False, True])
+        
+        # Limit results
+        matches = matches.head(limit)
+        
+        return matches[['ticker', 'name']].to_dict('records')

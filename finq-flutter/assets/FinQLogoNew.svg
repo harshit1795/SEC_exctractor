@@ -1,91 +1,92 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 350" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif">
+<svg width="800" height="800" viewBox="0 0 800 800" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
   <defs>
-    <linearGradient id="light-grad-primary" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0A2342;stop-opacity:1" /> <stop offset="100%" style="stop-color:#007EA7;stop-opacity:1" /> </linearGradient>
-    <linearGradient id="light-grad-accent" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#007EA7;stop-opacity:1" /> <stop offset="100%" style="stop-color:#00A8E8;stop-opacity:1" /> </linearGradient>
+    <linearGradient id="cardBg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E8F1F5"/>
+      <stop offset="100%" stop-color="#CFDBE6"/>
+    </linearGradient>
 
-    <linearGradient id="dark-grad-primary" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#004e92;stop-opacity:1" /> <stop offset="100%" style="stop-color:#00c6ff;stop-opacity:1" /> </linearGradient>
-    <linearGradient id="dark-grad-accent" x1="0%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" style="stop-color:#00c6ff;stop-opacity:1" /> <stop offset="100%" style="stop-color:#E0FFFF;stop-opacity:1" /> </linearGradient>
+    <radialGradient id="goldSphere" cx="35%" cy="35%" r="65%">
+      <stop offset="0%" stop-color="#FFECB3" stop-opacity="1"/>
+      <stop offset="50%" stop-color="#DAA520" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#8B6508" stop-opacity="1"/>
+    </radialGradient>
+    
+    <radialGradient id="goldHighlight" cx="30%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
 
-    <filter id="tech-glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur5" />
-      <feMerge>
-        <feMergeNode in="blur5" opacity="0.6"/>
-        <feMergeNode in="SourceGraphic"/>
+    <linearGradient id="arrowGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#004D40"/>
+      <stop offset="50%" stop-color="#00BFA5"/>
+      <stop offset="100%" stop-color="#1DE9B6"/>
+    </linearGradient>
+
+    <filter id="dropShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4"/>
+      <feOffset dx="2" dy="4" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge> 
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/> 
       </feMerge>
     </filter>
-
-    <g id="finq-emblem">
-      <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" stroke-width="6" />
-      
-      <g class="accent-fill" fill="currentColor" stroke="none">
-          <circle cx="60" cy="60" r="7" />
-          <circle cx="35" cy="45" r="3.5" opacity="0.8"/>
-          <circle cx="85" cy="45" r="3.5" opacity="0.8"/>
-          <circle cx="40" cy="85" r="3.5" opacity="0.8"/>
-          <circle cx="80" cy="80" r="3.5" opacity="0.8"/>
-          <circle cx="60" cy="25" r="3.5" opacity="0.8"/>
-          <path d="M60,60 L35,45 M60,60 L85,45 M60,60 L40,85 M60,60 L80,80 M60,60 L60,25" stroke="currentColor" stroke-width="2" opacity="0.4" />
-      </g>
-
-      <g class="accent-stroke" fill="none" stroke="currentColor" stroke-width="8" stroke-linecap="round" stroke-linejoin="round">
-         <path d="M75,95 C85,95 100,80 115,40" /> <path d="M115,40 L95,42 M115,40 L112,60" /> </g>
-    </g>
   </defs>
 
-  <g transform="translate(40, 70)">
-    <g transform="translate(0, 10)">
-        <g color="url(#light-grad-primary)">
-           <use href="#finq-emblem" />
-        </g>
-        <g color="url(#light-grad-accent)">
-           <use href="#finq-emblem" style="fill:none; stroke:none;"><svg class="accent-fill" fill="url(#light-grad-accent)"/>
-             <svg class="accent-stroke" stroke="url(#light-grad-accent)"/>
-           </use>
-        </g>
+  <rect x="50" y="50" width="700" height="700" rx="60" fill="url(#cardBg)" stroke="#FFFFFF" stroke-width="2"/>
+
+  <g transform="translate(400, 360)"> <g opacity="0.9">
+      <path d="M -160 0 A 160 160 0 0 1 160 0" fill="none" stroke="#006064" stroke-width="8" stroke-linecap="round" opacity="0.4"/>
+      <path d="M -150 40 A 160 160 0 0 0 100 130" fill="none" stroke="#004D40" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+      
+      <circle cx="-120" cy="-40" r="50" fill="#26A69A" opacity="0.3"/>
+      <circle cx="120" cy="50" r="60" fill="#26A69A" opacity="0.2"/>
+      <circle cx="0" cy="-140" r="40" fill="#26A69A" opacity="0.2"/>
     </g>
 
-    <g transform="translate(150, 80)">
-      <text font-size="80" font-weight="800" fill="#0A2342" letter-spacing="-1">
-        Fin<tspan fill="url(#light-grad-accent)">Q</tspan>
-      </text>
-      <text x="5" y="45" font-size="18" font-weight="500" fill="#007EA7" letter-spacing="0.5">
-        EMPOWERING SMARTER INVESTMENT DECISIONS
-      </text>
+    <g stroke="#00838F" stroke-width="2">
+      <line x1="80" y1="-80" x2="140" y2="-120" /> <circle cx="140" cy="-120" r="4" fill="#00BCD4" stroke="none"/>
+      <line x1="60" y1="-90" x2="90" y2="-150" /> <circle cx="90" cy="-150" r="4" fill="#00BCD4" stroke="none"/>
+      <line x1="-100" y1="0" x2="-180" y2="-20" /> <circle cx="-180" cy="-20" r="4" fill="#00BCD4" stroke="none"/>
+      <line x1="-90" y1="50" x2="-150" y2="80" /> <circle cx="-150" cy="80" r="4" fill="#00BCD4" stroke="none"/>
+      <line x1="0" y1="110" x2="0" y2="170" /> <circle cx="0" cy="170" r="4" fill="#00BCD4" stroke="none"/>
+      <line x1="50" y1="100" x2="80" y2="160" /> <circle cx="80" cy="160" r="4" fill="#00BCD4" stroke="none"/>
     </g>
-     <text x="180" y="-30" font-size="16" fill="#99abbb" font-weight="700" letter-spacing="1">PROFESSIONAL LIGHT</text>
+
+    <g filter="url(#dropShadow)">
+      <circle cx="0" cy="0" r="115" fill="url(#goldSphere)" />
+      
+      <g fill="none" stroke="#FFFFFF" stroke-width="0.5" opacity="0.4">
+        <ellipse cx="0" cy="0" rx="115" ry="40" transform="rotate(20)"/>
+        <ellipse cx="0" cy="0" rx="115" ry="80" transform="rotate(20)"/>
+        <ellipse cx="0" cy="0" rx="50" ry="115" transform="rotate(-10)"/>
+        <ellipse cx="0" cy="0" rx="90" ry="115" transform="rotate(-10)"/>
+        <circle cx="0" cy="0" r="115" stroke-width="1"/>
+      </g>
+      
+      <circle cx="0" cy="0" r="113" fill="url(#goldHighlight)"/>
+    </g>
+
+    <g transform="translate(30, 10)">
+      <circle cx="0" cy="0" r="45" fill="none" stroke="#F0E68C" stroke-width="8" opacity="0.9"/>
+      <circle cx="0" cy="0" r="45" fill="#FFFFFF" fill-opacity="0.1"/> <path d="M 35 35 L 60 60" stroke="#DAA520" stroke-width="10" stroke-linecap="round"/>
+    </g>
+
+    <path d="M -160 30 
+             Q -120 140, 0 100 
+             Q 80 80, 160 -120" 
+          fill="none" stroke="url(#arrowGrad)" stroke-width="18" stroke-linecap="round" filter="url(#dropShadow)"/>
+    
+    <path d="M 160 -120 L 130 -110 L 175 -150 L 170 -100 Z" fill="#1DE9B6" filter="url(#dropShadow)"/>
+
+  </g> <g text-anchor="middle" font-family="'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+    <text x="400" y="630" font-weight="800" font-size="90" fill="#00334E">FinQ</text>
+    
+    <text x="400" y="675" font-weight="400" font-size="28" fill="#546E7A" letter-spacing="1">AI &amp; Financial Nexus</text>
   </g>
 
-
-  <rect x="450" y="0" width="450" height="350" fill="#050A14"/>
-
-  <g transform="translate(490, 70)">
-    <g transform="translate(0, 10)" filter="url(#tech-glow)">
-         <g color="url(#dark-grad-primary)">
-           <use href="#finq-emblem" />
-        </g>
-        <g color="url(#dark-grad-accent)">
-           <use href="#finq-emblem" style="fill:none; stroke:none;">
-             <svg class="accent-fill" fill="url(#dark-grad-accent)"/>
-             <svg class="accent-stroke" stroke="url(#dark-grad-accent)"/>
-           </use>
-        </g>
-    </g>
-
-    <g transform="translate(150, 80)">
-      <text font-size="80" font-weight="800" fill="#ffffff" letter-spacing="-1">
-        Fin<tspan fill="url(#dark-grad-accent)" filter="url(#tech-glow)">Q</tspan>
-      </text>
-      <text x="5" y="45" font-size="18" font-weight="500" fill="#7FDAF4" letter-spacing="0.5" opacity="0.9">
-        EMPOWERING SMARTER INVESTMENT DECISIONS
-      </text>
-    </g>
-    <text x="180" y="-30" font-size="16" fill="#50657e" font-weight="700" letter-spacing="1">FUTURE DARK</text>
-  </g>
-
-  <line x1="450" y1="40" x2="450" y2="310" stroke="#2c3e50" stroke-width="1" stroke-dasharray="4,6" opacity="0.5"/>
+  <path d="M 750 750 Q 760 740 770 750 Q 760 760 750 750" fill="#FFFFFF" opacity="0.8"/>
 
 </svg>

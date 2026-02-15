@@ -3,16 +3,18 @@ class AppConfig {
 
   static const String apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://localhost:8000/api',
+    defaultValue: 'http://192.168.1.161:8000/api',
   );
 
   static String websocketUrl({
     required String path,
     Map<String, String>? queryParameters,
+    String? baseUrl,
   }) {
-    final base = apiBaseUrl.startsWith('https://')
-        ? apiBaseUrl.replaceFirst('https://', 'wss://')
-        : apiBaseUrl.replaceFirst('http://', 'ws://');
+    final targetBase = baseUrl ?? apiBaseUrl;
+    final base = targetBase.startsWith('https://')
+        ? targetBase.replaceFirst('https://', 'wss://')
+        : targetBase.replaceFirst('http://', 'ws://');
     final buffer = StringBuffer('$base$path');
     if (queryParameters != null && queryParameters.isNotEmpty) {
       buffer.write('?');

@@ -1,48 +1,16 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../dashboard_providers.dart';
+import 'ticker_search_autocomplete.dart';
 
-class DashboardFilters extends ConsumerStatefulWidget {
+class DashboardFilters extends ConsumerWidget {
   const DashboardFilters({super.key});
 
   @override
-  ConsumerState<DashboardFilters> createState() => _DashboardFiltersState();
-}
-
-class _DashboardFiltersState extends ConsumerState<DashboardFilters> {
-  late TextEditingController _tickerController;
-
-  @override
-  void initState() {
-    super.initState();
-    _tickerController = TextEditingController(
-      text: ref.read(tickerProvider),
-    );
-  }
-
-  @override
-  void dispose() {
-    _tickerController.dispose();
-    super.dispose();
-  }
-
-  void _submitTicker() {
-      final value = _tickerController.text.trim().toUpperCase();
-      if (value.isNotEmpty) {
-          ref.read(tickerProvider.notifier).setTicker(value);
-      }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Listen to provider changes to update controller if needed (e.g. from persistence)
-    ref.listen(tickerProvider, (previous, next) {
-      if (_tickerController.text != next) {
-        _tickerController.text = next;
-      }
-    });
-
+  Widget build(BuildContext context, WidgetRef ref) {
     final category = ref.watch(categoryProvider);
+    final selectedTickers = ref.watch(selectedTickersProvider);
 
     final definitions = [
       ('IncomeStatement', 'Income Statement'),
@@ -54,45 +22,28 @@ class _DashboardFiltersState extends ConsumerState<DashboardFilters> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Ticker Search - First thing at the top
-        Container(
-          height: 50,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
+        const TickerSearchAutocomplete(),
+        
+        const SizedBox(height: 12),
+        
+        // Selected Tickers Chips
+        if (selectedTickers.isNotEmpty)
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: selectedTickers.map((ticker) {
+              return Chip(
+                label: Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold)),
+                backgroundColor: Colors.green.shade50,
+                deleteIcon: const Icon(Icons.close, size: 18),
+                onDeleted: () {
+                  ref.read(selectedTickersProvider.notifier).removeTicker(ticker);
+                },
+                side: BorderSide(color: Colors.green.shade200),
+              );
+            }).toList(),
           ),
-          child: Row(
-            children: [
-              const SizedBox(width: 16),
-              const Icon(Icons.search, color: Colors.grey),
-              const SizedBox(width: 12),
-              Expanded(
-                child: TextField(
-                  controller: _tickerController,
-                  decoration: const InputDecoration(
-                    border: InputBorder.none,
-                    hintText: 'Search Ticker (e.g. AAPL, GOOGL)',
-                    contentPadding: EdgeInsets.symmetric(vertical: 12),
-                  ),
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                  onSubmitted: (_) => _submitTicker(),
-                ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: _submitTicker,
-                color: const Color(0xFF2E7D32),
-              ),
-            ],
-          ),
-        ),
+          
         const SizedBox(height: 16),
         // Filter Options - Below Ticker Search
         SingleChildScrollView(
@@ -135,3 +86,4 @@ class _DashboardFiltersState extends ConsumerState<DashboardFilters> {
     );
   }
 }
+

@@ -8,11 +8,15 @@ import '../../core/config/app_config.dart';
 import 'nexus_feed_state.dart';
 
 class NexusFeedController extends StateNotifier<NexusFeedState> {
-  NexusFeedController({required String userId})
-      : _userId = userId,
+  NexusFeedController({
+    required String userId,
+    required String baseUrl,
+  })  : _userId = userId,
+        _baseUrl = baseUrl,
         super(const NexusFeedState(isConnected: false, messages: []));
 
   final String _userId;
+  final String _baseUrl;
   WebSocketChannel? _channel;
 
   Future<void> connect() async {
@@ -21,6 +25,7 @@ class NexusFeedController extends StateNotifier<NexusFeedState> {
     }
 
     final url = AppConfig.websocketUrl(
+      baseUrl: _baseUrl,
       path: '/ws/feed',
       queryParameters: {'user_id': _userId},
     );

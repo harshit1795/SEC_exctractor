@@ -11,8 +11,11 @@ from app.schemas.financial import (
     MultipleTickersResponse,
     FredDataResponse,
     SecFilingResponse,
+    SecFilingResponse,
     SecSectionResponse,
-    FundamentalsResponse
+    FundamentalsResponse,
+    TickerSearchResponse,
+    TickerSearchResult
 )
 import pandas as pd
 import logging
@@ -425,3 +428,38 @@ async def get_available_tickers(db: Session = Depends(get_db)):
         )
 
 
+
+@router.get("/search", response_model=TickerSearchResponse)
+async def search_tickers(
+    q: str,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Search for tickers by symbol or company name
+    
+    Args:
+        q: Search query
+        limit: Maximum number of results
+        
+    Returns:
+        List of matching tickers and company names
+    """
+    if not q or len(q.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Query string 'q' is required")
+        
+    try:
+        manager = get_data_source_manager()
+        results = manager.search_tickers(q, limit)
+        
+        return TickerSearchResponse(
+            query=q,
+            results=results,
+            count=len(results)
+        )
+    except Exception as e:
+        logger.error(f"Error searching tickers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error searching tickers: {str(e)}"
+        )

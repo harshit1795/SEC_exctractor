@@ -5,10 +5,16 @@ import '../auth/auth_providers.dart';
 import 'nexus_feed_controller.dart';
 import 'nexus_feed_state.dart';
 
+import '../core/di/providers.dart';
+
 final nexusFeedControllerProvider =
     StateNotifierProvider<NexusFeedController, NexusFeedState>((ref) {
   final user = ref.watch(authUserProvider).valueOrNull;
-  return NexusFeedController(userId: user?.uid ?? 'anonymous');
+  final baseUrl = ref.watch(baseUrlProvider);
+  return NexusFeedController(
+    userId: user?.uid ?? 'anonymous',
+    baseUrl: baseUrl,
+  );
 });
 
 class NexusPage extends ConsumerStatefulWidget {

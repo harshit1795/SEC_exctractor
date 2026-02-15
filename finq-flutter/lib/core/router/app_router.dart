@@ -13,11 +13,14 @@ import '../../features/nexus/nexus_page_enhanced.dart';
 import '../../features/settings/settings_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
+  final notifier = AuthStateRefreshNotifier(ref);
+  ref.onDispose(() {
+    notifier.dispose();
+  });
+  
   return GoRouter(
     initialLocation: '/',
-    refreshListenable: GoRouterRefreshStream(
-      ref.read(authStateStreamProvider),
-    ),
+    refreshListenable: notifier,
     redirect: (context, state) {
       final authState = ref.read(authStateProvider);
       final isLoggingIn = state.matchedLocation == '/login';
@@ -71,18 +74,20 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-class GoRouterRefreshStream extends ChangeNotifier {
-  GoRouterRefreshStream(Stream<dynamic> stream) {
-    _subscription = stream.asBroadcastStream().listen((_) {
-      notifyListeners();
-    });
+class AuthStateRefreshNotifier extends ChangeNotifier {
+  AuthStateRefreshNotifier(this._ref) {
+    _ref.listen<AsyncValue<bool>>(
+      authStateProvider,
+      (previous, next) {
+        notifyListeners();
+      },
+    );
   }
 
-  late final StreamSubscription<dynamic> _subscription;
+  final Ref _ref;
 
   @override
   void dispose() {
-    _subscription.cancel();
     super.dispose();
   }
 }

@@ -15,7 +15,55 @@ class CompanyHeader extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     return tickerData.when(
       data: (data) {
-        debugPrint('CompanyHeader raw data keys: ${data.keys.toList()}');
+        // Check for multi-ticker response
+        if (data.containsKey('tickers') && data['tickers'] is List) {
+           final tickers = (data['tickers'] as List).cast<String>();
+           return Container(
+              margin: const EdgeInsets.only(bottom: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.grey.withOpacity(0.1),
+                    spreadRadius: 1,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                    Container(
+                        width: 60,
+                        height: 60,
+                        decoration: BoxDecoration(
+                            color: Colors.purple.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.compare_arrows, size: 32, color: Colors.purple.shade700),
+                    ),
+                    const SizedBox(width: 16),
+                    Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                            const Text(
+                                'Comparison Mode',
+                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                            ),
+                            Text(
+                                '${tickers.join(" vs ")}',
+                                style: TextStyle(fontSize: 14, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
+                            ),
+                        ],
+                    ),
+                ],
+              ),
+           );
+        }
+
+        // Single ticker logic
         // The API returns { "ticker": "...", "data": { "info": ... } }
         // We need to drill down into 'data' key if present, or fallback to root if 'info' is there.
         final innerData = (data['data'] as Map<String, dynamic>?) ?? data;

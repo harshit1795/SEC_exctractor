@@ -66,7 +66,7 @@ class GlobalSidebar extends ConsumerWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 24.0),
       child: SvgPicture.asset(
-        'assets/logo.svg',
+        'assets/FinQLogoNew.svg',
         height: 50, // Adjusted height for the wide logo
         fit: BoxFit.contain,
       ),
