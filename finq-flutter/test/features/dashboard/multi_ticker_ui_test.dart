@@ -48,7 +48,17 @@ class MockApiClient implements ApiClient {
   }
 
   @override
-  Future<ApiResponse<T>> post<T>(String path, {Map<String, String>? headers, Object? body}) async {
+  Future<ApiResponse<T>> post<T>(String path, {Map<String, String>? headers, Map<String, dynamic>? queryParameters, Object? body}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ApiResponse<T>> put<T>(String path, {Map<String, String>? headers, Map<String, dynamic>? queryParameters, Object? body}) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<ApiResponse<T>> patch<T>(String path, {Map<String, String>? headers, Map<String, dynamic>? queryParameters, Object? body}) async {
     throw UnimplementedError();
   }
 }

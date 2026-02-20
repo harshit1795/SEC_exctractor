@@ -1,0 +1,13 @@
+.git
+.gitignore
+.env
+venv
+__pycache__
+.pytest_cache
+.cache
+.cache_test
+*.db
+tests
+scripts
+ARCHITECTURE.md
+*.ipynb

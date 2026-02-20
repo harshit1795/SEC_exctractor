@@ -18,6 +18,21 @@ abstract class ApiClient {
   Future<ApiResponse<T>> post<T>(
     String path, {
     Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+  });
+
+  Future<ApiResponse<T>> put<T>(
+    String path, {
+    Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+  });
+
+  Future<ApiResponse<T>> patch<T>(
+    String path, {
+    Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
     Object? body,
   });
 }

@@ -43,6 +43,7 @@ class SecSectionResponse(BaseModel):
     """Response schema for SEC section data"""
     ticker: str
     sections: Dict[str, str]
+    summaries: Optional[Dict[str, str]] = None
     filing_type: str  # "10-K" or "10-Q"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 

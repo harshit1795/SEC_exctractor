@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 import google.generativeai as genai
 from app.config import settings
 from app.services.rate_limiter import get_rate_limiter
+import hashlib
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,10 @@ logger = logging.getLogger(__name__)
 class FinancialAnalyzer:
     """AI-powered financial analysis engine"""
     
-    def __init__(self, api_key: Optional[str] = None):
+    # Version of the prompts. Update this to invalidate all cached summaries.
+    PROMPT_VERSION = "v1"
+    
+    def __init__(self, api_key: Optional[str] = None, cache: Any = None):
         """
         Initialize FinancialAnalyzer with API key
         
@@ -34,7 +38,75 @@ class FinancialAnalyzer:
         self.model = genai.GenerativeModel('models/gemini-flash-latest')
         # Initialize rate limiter (15 requests per minute - conservative limit)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
+        self.cache = cache
     
+    
+    async def summarize_sec_comparison(
+        self,
+        section_name: str,
+        ticker_texts: Dict[str, str]
+    ) -> str:
+        """
+        Generate a comparative AI summary of the same SEC section across multiple tickers.
+        
+        Args:
+            section_name: Name of the section (e.g., 'Business Overview')
+            ticker_texts: Dictionary mapping ticker to the section text
+            
+        Returns:
+            AI-generated comparative analysis
+        """
+        if not ticker_texts:
+            return "No data provided for comparison."
+
+        # Truncate texts to avoid context window issues
+        formatted_comparison = ""
+        for ticker, text in ticker_texts.items():
+            content = text[:6000] if text else "Not found."
+            formatted_comparison += f"COMPANY: {ticker}\nTEXT:\n{content}\n\n---\n\n"
+
+        system_prompt = (
+            "You are an expert financial analyst. Your task is to compare and contrast the provided "
+            "SEC filing sections for multiple companies. Identify key similarities, unique competitive "
+            "advantages, differing risk profiles, and contrasting strategic directions. "
+            "Provide a high-level executive synthesis."
+        )
+        user_prompt = (
+            f"Comparing Section: {section_name}\n\n"
+            f"Data for Companies:\n{formatted_comparison}\n"
+            "Please provide a comparative summary (max 500 words). "
+            "Start with a 'Key Comparisons' bullet list, followed by a deeper synthesis. "
+            "Highlight which company appears better positioned based purely on these disclosures."
+        )
+
+        try:
+            full_prompt = f"System: {system_prompt}\n\nUser: {user_prompt}"
+            
+            # Check cache
+            cache_key = None
+            if self.cache:
+                cache_key = self._generate_cache_key(full_prompt, prefix="ai_comp")
+                cached_res = self.cache.get(cache_key)
+                if cached_res:
+                    logger.info(f"Cache hit for section comparison: {section_name}")
+                    return cached_res
+
+            await self.rate_limiter.acquire()
+            logger.info(f"Generating comparative summary for section: {section_name}")
+            
+            response = self.model.generate_content(full_prompt)
+            if response and hasattr(response, 'text') and response.text:
+                summary = response.text.strip()
+                if self.cache and cache_key:
+                    # Cache for 30 days
+                    self.cache.set(cache_key, summary, expire=86400 * 30)
+                return summary
+            
+            return "Comparative summary generation failed."
+        except Exception as e:
+            logger.error(f"Error comparing section {section_name}: {e}")
+            return f"Comparison unavailable: {str(e)}"
+
     async def analyze_financial_data(
         self, 
         user_question: str, 
@@ -52,13 +124,22 @@ class FinancialAnalyzer:
         """
         system_prompt = self._build_system_prompt()
         user_prompt = self._build_user_prompt(user_question, context_data)
+        full_prompt = f"{system_prompt}\n\n{user_prompt}"
         
         try:
+            # Check cache if available
+            cache_key = None
+            if self.cache:
+                cache_key = self._generate_cache_key(full_prompt, prefix="ai_analysis")
+                cached_res = self.cache.get(cache_key)
+                if cached_res:
+                    logger.info("Cache hit for general financial analysis")
+                    return cached_res
+
             # Acquire rate limit permission before making request
             await self.rate_limiter.acquire()
             
             logger.info(f"Generating AI response for prompt length: {len(user_prompt)}")
-            full_prompt = f"{system_prompt}\n\n{user_prompt}"
             logger.debug(f"Full prompt length: {len(full_prompt)}")
             
             # Retry logic for rate limit errors
@@ -107,7 +188,14 @@ class FinancialAnalyzer:
                 raise ValueError("Empty response received from Gemini API")
             
             logger.info(f"Successfully generated response of length: {len(response.text)}")
-            return response.text
+            result = response.text
+            
+            # Store in cache if available
+            if self.cache and cache_key:
+                # Use default TTL for general analysis as data may change more frequently
+                self.cache.set(cache_key, result, expire=settings.cache_ttl)
+                
+            return result
         except ValueError as e:
             # Re-raise ValueError as-is (these are our custom errors)
             raise
@@ -115,7 +203,12 @@ class FinancialAnalyzer:
             logger.error(f"Error generating AI response: {e}", exc_info=True)
             # Re-raise to let the API handle it properly
             raise
-    
+
+    def _generate_cache_key(self, prompt: str, prefix: str = "ai") -> str:
+        """Generates a deterministic cache key for a prompt."""
+        hash_val = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
+        return f"{prefix}_{self.PROMPT_VERSION}_{hash_val}"
+
     def _build_system_prompt(self) -> str:
         """Build comprehensive system prompt for financial analysis"""
         return '''You are FinQ, an expert financial analyst AI assistant with deep knowledge of:

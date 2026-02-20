@@ -1,7 +1,7 @@
 """
 WebSocket endpoints for real-time updates
 """
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 from typing import List, Dict
 import json
 import logging
@@ -85,7 +85,7 @@ manager = ConnectionManager()
 
 
 @router.websocket("/feed")
-async def websocket_feed(websocket: WebSocket, user_id: str = "anonymous"):
+async def websocket_feed(websocket: WebSocket, user_id: str = Query("anonymous")):
     """
     WebSocket endpoint for real-time feed updates
     

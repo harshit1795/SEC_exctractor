@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/auth_providers.dart';
 
@@ -75,12 +74,22 @@ class FriendsTab extends ConsumerWidget {
                         itemBuilder: (context, index) {
                           final friend = friendsList[index] as Map<String, dynamic>;
                           final displayName = friend['display_name'] ?? 'User';
+                          final profilePictureUrl = friend['profile_picture_url'] as String?;
                           
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               leading: CircleAvatar(
-                                child: Text(displayName[0].toUpperCase()),
+                                child: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          profilePictureUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              Text(displayName[0].toUpperCase()),
+                                        ),
+                                      )
+                                    : Text(displayName[0].toUpperCase()),
                               ),
                               title: Text(displayName),
                               trailing: IconButton(
@@ -126,12 +135,22 @@ class FriendsTab extends ConsumerWidget {
                           final request = requestsList[index] as Map<String, dynamic>;
                           final displayName = request['display_name'] ?? 'User';
                           final friendId = request['id'] ?? request['friend_id'];
+                          final profilePictureUrl = request['profile_picture_url'] as String?;
                           
                           return Card(
                             margin: const EdgeInsets.only(bottom: 8),
                             child: ListTile(
                               leading: CircleAvatar(
-                                child: Text(displayName[0].toUpperCase()),
+                                child: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          profilePictureUrl,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) =>
+                                              Text(displayName[0].toUpperCase()),
+                                        ),
+                                      )
+                                    : Text(displayName[0].toUpperCase()),
                               ),
                               title: Text(displayName),
                               trailing: Row(
@@ -188,13 +207,25 @@ class FriendsTab extends ConsumerWidget {
 
 // Providers
 final _friendsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final user = ref.watch(authUserProvider).valueOrNull;
+  if (user == null) return {'friends': []};
+  
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/nexus/friends');
+  final response = await apiClient.get(
+    '/nexus/friends',
+    queryParameters: {'user_id': user.uid},
+  );
   return response.data as Map<String, dynamic>;
 });
 
 final _friendRequestsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final user = ref.watch(authUserProvider).valueOrNull;
+  if (user == null) return {'requests': []};
+  
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/nexus/friends/requests');
+  final response = await apiClient.get(
+    '/nexus/friends/requests',
+    queryParameters: {'user_id': user.uid},
+  );
   return response.data as Map<String, dynamic>;
 });

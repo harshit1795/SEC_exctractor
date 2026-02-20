@@ -9,6 +9,7 @@ This service provides unified access to multiple financial data sources:
 - Fundamentals Data
 """
 import logging
+import asyncio
 import diskcache as dc
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -255,6 +256,98 @@ class DataSourceManager:
             logger.error(f"Error fetching SEC filing data for {ticker}: {e}", exc_info=True)
             return {'filings': {}, 'ticker': ticker, 'error': str(e)}
     
+    async def summarize_sec_sections(
+        self, 
+        ticker: str, 
+        sections: Dict[str, str]
+    ) -> Dict[str, str]:
+        """
+        Summarizes multiple SEC filing sections using FinancialAnalyzer.
+        
+        Args:
+            ticker: Stock ticker symbol
+            sections: Dictionary mapping section names to full text
+        
+        Returns:
+            Dictionary mapping section names to AI summaries
+        """
+        from app.services.financial_analyzer import FinancialAnalyzer
+        
+        try:
+            analyzer = FinancialAnalyzer(cache=self.cache)
+            summaries = {}
+            
+            # Summarize sections in parallel to save time
+            tasks = []
+            section_keys = []
+            
+            for section_name, text in sections.items():
+                if text and len(text.strip()) > 100:
+                    tasks.append(analyzer.summarize_sec_section(section_name, text))
+                    section_keys.append(section_name)
+            
+            if not tasks:
+                return {}
+                
+            results = await asyncio.gather(*tasks)
+            
+            for i, summary in enumerate(results):
+                summaries[section_keys[i]] = summary
+                
+            return summaries
+        except Exception as e:
+            logger.error(f"Error in summarize_sec_sections for {ticker}: {e}")
+            return {}
+
+    async def get_comparison_summary(
+        self,
+        tickers: List[str],
+        report_type: str,
+        section_key: str
+    ) -> str:
+        """
+        Orchestrates comparative summary for multiple tickers.
+        
+        Args:
+            tickers: List of ticker symbols
+            report_type: '10-k' or '10-q'
+            section_key: Key of the section to compare (e.g. 'business', 'risk', 'mda')
+            
+        Returns:
+            Comparative AI summary string
+        """
+        from app.services.financial_analyzer import FinancialAnalyzer
+        
+        try:
+            ticker_texts = {}
+            tasks = []
+            valid_tickers = []
+            
+            for ticker in tickers:
+                if report_type.lower() == '10-k':
+                    tasks.append(self.get_10k_section_data(ticker, [section_key]))
+                else:
+                    tasks.append(self.get_10q_section_data(ticker, [section_key]))
+                valid_tickers.append(ticker)
+            
+            results = await asyncio.gather(*tasks)
+            
+            for i, result in enumerate(results):
+                if result:
+                    text = list(result.values())[0] if result.values() else ""
+                    ticker_texts[valid_tickers[i]] = text
+            
+            if not ticker_texts:
+                return "Could not retrieve section data for any of the selected companies."
+            
+            analyzer = FinancialAnalyzer(cache=self.cache)
+            section_label = section_key.replace('_', ' ').title()
+            
+            return await analyzer.summarize_sec_comparison(section_label, ticker_texts)
+        except Exception as e:
+            logger.error(f"Error in get_comparison_summary: {e}")
+            return f"Comparison failed: {str(e)}"
+
     async def get_10k_section_data(self, ticker: str, sections: List[str]) -> Dict[str, str]:
         """
         Fetches and parses key sections from the latest 10-K filing.

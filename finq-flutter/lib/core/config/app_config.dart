@@ -11,7 +11,10 @@ class AppConfig {
     Map<String, String>? queryParameters,
     String? baseUrl,
   }) {
-    final targetBase = baseUrl ?? apiBaseUrl;
+    var targetBase = baseUrl ?? apiBaseUrl;
+    if (targetBase.endsWith('/')) {
+      targetBase = targetBase.substring(0, targetBase.length - 1);
+    }
     final base = targetBase.startsWith('https://')
         ? targetBase.replaceFirst('https://', 'wss://')
         : targetBase.replaceFirst('http://', 'ws://');

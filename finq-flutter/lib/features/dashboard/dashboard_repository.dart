@@ -14,11 +14,17 @@ class DashboardRepository {
     String ticker,
     String period,
   ) async {
-    final response = await _apiClient.get<Map<String, dynamic>>(
-      '/financial/ticker/$ticker',
-      queryParameters: {'period': period},
-    );
-    return _asMap(response.data, 'ticker data');
+    print('DEBUG: Fetching ticker data for $ticker');
+    try {
+        final response = await _apiClient.get<Map<String, dynamic>>(
+        '/financial/ticker/$ticker',
+        queryParameters: {'period': period},
+        );
+        return _asMap(response.data, 'ticker data');
+    } catch (e) {
+        print('DEBUG: Error fetching ticker data: $e');
+        rethrow;
+    }
   }
 
   Future<Map<String, dynamic>> fetchFundamentals(String ticker) async {

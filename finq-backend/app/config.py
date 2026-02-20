@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     
     # Data Paths (relative to project root)
     data_dir: str = Field(default="../data", env="DATA_DIR")
-    cik_map_path: str = Field(default="../secedgarticker.json", env="CIK_MAP_PATH")
+    cik_map_path: str = Field(default="../company_tickers.json", env="CIK_MAP_PATH")
     fundamentals_path: str = Field(default="../fundamentals_tall.parquet", env="FUNDAMENTALS_PATH")
     
     class Config:

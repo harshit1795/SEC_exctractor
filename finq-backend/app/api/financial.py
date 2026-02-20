@@ -254,6 +254,7 @@ async def get_sec_filings(
 async def get_10k_sections(
     ticker: str,
     sections: str = "business,risk,mda",  # Comma-separated
+    summarize: bool = True,
     db: Session = Depends(get_db)
 ):
     """
@@ -262,9 +263,10 @@ async def get_10k_sections(
     Args:
         ticker: Stock ticker symbol
         sections: Comma-separated sections to fetch (business, risk, mda)
+        summarize: Whether to include AI-generated summaries (default: True)
     
     Returns:
-        Dictionary with section names and content
+        Dictionary with section names, content, and optional summaries
     """
     section_list = [s.strip().lower() for s in sections.split(",") if s.strip()]
     
@@ -283,9 +285,14 @@ async def get_10k_sections(
                 filing_type="10-K"
             )
         
+        summaries = None
+        if summarize and data:
+            summaries = await manager.summarize_sec_sections(ticker.upper(), data)
+        
         return SecSectionResponse(
             ticker=ticker.upper(),
             sections=data,
+            summaries=summaries,
             filing_type="10-K"
         )
     except HTTPException:
@@ -302,6 +309,7 @@ async def get_10k_sections(
 async def get_10q_sections(
     ticker: str,
     sections: str = "risk,mda",  # Comma-separated
+    summarize: bool = True,
     db: Session = Depends(get_db)
 ):
     """
@@ -310,9 +318,10 @@ async def get_10q_sections(
     Args:
         ticker: Stock ticker symbol
         sections: Comma-separated sections to fetch (risk, mda)
+        summarize: Whether to include AI-generated summaries (default: True)
     
     Returns:
-        Dictionary with section names and content
+        Dictionary with section names, content, and optional summaries
     """
     section_list = [s.strip().lower() for s in sections.split(",") if s.strip()]
     
@@ -331,9 +340,14 @@ async def get_10q_sections(
                 filing_type="10-Q"
             )
         
+        summaries = None
+        if summarize and data:
+            summaries = await manager.summarize_sec_sections(ticker.upper(), data)
+            
         return SecSectionResponse(
             ticker=ticker.upper(),
             sections=data,
+            summaries=summaries,
             filing_type="10-Q"
         )
     except HTTPException:
@@ -344,6 +358,57 @@ async def get_10q_sections(
             status_code=500,
             detail=f"Error fetching 10-Q sections: {str(e)}"
         )
+
+
+@router.post("/sec/summarize-section")
+async def summarize_section(
+    payload: Dict[str, str],
+    db: Session = Depends(get_db)
+):
+    """
+    Summarize a single SEC section on-demand.
+    """
+    section_name = payload.get("section_name", "Section")
+    section_text = payload.get("section_text", "")
+    
+    if not section_text:
+        raise HTTPException(status_code=400, detail="section_text is required")
+        
+    try:
+        from app.services.financial_analyzer import FinancialAnalyzer
+        # Get data source manager for cache access
+        manager = get_data_source_manager()
+        analyzer = FinancialAnalyzer(cache=manager.cache)
+        
+        summary = await analyzer.summarize_sec_section(section_name, section_text)
+        return {"summary": summary}
+    except Exception as e:
+        logger.error(f"Error summarizing section: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sec/summarize-comparison")
+async def summarize_comparison(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a comparative summary for multiple tickers on-demand.
+    """
+    tickers = payload.get("tickers", [])
+    report_type = payload.get("report_type", "10-k")
+    section_key = payload.get("section_key", "business")
+    
+    if not tickers:
+        raise HTTPException(status_code=400, detail="tickers list is required")
+        
+    try:
+        manager = get_data_source_manager()
+        summary = await manager.get_comparison_summary(tickers, report_type, section_key)
+        return {"summary": summary}
+    except Exception as e:
+        logger.error(f"Error in summarize_comparison: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/fundamentals/{ticker}", response_model=FundamentalsResponse)

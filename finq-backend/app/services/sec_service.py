@@ -44,8 +44,27 @@ def load_cik_ticker_map(cik_map_path: str = "../company_tickers.json") -> pd.Dat
             logger.warning(f"CIK map not found. Tried: {possible_paths}")
             return pd.DataFrame()
         
+        # Check if it's a known Zip file (even with .json extension)
+        if actual_path.name == "secedgarticker.json":
+            # Some environments have a Zip file here instead of JSON
+            import zipfile
+            if zipfile.is_zipfile(actual_path):
+                logger.warning(f"Skipping {actual_path} as it is a Zip file, not JSON")
+                return pd.DataFrame()
+
         logger.info(f"Loading CIK map from {actual_path}")
-        cik_df = pd.read_json(actual_path).T
+        try:
+            cik_df = pd.read_json(actual_path).T
+        except Exception as e:
+            if 'utf-8' in str(e).lower():
+                # Try with different encoding if utf-8 fails
+                try:
+                    cik_df = pd.read_json(actual_path, encoding='latin1').T
+                except:
+                    raise e
+            else:
+                raise e
+        
         cik_df.rename(columns={'cik_str': 'cik', 'title': 'name'}, inplace=True)
         cik_df['cik'] = cik_df['cik'].astype(str).str.zfill(10)  # Ensure CIK is 10 digits
         logger.info(f"Loaded {len(cik_df)} CIK mappings")
@@ -309,54 +328,134 @@ def parse_10k_sections(html_content: str) -> tuple:
 
 
 def parse_10q_sections(html_content: str) -> tuple:
-    """Parses 10-Q HTML content to extract specific sections."""
+    """Parses 10-Q HTML content to extract specific sections using robust strategies."""
     if not html_content:
         return "", ""
 
     try:
         soup = BeautifulSoup(html_content, 'html.parser')
 
+        # Strategy 1: Find all potential section anchors
         section_anchors = set()
         toc_links = []
-        for link in soup.find_all('a', href=re.compile(r'^#\w')):
+        
+        for link in soup.find_all('a', href=True):
+            href = link.get('href', '')
             link_text = link.get_text(strip=True).lower()
-            if 'item' in link_text:
-                section_anchors.add(link['href'])
-                toc_links.append(link)
+            
+            if href.startswith('#') and len(href) > 1:
+                # 10-Q specific keywords: Management's Discussion, Risk Factors, Item 2, Item 1A
+                if any(keyword in link_text for keyword in ['item 2', 'item 1a', 'management', 'risk factors']):
+                    section_anchors.add(href)
+                    toc_links.append(link)
 
-        def get_section_text(keywords):
+        def get_section_text(keywords, stop_keywords):
+            """Extract section text using multiple strategies adapted for 10-Q."""
             target_link = None
+            
+            # Strategy 1: Find link in TOC
             for link in toc_links:
-                if any(keyword in link.get_text(strip=True).lower() for keyword in keywords):
+                link_text = link.get_text(strip=True).lower()
+                if any(keyword in link_text for keyword in keywords):
                     target_link = link
                     break
+            
+            # Strategy 2: If no TOC link, search for headings directly
+            if not target_link:
+                for heading in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'div', 'span', 'b', 'strong']):
+                    heading_text = heading.get_text(strip=True).lower()
+                    if any(keyword in heading_text for keyword in keywords) and len(heading_text) < 150:
+                        # Found a heading, use it as start point
+                        start_tag = heading
+                        content = []
+                        for elem in start_tag.find_all_next():
+                            # Stop at next major section
+                            if elem.name in ['h1', 'h2', 'h3', 'p', 'div']:
+                                next_text = elem.get_text(strip=True).lower()
+                                if any(stop_word in next_text for stop_word in stop_keywords):
+                                    # Ensure it's a real item heading and not a reference back to TOC
+                                    if len(next_text) < 100:
+                                        break
+                            
+                            if elem.name == 'hr' and len(content) > 100:
+                                break
+
+                            if elem.name not in ['script', 'style', 'noscript', 'meta', 'link']:
+                                text = elem.get_text(strip=True)
+                                if text and len(text) > 3:
+                                    content.append(text)
+                        
+                        result = " ".join(content)
+                        result = re.sub(r'\s+', ' ', result).strip()
+                        if len(result) > 100:
+                            return result
+                        break
+
             if not target_link:
                 return ""
 
+            # Strategy 1 Extraction Logic (Anchor based)
             start_id = target_link['href'][1:]
-            start_tag = soup.find(id=start_id) or soup.find('a', {'name': start_id})
+            start_tag = (soup.find(id=start_id) or 
+                        soup.find('a', {'name': start_id}) or
+                        soup.find('a', {'id': start_id}) or
+                        soup.find(id=start_id.replace('-', '_')) or
+                        soup.find('a', {'name': start_id.replace('-', '_')}))
+            
+            if not start_tag:
+                parent = target_link.find_parent(['div', 'p', 'td', 'th', 'li'])
+                if parent:
+                    start_tag = parent
+
             if not start_tag:
                 return ""
 
             content = []
+            section_anchors_lower = {a.lower() for a in section_anchors}
+            
             for elem in start_tag.find_all_next():
-                if elem.name == 'a' and elem.has_attr('href') and elem['href'] in section_anchors and elem['href'] != target_link['href']:
-                    break
-                if elem.name == 'a' and elem.has_attr('name') and '#' + elem['name'] in section_anchors and '#' + elem['name'] != target_link['href']:
-                    break
+                # Stop conditions: another anchor that looks like a major section
+                if elem.name == 'a' and elem.has_attr('href'):
+                    href = elem['href']
+                    if href.startswith('#') and href.lower() in section_anchors_lower:
+                        if href != target_link['href']:
+                            link_text = elem.get_text(strip=True).lower()
+                            if any(stop_word in link_text for stop_word in stop_keywords):
+                                break
                 
                 if elem.name == 'hr' and len(content) > 100:
                     break
+                
+                if elem.name in ['h1', 'h2', 'h3']:
+                    heading_text = elem.get_text(strip=True).lower()
+                    if any(stop_word in heading_text for stop_word in stop_keywords):
+                        break
 
-                if elem.name not in ['script', 'style']:
+                if elem.name not in ['script', 'style', 'noscript', 'meta', 'link']:
                     text = elem.get_text(strip=True)
-                    if text:
+                    if text and len(text) > 3 and not text.startswith('Table of Contents'):
                         content.append(text)
             
-            return " ".join(content)
+            result = " ".join(content)
+            result = re.sub(r'\s+', ' ', result).strip()
+            return result
 
-        risk_text = get_section_text(['item 1a', 'risk factors'])
-        mda_text = get_section_text(["item 2", "management's discussion and analysis"])
+        # 10-Q Sections:
+        # MDA is Item 2 in Part I
+        # Risk Factors is Item 1A in Part II (but some omit if no changes, we still try to find the heading)
+        risk_keywords = ['item 1a', 'risk factors', 'item 1 a']
+        risk_stop = ['item 2', 'item 3', 'item 4', 'part ii', 'signatures', 'exhibit']
+        
+        mda_keywords = ['item 2', "management's discussion", 'mda']
+        mda_stop = ['item 3', 'item 4', 'item 1', 'part ii', 'signatures']
+
+        risk_text = get_section_text(risk_keywords, risk_stop)
+        mda_text = get_section_text(mda_keywords, mda_stop)
+
+        if not risk_text and not mda_text:
+            logger.warning("No 10-Q sections extracted. Structure may be non-standard.")
+        else:
+            logger.info(f"Extracted 10-Q sections - Risk: {len(risk_text)} chars, MDA: {len(mda_text)} chars")
 
         return risk_text, mda_text
 

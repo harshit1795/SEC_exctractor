@@ -15,7 +15,7 @@ class ApiClientDio implements ApiClient {
         _dio = dio ??
             Dio(
               BaseOptions(
-                baseUrl: baseUrl,
+                baseUrl: baseUrl.endsWith('/') ? baseUrl : '$baseUrl/',
                 connectTimeout: const Duration(seconds: 15),
                 receiveTimeout: const Duration(seconds: 30),
               ),
@@ -61,8 +61,9 @@ class ApiClientDio implements ApiClient {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParameters,
   }) async {
+    final effectivePath = path.startsWith('/') ? path.substring(1) : path;
     final response = await _dio.get<T>(
-      path,
+      effectivePath,
       options: Options(headers: headers),
       queryParameters: queryParameters,
     );
@@ -76,11 +77,54 @@ class ApiClientDio implements ApiClient {
   Future<ApiResponse<T>> post<T>(
     String path, {
     Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
     Object? body,
   }) async {
+    final effectivePath = path.startsWith('/') ? path.substring(1) : path;
     final response = await _dio.post<T>(
-      path,
+      effectivePath,
       data: body,
+      queryParameters: queryParameters,
+      options: Options(headers: headers),
+    );
+    return ApiResponse<T>(
+      data: response.data as T,
+      statusCode: response.statusCode ?? 0,
+    );
+  }
+
+  @override
+  Future<ApiResponse<T>> put<T>(
+    String path, {
+    Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+  }) async {
+    final effectivePath = path.startsWith('/') ? path.substring(1) : path;
+    final response = await _dio.put<T>(
+      effectivePath,
+      data: body,
+      queryParameters: queryParameters,
+      options: Options(headers: headers),
+    );
+    return ApiResponse<T>(
+      data: response.data as T,
+      statusCode: response.statusCode ?? 0,
+    );
+  }
+
+  @override
+  Future<ApiResponse<T>> patch<T>(
+    String path, {
+    Map<String, String>? headers,
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+  }) async {
+    final effectivePath = path.startsWith('/') ? path.substring(1) : path;
+    final response = await _dio.patch<T>(
+      effectivePath,
+      data: body,
+      queryParameters: queryParameters,
       options: Options(headers: headers),
     );
     return ApiResponse<T>(

@@ -23,7 +23,14 @@ Future<void> main() async {
       overrides: [
         sharedPreferencesProvider.overrideWithValue(prefs),
       ],
-      child: const FinqApp(),
+      child: Consumer(
+        builder: (context, ref, child) {
+          final baseUrl = ref.watch(baseUrlProvider);
+          // DEBUG: Print base URL to help user diagnose connection issues
+          print('DEBUG: Current API Base URL: $baseUrl');
+          return const FinqApp();
+        },
+      ),
     ),
   );
 }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/auth_providers.dart';
 
@@ -31,13 +30,20 @@ class _FeedTabState extends ConsumerState<FeedTab> {
 
     try {
       final apiClient = ref.read(apiClientProvider);
+      final user = ref.read(authUserProvider).valueOrNull;
+      if (user == null) return;
+
       await apiClient.post(
         '/nexus/posts',
         body: {
           'content': content,
-          'ticker': null,
+          'media_urls': [],
+          'media_type': null,
+          'is_shared_insight': false,
           'insight_id': null,
+          'tags': [],
         },
+        queryParameters: {'user_id': user.uid},
       );
 
       _contentController.clear();
@@ -179,6 +185,7 @@ class _PostCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final author = post['author'] as Map<String, dynamic>?;
     final displayName = author?['display_name'] ?? 'Anonymous';
+    final profilePictureUrl = author?['profile_picture_url'] as String?;
     final content = post['content'] ?? '';
     final createdAt = post['created_at'] as String?;
     final likesCount = post['likes_count'] ?? 0;
@@ -187,7 +194,7 @@ class _PostCard extends StatelessWidget {
     DateTime? postDate;
     if (createdAt != null) {
       try {
-        postDate = DateTime.parse(createdAt);
+        postDate = DateTime.parse(createdAt).toLocal();
       } catch (_) {}
     }
 
@@ -201,7 +208,16 @@ class _PostCard extends StatelessWidget {
             Row(
               children: [
                 CircleAvatar(
-                  child: Text(displayName[0].toUpperCase()),
+                  child: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+                      ? ClipOval(
+                          child: Image.network(
+                            profilePictureUrl,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                Text(displayName[0].toUpperCase()),
+                          ),
+                        )
+                      : Text(displayName[0].toUpperCase()),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -251,14 +267,17 @@ class _PostCard extends StatelessWidget {
     final now = DateTime.now();
     final difference = now.difference(date);
 
-    if (difference.inMinutes < 60) {
+    if (difference.isNegative || difference.inSeconds < 60) {
+      return 'just now';
+    } else if (difference.inMinutes < 60) {
       return '${difference.inMinutes}m ago';
     } else if (difference.inHours < 24) {
       return '${difference.inHours}h ago';
     } else if (difference.inDays < 7) {
       return '${difference.inDays}d ago';
     } else {
-      return DateFormat('MMM d, yyyy').format(date);
+      // Use locale-aware date formatting
+      return DateFormat.yMMMd().add_jm().format(date);
     }
   }
 }
@@ -266,6 +285,15 @@ class _PostCard extends StatelessWidget {
 // Provider for feed data
 final _feedProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   final apiClient = ref.watch(apiClientProvider);
-  final response = await apiClient.get('/nexus/posts/feed');
+  final user = await ref.watch(authUserProvider.future);
+  
+  if (user == null) {
+    throw Exception('User not authenticated');
+  }
+  
+  final response = await apiClient.get(
+    '/nexus/posts/feed',
+    queryParameters: {'user_id': user.uid},
+  );
   return response.data as Map<String, dynamic>;
 });

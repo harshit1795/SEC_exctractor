@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
 import '../../auth/auth_providers.dart';
 
@@ -169,16 +168,28 @@ class _UserCardState extends ConsumerState<_UserCard> {
     final displayName = widget.user['display_name'] ?? 'User';
     final isFriend = widget.user['is_friend'] ?? false;
     final hasPendingRequest = widget.user['has_pending_request'] ?? false;
+    final profilePictureUrl = widget.user['profile_picture_url'] as String?;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor: Colors.purple.shade100,
-          child: Text(
-            displayName[0].toUpperCase(),
-            style: TextStyle(color: Colors.purple.shade700),
-          ),
+          child: profilePictureUrl != null && profilePictureUrl.isNotEmpty
+              ? ClipOval(
+                  child: Image.network(
+                    profilePictureUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Text(
+                      displayName[0].toUpperCase(),
+                      style: TextStyle(color: Colors.purple.shade700),
+                    ),
+                  ),
+                )
+              : Text(
+                  displayName[0].toUpperCase(),
+                  style: TextStyle(color: Colors.purple.shade700),
+                ),
         ),
         title: Text(displayName),
         subtitle: isFriend
@@ -208,10 +219,17 @@ class _UserCardState extends ConsumerState<_UserCard> {
 // Provider for directory
 final _directoryProvider = FutureProvider.family<Map<String, dynamic>, String>(
   (ref, searchQuery) async {
+    final user = ref.watch(authUserProvider).valueOrNull;
+    if (user == null) return {'users': []};
+    
     final apiClient = ref.watch(apiClientProvider);
-    final queryParams = searchQuery.isNotEmpty
-        ? {'search': searchQuery}
-        : <String, dynamic>{};
+    final queryParams = <String, dynamic>{
+      'user_id': user.uid,
+    };
+    
+    if (searchQuery.isNotEmpty) {
+      queryParams['search'] = searchQuery;
+    }
     
     final response = await apiClient.get(
       '/nexus/users/directory',
