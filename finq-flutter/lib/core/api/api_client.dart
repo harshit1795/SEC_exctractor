@@ -13,6 +13,7 @@ abstract class ApiClient {
     String path, {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParameters,
+    bool forceRefresh = false,
   });
 
   Future<ApiResponse<T>> post<T>(

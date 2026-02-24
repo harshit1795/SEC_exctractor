@@ -163,3 +163,14 @@ final logoUrlProvider = FutureProvider.family<String?, String>((ref, ticker) asy
   return 'https://financialmodelingprep.com/image-stock/${ticker.toUpperCase()}.png';
 });
 
+final dashboardHealthScoresProvider = FutureProvider<List<dynamic>>((ref) async {
+  final repository = ref.read(dashboardRepositoryProvider);
+  final tickers = ref.watch(selectedTickersProvider);
+  
+  if (tickers.isEmpty) return [];
+  
+  final data = await repository.fetchDashboardHealthScores(tickers);
+  return data['scores'] as List<dynamic>? ?? [];
+});
+
+

@@ -43,7 +43,7 @@ class MockPreferencesService implements PreferencesService {
 // Manual Mock for ApiClient
 class MockApiClient implements ApiClient {
   @override
-  Future<ApiResponse<T>> get<T>(String path, {Map<String, String>? headers, Map<String, dynamic>? queryParameters}) async {
+  Future<ApiResponse<T>> get<T>(String path, {bool forceRefresh = false, Map<String, String>? headers, Map<String, dynamic>? queryParameters}) async {
     return ApiResponse(data: {} as T, statusCode: 200);
   }
 

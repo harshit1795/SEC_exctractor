@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../services/html_export_service.dart';
+
 
 import 'dashboard_providers.dart';
 
@@ -13,11 +15,15 @@ class CompanyHeader extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final healthScoresAsync = ref.watch(dashboardHealthScoresProvider);
+
     return tickerData.when(
       data: (data) {
-        // Check for multi-ticker response
         if (data.containsKey('tickers') && data['tickers'] is List) {
            final tickers = (data['tickers'] as List).cast<String>();
+           
+           final List<dynamic> healthScores = healthScoresAsync.valueOrNull ?? [];
+           
            return Container(
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(16),
@@ -45,18 +51,56 @@ class CompanyHeader extends ConsumerWidget {
                         child: Icon(Icons.compare_arrows, size: 32, color: Colors.purple.shade700),
                     ),
                     const SizedBox(width: 16),
-                    Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                            const Text(
-                                'Comparison Mode',
-                                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                            ),
-                            Text(
-                                '${tickers.join(" vs ")}',
-                                style: TextStyle(fontSize: 14, color: Colors.grey.shade700, fontWeight: FontWeight.w500),
-                            ),
-                        ],
+                    Expanded(
+                      child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  const Text(
+                                      'Comparison Mode',
+                                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                                  ),
+                                  if (healthScores.isNotEmpty)
+                                    ElevatedButton.icon(
+                                      onPressed: () => _downloadReport(context, ref, healthScores),
+                                      icon: const Icon(Icons.picture_as_pdf, size: 16),
+                                      label: const Text('Comparison Report'),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.purple.shade50,
+                                        foregroundColor: Colors.purple.shade700,
+                                        elevation: 0,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 8,
+                                children: tickers.map((t) {
+                                  final tScoreData = healthScores.firstWhere(
+                                    (s) => s['ticker'] == t, 
+                                    orElse: () => null,
+                                  );
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Text(
+                                          t,
+                                          style: TextStyle(fontSize: 16, color: Colors.grey.shade800, fontWeight: FontWeight.bold),
+                                      ),
+                                      if (tScoreData != null) ...[
+                                        const SizedBox(width: 6),
+                                        _buildHealthBadge(tScoreData),
+                                      ]
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                          ],
+                      ),
                     ),
                 ],
               ),
@@ -133,13 +177,39 @@ class CompanyHeader extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        '$ticker – $companyName',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$ticker – $companyName',
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.black87,
+                              ),
+                            ),
+                          ),
+                          if (healthScoresAsync.valueOrNull != null && healthScoresAsync.valueOrNull!.isNotEmpty)
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildHealthBadge(healthScoresAsync.valueOrNull!.first),
+                                const SizedBox(width: 12),
+                                ElevatedButton.icon(
+                                  onPressed: () => _downloadReport(context, ref, healthScoresAsync.valueOrNull!),
+                                  icon: const Icon(Icons.picture_as_pdf, size: 16),
+                                  label: const Text('Export Report'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green.shade50,
+                                    foregroundColor: Colors.green.shade700,
+                                    elevation: 0,
+                                  ),
+                                ),
+                              ],
+                            ),
+                        ],
                       ),
                       const SizedBox(height: 8),
                       Wrap(
@@ -272,5 +342,55 @@ class CompanyHeader extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  Widget _buildHealthBadge(Map<dynamic, dynamic> scoreData) {
+    final score = scoreData['healthScore'] as double?;
+    if (score == null) return const SizedBox.shrink();
+    final pct = (score * 100).toStringAsFixed(1) + '%';
+    Color color = Colors.green.shade700;
+    Color bg = Colors.green.shade50;
+    if (score < 0.4) {
+      color = Colors.red.shade700;
+      bg = Colors.red.shade50;
+    } else if (score < 0.7) {
+      color = Colors.orange.shade800;
+      bg = Colors.orange.shade50;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        'FinQ Health: $pct',
+        style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12),
+      ),
+    );
+  }
+
+  Future<void> _downloadReport(BuildContext context, WidgetRef ref, List<dynamic> tickersData) async {
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Generating AI Health Report...')),
+      );
+      final repo = ref.read(dashboardRepositoryProvider);
+      final payload = tickersData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+      final html = await repo.generateHealthReportHtml(payload);
+      
+      await HtmlExportService.downloadHtmlReport(
+        htmlString: html,
+        filenamePrefix: tickersData.length > 1 ? 'comparison' : tickersData[0]['ticker'] as String,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error generating report: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 }

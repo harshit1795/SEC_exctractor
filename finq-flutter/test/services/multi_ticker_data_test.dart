@@ -22,6 +22,7 @@ class MockApiClient implements ApiClient {
   @override
   Future<ApiResponse<T>> get<T>(
     String path, {
+    bool forceRefresh = false,
     Map<String, String>? headers,
     Map<String, dynamic>? queryParameters,
   }) async {

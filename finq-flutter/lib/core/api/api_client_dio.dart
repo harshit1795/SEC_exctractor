@@ -60,11 +60,17 @@ class ApiClientDio implements ApiClient {
     String path, {
     Map<String, String>? headers,
     Map<String, dynamic>? queryParameters,
+    bool forceRefresh = false,
   }) async {
     final effectivePath = path.startsWith('/') ? path.substring(1) : path;
+    final options = Options(headers: headers);
+    if (forceRefresh) {
+      options.extra = {'dio_cache_interceptor_policy': CachePolicy.refreshForceCache};
+    }
+
     final response = await _dio.get<T>(
       effectivePath,
-      options: Options(headers: headers),
+      options: options,
       queryParameters: queryParameters,
     );
     return ApiResponse<T>(

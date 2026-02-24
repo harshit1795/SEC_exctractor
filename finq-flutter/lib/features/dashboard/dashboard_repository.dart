@@ -84,6 +84,26 @@ class DashboardRepository {
     return _asMap(response.data, 'multiple tickers data');
   }
 
+  Future<Map<String, dynamic>> fetchDashboardHealthScores(List<String> tickers) async {
+    if (tickers.isEmpty) return {'scores': [], 'count': 0};
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/health-scores/finq',
+      queryParameters: {'ticker': tickers.join(',')},
+    );
+    return _asMap(response.data, 'health scores');
+  }
+
+  Future<String> generateHealthReportHtml(List<Map<String, dynamic>> tickersData) async {
+    if (tickersData.isEmpty) return 'No data provided';
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/health-scores/report',
+      // In Dio, setting 'data' payload for POST:
+      body: {'tickers': tickersData},
+    );
+    final data = _asMap(response.data, 'health report');
+    return data['report'] as String? ?? 'No report generated';
+  }
+
   Map<String, dynamic> _asMap(Object? data, String label) {
     if (data is Map<String, dynamic>) {
       return data;
