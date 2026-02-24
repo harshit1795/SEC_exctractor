@@ -204,6 +204,36 @@ class FinancialAnalyzer:
             # Re-raise to let the API handle it properly
             raise
 
+    async def generate_text(self, prompt: str) -> str:
+        """
+        Generate text from a raw prompt without contextual wrapping.
+        Used by health report generation.
+        """
+        try:
+            await self.rate_limiter.acquire()
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    response = self.model.generate_content(prompt)
+                    break
+                except Exception as e:
+                    error_str = str(e).lower()
+                    is_rate_limit = '429' in error_str or 'rate limit' in error_str or 'quota' in error_str
+                    if is_rate_limit and attempt < max_retries - 1:
+                        await asyncio.sleep(2 ** (attempt + 1))
+                        await self.rate_limiter.acquire()
+                        continue
+                    raise
+
+            if not response or not hasattr(response, 'text') or not response.text:
+                raise ValueError("Empty response from Gemini API")
+
+            return response.text
+        except Exception as e:
+            logger.error(f"Error in generate_text: {e}", exc_info=True)
+            raise
+
+
     def _generate_cache_key(self, prompt: str, prefix: str = "ai") -> str:
         """Generates a deterministic cache key for a prompt."""
         hash_val = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
