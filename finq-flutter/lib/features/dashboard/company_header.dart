@@ -198,8 +198,8 @@ class CompanyHeader extends ConsumerWidget {
                                 const SizedBox(width: 12),
                                 ElevatedButton.icon(
                                   onPressed: () => _downloadReport(context, ref, healthScoresAsync.valueOrNull!),
-                                  icon: const Icon(Icons.picture_as_pdf, size: 16),
-                                  label: const Text('Export Report'),
+                                  icon: const Icon(Icons.open_in_new, size: 16),
+                                  label: const Text('Open Report'),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.green.shade50,
                                     foregroundColor: Colors.green.shade700,
@@ -380,7 +380,7 @@ class CompanyHeader extends ConsumerWidget {
       final payload = tickersData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final html = await repo.generateHealthReportHtml(payload);
       
-      await HtmlExportService.downloadHtmlReport(
+      await HtmlExportService.openHtmlReport(
         htmlString: html,
         filenamePrefix: tickersData.length > 1 ? 'comparison' : tickersData[0]['ticker'] as String,
       );

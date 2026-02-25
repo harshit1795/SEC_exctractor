@@ -237,8 +237,8 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                             _isGeneratingReport && _reportTicker == score.ticker
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                               : ElevatedButton.icon(
-                                  icon: const Icon(Icons.picture_as_pdf, size: 14),
-                                  label: const Text('Export', style: TextStyle(fontSize: 12)),
+                                  icon: const Icon(Icons.open_in_new, size: 14),
+                                  label: const Text('Open Report', style: TextStyle(fontSize: 12)),
                                   style: ElevatedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
                                     minimumSize: const Size(60, 32),
@@ -292,7 +292,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
       final resultHtml = await ref.read(healthReportProvider(payload).future);
       
       if (resultHtml != null && mounted) {
-        await HtmlExportService.downloadHtmlReport(
+        await HtmlExportService.openHtmlReport(
           htmlString: resultHtml,
           filenamePrefix: score.ticker,
         );
