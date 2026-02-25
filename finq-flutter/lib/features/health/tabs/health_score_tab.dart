@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 import '../providers/health_providers.dart';
-import '../../../services/html_export_service.dart';
 
 class HealthScoreTab extends ConsumerStatefulWidget {
   const HealthScoreTab({super.key});
@@ -285,12 +286,25 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                               icon: const Icon(Icons.download_outlined),
                               onPressed: () async {
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Downloading Health Report...')),
+                                  const SnackBar(content: Text('Preparing AI Health Report PDF...')),
                                 );
-                                await HtmlExportService.downloadHtmlReport(
-                                  htmlString: _reportText!,
-                                  filenamePrefix: _reportTicker ?? 'health',
-                                );
+                                try {
+                                  await Printing.layoutPdf(
+                                    name: '${_reportTicker ?? 'health'}_report.pdf',
+                                    onLayout: (PdfPageFormat format) async {
+                                      return await Printing.convertHtml(
+                                        format: format,
+                                        html: _reportText!,
+                                      );
+                                    },
+                                  );
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Error creating PDF: $e'), backgroundColor: Colors.red),
+                                    );
+                                  }
+                                }
                               },
                             ),
                             IconButton(
