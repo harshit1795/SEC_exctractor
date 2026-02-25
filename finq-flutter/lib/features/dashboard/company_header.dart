@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
-import 'package:pdf/pdf.dart';
+import '../../services/html_export_service.dart';
 
 import 'dashboard_providers.dart';
 
@@ -381,14 +380,9 @@ class CompanyHeader extends ConsumerWidget {
       final payload = tickersData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
       final html = await repo.generateHealthReportHtml(payload);
       
-      await Printing.layoutPdf(
-        name: tickersData.length > 1 ? 'comparison_report.pdf' : '${tickersData[0]['ticker']}_health_report.pdf',
-        onLayout: (PdfPageFormat format) async {
-          return await Printing.convertHtml(
-            format: format,
-            html: html,
-          );
-        },
+      await HtmlExportService.downloadHtmlReport(
+        htmlString: html,
+        filenamePrefix: tickersData.length > 1 ? 'comparison' : tickersData[0]['ticker'] as String,
       );
     } catch (e) {
       if (context.mounted) {

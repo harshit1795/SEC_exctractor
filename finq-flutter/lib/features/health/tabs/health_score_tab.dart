@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:printing/printing.dart';
-import 'package:pdf/pdf.dart';
 import '../providers/health_providers.dart';
+import '../../../services/html_export_service.dart';
 
 class HealthScoreTab extends ConsumerStatefulWidget {
   const HealthScoreTab({super.key});
@@ -293,14 +292,9 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
       final resultHtml = await ref.read(healthReportProvider(payload).future);
       
       if (resultHtml != null && mounted) {
-        await Printing.layoutPdf(
-          name: '${score.ticker}_health_report.pdf',
-          onLayout: (PdfPageFormat format) async {
-            return await Printing.convertHtml(
-              format: format,
-              html: resultHtml,
-            );
-          },
+        await HtmlExportService.downloadHtmlReport(
+          htmlString: resultHtml,
+          filenamePrefix: score.ticker,
         );
       }
     } catch (e) {
