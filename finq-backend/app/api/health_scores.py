@@ -540,7 +540,10 @@ async def generate_health_report(payload: Dict[str, Any]):
 """
     
     is_multi = len(tickers_data) > 1
-    report_title = "Comparative Financial Health Report" if is_multi else f"{tickers_data[0].get('ticker')} Financial Health Report"
+    report_title = "Comparative Financial Health Report" if is_multi else f"{tickers_data[0]['ticker'] if isinstance(tickers_data[0], dict) else 'Unknown'} Financial Health Report"
+    
+    import datetime
+    current_date = datetime.datetime.now().strftime("%B %d, %Y")
     
     prompt = f"""You are FinQ, an expert financial analyst. Write a professional, standalone HTML financial health report based purely on the metrics below.
     
@@ -550,11 +553,12 @@ REQUIREMENTS:
 1. Output MUST be ONLY valid, self-contained HTML (no markdown wrappers like ```html).
 2. Include inline CSS for a clean, professional PDF-ready styling (fonts, colors, tables).
 3. Structure the report as follows:
-   - Header (Report Title, Date)
+   - Header (Report Title, and MUST include exactly: "Date of Generation: {current_date}" right-aligned or clearly visible at the top)
    - Executive Summary
    - Key Financial Ratios (A clean, styled HTML table comparing the provided metrics for all companies)
    - Strengths & Vulnerabilities (Bullet points for each company)
    - Investment Consideration & Conclusion
+   - Sources & Citations (A dedicated section at the bottom listing the sources of this data, i.e., "Data provided by FinQ Financial Insights Engine", and mentioning SEC filings or standard market data as the origin)
    - Standard Disclaimer ("This report is for informational purposes only...")
 4. Make the design pop by using FinQ brand colors (Green and Purple motifs) or a sleek modern palette.
 
@@ -571,7 +575,7 @@ Generate the HTML now:
         if report.endswith("```"):
             report = report[:-3]
             
-        primary_ticker = tickers_data[0].get('ticker') if tickers_data else 'Report'
+        primary_ticker = tickers_data[0]['ticker'] if tickers_data and isinstance(tickers_data[0], dict) and 'ticker' in tickers_data[0] else 'Report'
         return {"report": report.strip(), "ticker": primary_ticker}
     except ValueError as e:
         # Gemini API key not configured
