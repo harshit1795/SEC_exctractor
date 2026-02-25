@@ -241,14 +241,31 @@ class _TrendTabState extends ConsumerState<TrendTab> {
     // 2. Identify metrics not in the standard hierarchies (case-insensitive check)
     // We need to re-scan periodData for this
     final availableMetrics = <String>{};
+    final metricCategoriesMap = <String, String>{};
+    
     for(final p in periodData) {
         availableMetrics.addAll(p.metrics.keys);
+        metricCategoriesMap.addAll(p.metricCategories);
     }
+
+    final normalizedWidgetCategory = widget.category.toLowerCase().replaceAll(' ', '');
+    final showAllCategories = widget.category.toLowerCase() == 'all' || 
+                              widget.category.toLowerCase() == 'all fundamentals';
 
     final unknownMetrics = availableMetrics.where((m) {
       final lowerM = m.toLowerCase();
       // Check if this metric or any case-variant is already known
-      return !knownMetrics.any((k) => k.toLowerCase() == lowerM);
+      final isUnknown = !knownMetrics.any((k) => k.toLowerCase() == lowerM);
+      if (!isUnknown) return false;
+      
+      // If we are showing all categories, include it
+      if (showAllCategories) return true;
+      
+      // Otherwise, ONLY include unknown metrics if they actually belong to the current category
+      final mCat = metricCategoriesMap[m] ?? '';
+      final normalizedMCat = mCat.toLowerCase().replaceAll(' ', '');
+      return normalizedMCat == normalizedWidgetCategory;
+      
     }).toList()
       ..sort();
 
@@ -604,7 +621,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
         for (int i = 0; i < allPeriods.length; i++) {
             final period = allPeriods[i];
             // Find data for this period
-            final periodData = data.firstWhere((p) => p.period == period, orElse: () => _PeriodData(period: '', metrics: {}));
+            final periodData = data.firstWhere((p) => p.period == period, orElse: () => const _PeriodData(period: '', metrics: {}, metricCategories: {}));
             if (periodData.metrics.containsKey(metric)) {
                 spots.add(FlSpot(i.toDouble(), periodData.metrics[metric]!));
             }
@@ -717,7 +734,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
              final data = parsed.tickerData[ticker] ?? [];
              final color = _tickerColors[tickerIdx % _tickerColors.length];
              
-             final periodData = data.firstWhere((p) => p.period == period, orElse: () => _PeriodData(period: '', metrics: {}));
+             final periodData = data.firstWhere((p) => p.period == period, orElse: () => const _PeriodData(period: '', metrics: {}, metricCategories: {}));
              final val = periodData.metrics[metric] ?? 0;
              
              if (val != 0) {
@@ -858,19 +875,17 @@ class _TrendTabState extends ConsumerState<TrendTab> {
       return _FundamentalsDataHelper(metrics: {}, data: []);
     }
 
-    final filtered = dataArray.where((item) {
-      if (item is! Map) return false;
-      final itemCategory = item['Category'] ?? item['category'] ?? '';
-      // Ticker check might need to be loose if data doesn't strictly have it or if we passed it
-      return itemCategory == widget.category; 
-    }).toList();
-
     final metrics = <String>{};
     final periodMap = <String, Map<String, double>>{};
+    final categoryMap = <String, Map<String, String>>{};
+    final normalizedWidgetCategory = widget.category.toLowerCase().replaceAll(' ', '');
+    final showAllCategories = widget.category.toLowerCase() == 'all' || 
+                              widget.category.toLowerCase() == 'all fundamentals';
 
-    for (final item in filtered) {
+    for (final item in dataArray) {
       if (item is! Map) continue;
 
+      final itemCategory = item['Category'] ?? item['category'] ?? '';
       final period = item['FiscalPeriod'] ??
           item['fiscalPeriod'] ??
           item['Date'] ??
@@ -881,24 +896,39 @@ class _TrendTabState extends ConsumerState<TrendTab> {
 
       if (period.isEmpty || metric.isEmpty) continue;
 
-      metrics.add(metric);
+      // Always populate period map with ALL metrics for HierarchyView cross-calculations
       periodMap.putIfAbsent(period, () => {});
+      categoryMap.putIfAbsent(period, () => {});
+      
       periodMap[period]![metric] = value;
+      categoryMap[period]![metric] = itemCategory.toString();
+
+      // Filter the metrics list (used for Chart View dropdown) by selected category
+      bool matchesCategory = showAllCategories;
+      if (!matchesCategory) {
+        final normalizedItemCategory = itemCategory.toString().toLowerCase().replaceAll(' ', '');
+        matchesCategory = normalizedItemCategory == normalizedWidgetCategory;
+      }
+
+      if (matchesCategory) {
+        metrics.add(metric);
+      }
     }
 
     final periods = periodMap.keys.toList()
       ..sort((a, b) {
-        // Sort by year and quarter
+        // Sort by year and quarter (DESCENDING for MetricCalculations)
         final aParts = _parsePeriod(a);
         final bParts = _parsePeriod(b);
-        if (aParts.$1 != bParts.$1) return aParts.$1.compareTo(bParts.$1);
-        return aParts.$2.compareTo(bParts.$2);
+        if (aParts.$1 != bParts.$1) return bParts.$1.compareTo(aParts.$1);
+        return bParts.$2.compareTo(aParts.$2);
     });
 
     final periodData = periods
         .map((period) => _PeriodData(
               period: period,
               metrics: periodMap[period]!,
+              metricCategories: categoryMap[period]!,
             ))
         .toList();
 
@@ -949,10 +979,12 @@ class _PeriodData {
   const _PeriodData({
     required this.period,
     required this.metrics,
+    required this.metricCategories,
   });
 
   final String period;
   final Map<String, double> metrics;
+  final Map<String, String> metricCategories;
 }
 
 
