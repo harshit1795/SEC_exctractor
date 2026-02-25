@@ -1,4 +1,5 @@
 import '../../core/api/api_client.dart';
+import '../../services/report_cache_service.dart';
 
 class DashboardRepository {
   DashboardRepository(this._apiClient);
@@ -95,13 +96,25 @@ class DashboardRepository {
 
   Future<String> generateHealthReportHtml(List<Map<String, dynamic>> tickersData) async {
     if (tickersData.isEmpty) return 'No data provided';
+
+    final tickers = tickersData.map((e) => e['ticker'].toString()).toList();
+    final cachedHtml = await ReportCacheService.getCachedReport(tickers);
+    if (cachedHtml != null) {
+      return cachedHtml;
+    }
+
     final response = await _apiClient.post<Map<String, dynamic>>(
       '/health-scores/report',
       // In Dio, setting 'data' payload for POST:
       body: {'tickers': tickersData},
     );
     final data = _asMap(response.data, 'health report');
-    return data['report'] as String? ?? 'No report generated';
+    final html = data['report'] as String? ?? 'No report generated';
+    
+    if (html != 'No report generated') {
+      await ReportCacheService.saveReport(tickers, html);
+    }
+    return html;
   }
 
   Map<String, dynamic> _asMap(Object? data, String label) {

@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/di/providers.dart';
 import 'package:equatable/equatable.dart';
+import '../../../services/report_cache_service.dart';
 
 class HealthScoreModel {
   final String ticker;
@@ -158,12 +159,26 @@ final customHealthScoreProvider = FutureProvider.family<List<HealthScoreModel>?,
 final healthReportProvider = FutureProvider.family<String?, Map<String, dynamic>>((ref, payload) async {
   final apiClient = ref.watch(apiClientProvider);
   try {
+    final ticker = payload['ticker'] as String?;
+    final tickersList = ticker != null ? [ticker] : <String>[];
+    
+    if (tickersList.isNotEmpty) {
+      final cachedHtml = await ReportCacheService.getCachedReport(tickersList);
+      if (cachedHtml != null) {
+        return cachedHtml;
+      }
+    }
+
     final response = await apiClient.post<Map<String, dynamic>>(
       '/health-scores/report',
       body: payload,
     );
     if (response.statusCode == 200 && response.data['report'] != null) {
-      return response.data['report'] as String;
+      final html = response.data['report'] as String;
+      if (tickersList.isNotEmpty) {
+        await ReportCacheService.saveReport(tickersList, html);
+      }
+      return html;
     }
   } catch (e, st) {
     print('Error generating health report: $e\n$st');

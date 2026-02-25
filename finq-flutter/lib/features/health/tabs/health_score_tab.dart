@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
 import '../providers/health_providers.dart';
@@ -16,7 +15,6 @@ class HealthScoreTab extends ConsumerStatefulWidget {
 class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
   String _selectedCategory = 'Technology';
   bool _isGeneratingReport = false;
-  String? _reportText;
   String? _reportTicker;
   
   final List<String> _categories = [
@@ -239,10 +237,13 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                           DataCell(
                             _isGeneratingReport && _reportTicker == score.ticker
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : IconButton(
-                                  tooltip: 'Generate Health Report',
-                                  icon: const Icon(Icons.description_outlined, size: 20),
-                                  color: Colors.blue.shade700,
+                              : ElevatedButton.icon(
+                                  icon: const Icon(Icons.picture_as_pdf, size: 14),
+                                  label: const Text('Export', style: TextStyle(fontSize: 12)),
+                                  style: ElevatedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                    minimumSize: const Size(60, 32),
+                                  ),
                                   onPressed: () => _generateReport(score),
                                 ),
                           ),
@@ -264,78 +265,6 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
               ),
             ),
           ),
-          // Report Card
-          if (_reportText != null) ...[  
-            const SizedBox(height: 16),
-            Card(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('AI Health Report – $_reportTicker', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              tooltip: 'Download Report',
-                              icon: const Icon(Icons.download_outlined),
-                              onPressed: () async {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Preparing AI Health Report PDF...')),
-                                );
-                                try {
-                                  await Printing.layoutPdf(
-                                    name: '${_reportTicker ?? 'health'}_report.pdf',
-                                    onLayout: (PdfPageFormat format) async {
-                                      return await Printing.convertHtml(
-                                        format: format,
-                                        html: _reportText!,
-                                      );
-                                    },
-                                  );
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Error creating PDF: $e'), backgroundColor: Colors.red),
-                                    );
-                                  }
-                                }
-                              },
-                            ),
-                            IconButton(
-                              tooltip: 'Copy Report Text',
-                              icon: const Icon(Icons.copy_outlined),
-                              onPressed: () {
-                                Clipboard.setData(ClipboardData(text: _reportText!));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Report copied to clipboard!')),
-                                );
-                              },
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(),
-                    const SizedBox(height: 8),
-                    MarkdownBody(
-                      data: _reportText!,
-                      styleSheet: MarkdownStyleSheet(
-                        h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                        h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        p: const TextStyle(fontSize: 14, height: 1.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -344,7 +273,6 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
   Future<void> _generateReport(HealthScoreModel score) async {
     setState(() {
       _isGeneratingReport = true;
-      _reportText = null;
       _reportTicker = score.ticker;
     });
     try {
@@ -362,16 +290,29 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
         'insight': score.insight,
         'category': _selectedCategory,
       };
-      final result = await ref.read(healthReportProvider(payload).future);
-      setState(() { _reportText = result; });
+      final resultHtml = await ref.read(healthReportProvider(payload).future);
+      
+      if (resultHtml != null && mounted) {
+        await Printing.layoutPdf(
+          name: '${score.ticker}_health_report.pdf',
+          onLayout: (PdfPageFormat format) async {
+            return await Printing.convertHtml(
+              format: format,
+              html: resultHtml,
+            );
+          },
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Error generating PDF: $e'), backgroundColor: Colors.red),
         );
       }
     } finally {
-      setState(() { _isGeneratingReport = false; });
+      if (mounted) {
+        setState(() { _isGeneratingReport = false; });
+      }
     }
   }
 
