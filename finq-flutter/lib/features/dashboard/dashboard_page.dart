@@ -134,7 +134,7 @@ class _DashboardContent extends StatelessWidget {
 
     return DefaultTabController(
       length: _tabs.length,
-      initialIndex: 3, // Default to Price Chart
+      initialIndex: 0, // Default to Trend Analysis
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

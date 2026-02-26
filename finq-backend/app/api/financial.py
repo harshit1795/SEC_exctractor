@@ -66,7 +66,17 @@ async def get_ticker_data(
     """
     try:
         manager = get_data_source_manager()
-        data = await manager.get_yahoo_finance_data(ticker.upper(), period)
+        
+        # Map frontend period strings to Yahoo Finance compatible strings
+        yf_period = period
+        if period == "1m":
+            yf_period = "1mo"
+        elif period == "3m":
+            yf_period = "3mo"
+        elif period == "6m":
+            yf_period = "6mo"
+            
+        data = await manager.get_yahoo_finance_data(ticker.upper(), yf_period)
         
         if not data:
             raise HTTPException(
@@ -120,9 +130,18 @@ async def get_multiple_tickers(
         manager = get_data_source_manager()
         results = {}
         
+        # Map frontend period strings to Yahoo Finance compatible strings
+        yf_period = period
+        if period == "1m":
+            yf_period = "1mo"
+        elif period == "3m":
+            yf_period = "3mo"
+        elif period == "6m":
+            yf_period = "6mo"
+        
         for ticker in ticker_list:
             try:
-                data = await manager.get_yahoo_finance_data(ticker, period)
+                data = await manager.get_yahoo_finance_data(ticker, yf_period)
                 results[ticker] = data if data else {}
             except Exception as e:
                 logger.error(f"Error fetching data for {ticker}: {e}")

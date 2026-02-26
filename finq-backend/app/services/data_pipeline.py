@@ -191,16 +191,17 @@ class DataPipeline:
                 existing_df = existing_df[existing_df['Ticker'].str.upper() != ticker.upper()]
                 updated_df = pd.concat([existing_df, new_data], ignore_index=True)
             else:
-                # Merge: remove duplicates and keep latest
-                # Combine existing and new data
-                combined = pd.concat([existing_df, new_data], ignore_index=True)
+                # Proper merge: remove stale rows for periods that have fresh data
+                # and for periods that are completely new, just append them.
+                new_periods_for_ticker = set(new_data['FiscalPeriod'].unique())
+                ticker_mask = (existing_df['Ticker'].str.upper() == ticker.upper())
+                period_mask = (existing_df['FiscalPeriod'].isin(new_periods_for_ticker))
                 
-                # Remove duplicates, keeping the latest (new) data
-                # Group by Ticker, FiscalPeriod, Metric, Category and keep last
-                updated_df = combined.drop_duplicates(
-                    subset=['Ticker', 'FiscalPeriod', 'Metric', 'Category'],
-                    keep='last'
-                )
+                # Remove stale rows that will be replaced by new data
+                existing_df = existing_df[~(ticker_mask & period_mask)]
+                
+                # Add the fresh data
+                updated_df = pd.concat([existing_df, new_data], ignore_index=True)
             
             # Save updated data
             if not self.fundamentals_path:

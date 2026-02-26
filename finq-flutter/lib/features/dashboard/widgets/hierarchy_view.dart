@@ -11,11 +11,13 @@ class HierarchyView extends StatelessWidget {
     required this.ticker,
     required this.category,
     required this.metricsData,
+    this.latestPeriod,
   });
 
   final String ticker;
   final String category;
   final Map<String, MetricData> metricsData;
+  final String? latestPeriod;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +30,7 @@ class HierarchyView extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Summary Bar at top
-              SummaryBar(metricsData: metricsData),
+              SummaryBar(metricsData: metricsData, latestPeriod: latestPeriod),
               
               const SizedBox(height: 16),
               

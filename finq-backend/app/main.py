@@ -40,9 +40,15 @@ app.include_router(data_pipeline.router, prefix=settings.api_prefix, tags=["data
 app.include_router(health_scores.router, prefix=settings.api_prefix, tags=["health-scores"])
 
 
+from app.services.incremental_queue import background_update_scheduler
+import asyncio
+
 @app.on_event("startup")
 async def startup_event():
-    """Run database migrations on startup"""
+    """Run database migrations and start background tasks on startup"""
+    # Start the automated incremental data pulling queue
+    asyncio.create_task(background_update_scheduler())
+
     try:
         from alembic.config import Config
         from alembic import command

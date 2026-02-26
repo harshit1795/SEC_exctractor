@@ -7,9 +7,11 @@ class SummaryBar extends StatelessWidget {
   const SummaryBar({
     super.key,
     required this.metricsData,
+    this.latestPeriod,
   });
 
   final Map<String, MetricData> metricsData;
+  final String? latestPeriod;
 
   @override
   Widget build(BuildContext context) {
@@ -54,6 +56,25 @@ class SummaryBar extends StatelessWidget {
                     color: Colors.blue.shade700,
                   ),
                 ),
+                if (latestPeriod != null) ...[
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.blue.shade300),
+                    ),
+                    child: Text(
+                      'Latest Period: $latestPeriod',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade800,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
             const SizedBox(height: 16),

@@ -32,8 +32,8 @@ class TrendTab extends ConsumerStatefulWidget {
 }
 
 class _TrendTabState extends ConsumerState<TrendTab> {
-  var _viewMode = TrendViewMode.chart;
-  var _chartType = _ChartType.bar;
+  var _viewMode = TrendViewMode.hierarchy;
+  var _chartType = _ChartType.line;
   final _selectedMetrics = <String>{};
   var _preferencesLoaded = false;
   String _lastTickerCategory = '';
@@ -436,6 +436,9 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                   ticker: widget.ticker,
                   category: widget.category,
                   metricsData: _prepareMetricsData(parsed.tickerData.values.first),
+                  latestPeriod: parsed.tickerData.values.first.isNotEmpty 
+                      ? parsed.tickerData.values.first.first.period 
+                      : null,
                 )
               else ...[
                 // Metric selection card - only in Chart View
@@ -856,6 +859,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
                  tickerData[ticker] = [];
              }
         }
+
         return _FundamentalsData(metrics: allMetrics, tickerData: tickerData, tickers: tickers);
     } else {
         // Single ticker response
@@ -915,7 +919,15 @@ class _TrendTabState extends ConsumerState<TrendTab> {
       }
     }
 
-    final periods = periodMap.keys.toList()
+    final validPeriods = periodMap.keys.where((p) {
+        final m = periodMap[p]!;
+        int nonZeroCount = m.values.where((v) => v != 0.0).length;
+        // Projected/dummy periods from Yahoo Finance usually only have 3-5 EPS/Share estimates
+        // A legitimate financial report will have dozens of fundamental metrics.
+        return nonZeroCount > 10;
+    }).toList();
+
+    final periods = validPeriods
       ..sort((a, b) {
         // Sort by year and quarter (DESCENDING for MetricCalculations)
         final aParts = _parsePeriod(a);

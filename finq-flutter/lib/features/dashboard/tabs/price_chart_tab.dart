@@ -76,6 +76,41 @@ class _PriceChartTabState extends State<PriceChartTab> {
       data: (data) {
         final seriesList = <PriceSeries>[];
         
+        // Helper to aggregate points based on selected interval
+        List<PricePoint> aggregatePoints(List<PricePoint> rawPoints) {
+            if (_aggregation == 'Daily' || rawPoints.isEmpty) return rawPoints;
+            
+            final Map<String, List<PricePoint>> groups = {};
+            for (final p in rawPoints) {
+                String key;
+                if (_aggregation == 'Weekly') {
+                     // Get the Monday of this week as the key
+                     final monday = p.date.subtract(Duration(days: p.date.weekday - 1));
+                     key = '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+                } else {
+                     // Monthly
+                     key = '${p.date.year}-${p.date.month.toString().padLeft(2, '0')}';
+                }
+                groups.putIfAbsent(key, () => []).add(p);
+            }
+            
+            final aggregated = <PricePoint>[];
+            final sortedKeys = groups.keys.toList()..sort();
+            
+            for (final key in sortedKeys) {
+                 final groupPoints = groups[key]!;
+                 groupPoints.sort((a, b) => a.date.compareTo(b.date));
+                 
+                 final last = groupPoints.last;
+                 
+                 aggregated.add(PricePoint(
+                      date: last.date, // Use end of period date for plotting
+                      close: last.close,
+                 ));
+            }
+            return aggregated;
+        }
+
         // Multi-ticker check
         if (data.containsKey('tickers') && data['tickers'] is List) {
             final tickers = (data['tickers'] as List).cast<String>();
@@ -94,13 +129,16 @@ class _PriceChartTabState extends State<PriceChartTab> {
                 final tickerPayload = tickersData[ticker];
                 var points = parsePriceSeries(tickerPayload);
                 
-                // Filter by date range
+                // 1. Filter by date range
                 if (_startDate != null && _endDate != null) {
                   points = points.where((p) => 
-                    p.date.isAfter(_startDate!.subtract(const Duration(days: 1))) && 
-                    p.date.isBefore(_endDate!.add(const Duration(days: 1)))
+                     p.date.isAfter(_startDate!.subtract(const Duration(days: 1))) && 
+                     p.date.isBefore(_endDate!.add(const Duration(days: 1)))
                   ).toList();
                 }
+                
+                // 2. Aggregate data (Daily, Weekly, Monthly)
+                points = aggregatePoints(points);
 
                 if (points.isNotEmpty) {
                     seriesList.add(PriceSeries(
@@ -115,13 +153,16 @@ class _PriceChartTabState extends State<PriceChartTab> {
             // Single ticker
             var points = parsePriceSeries(data);
             
-             // Filter by date range
+             // 1. Filter by date range
             if (_startDate != null && _endDate != null) {
               points = points.where((p) => 
                 p.date.isAfter(_startDate!.subtract(const Duration(days: 1))) && 
                 p.date.isBefore(_endDate!.add(const Duration(days: 1)))
               ).toList();
             }
+            
+            // 2. Aggregate data (Daily, Weekly, Monthly)
+            points = aggregatePoints(points);
 
             if (points.isNotEmpty) {
                 final ticker = data['ticker'] as String? ?? 'Stock';
