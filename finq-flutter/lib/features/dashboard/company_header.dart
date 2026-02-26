@@ -373,15 +373,25 @@ class CompanyHeader extends ConsumerWidget {
 
   Future<void> _downloadReport(BuildContext context, WidgetRef ref, List<dynamic> tickersData) async {
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Generating AI Health Report...')),
-      );
       final repo = ref.read(dashboardRepositoryProvider);
-      final payload = tickersData.map((e) => Map<String, dynamic>.from(e as Map)).toList();
-      final html = await repo.generateHealthReportHtml(payload);
       
-      await HtmlExportService.openHtmlReport(
-        htmlString: html,
+      // Map capitalized keys from `/finq` to camelCase expected by `/report`
+      final payload = tickersData.map((e) {
+        final map = Map<String, dynamic>.from(e as Map);
+        return <String, dynamic>{
+          'ticker': map['ticker'] ?? map['Ticker'],
+          'category': map['category'] ?? map['Category'],
+          'healthScore': map['healthScore'] ?? map['HealthScore'],
+          'growth': map['growth'] ?? map['Growth'],
+          'netMargin': map['netMargin'] ?? map['NetMargin'],
+          'fcfMargin': map['fcfMargin'] ?? map['FCFMargin'],
+          'debtEquity': map['debtEquity'] ?? map['DebtEquity'],
+          'insight': map['insight'] ?? map['Insight'],
+        };
+      }).toList();
+      
+      await HtmlExportService.generateAndOpenReport(
+        htmlGenerator: () => repo.generateHealthReportHtml(payload),
         filenamePrefix: tickersData.length > 1 ? 'comparison' : tickersData[0]['ticker'] as String,
       );
     } catch (e) {
@@ -393,3 +403,4 @@ class CompanyHeader extends ConsumerWidget {
     }
   }
 }
+

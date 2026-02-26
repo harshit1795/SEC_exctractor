@@ -289,14 +289,14 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
         'insight': score.insight,
         'category': _selectedCategory,
       };
-      final resultHtml = await ref.read(healthReportProvider(payload).future);
-      
-      if (resultHtml != null && mounted) {
-        await HtmlExportService.openHtmlReport(
-          htmlString: resultHtml,
-          filenamePrefix: score.ticker,
-        );
-      }
+      await HtmlExportService.generateAndOpenReport(
+        htmlGenerator: () async {
+          final resultHtml = await ref.read(healthReportProvider(payload).future);
+          if (resultHtml == null) throw Exception('Failed to generate report');
+          return resultHtml;
+        },
+        filenamePrefix: score.ticker,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

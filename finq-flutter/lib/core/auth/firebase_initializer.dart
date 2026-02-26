@@ -13,7 +13,7 @@ class FirebaseInitializer {
       final options = _webOptions();
       if (!_hasRequiredOptions(options)) {
         throw StateError(
-          'Missing Firebase web config. Provide FIREBASE_* via --dart-define.',
+          'Missing Firebase web config. Provide FIREBASE_* via --dart-define-from-file=.dart-define.json',
         );
       }
       await Firebase.initializeApp(options: options);
