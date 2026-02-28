@@ -227,31 +227,48 @@ async def compute_finq_health_scores(
     unique_tickers = all_fundamentals[ticker_col].unique().tolist()
     logger.info(f"Processing {len(unique_tickers)} tickers for health scores.")
 
+    # Detect column names once
+    ticker_col = next((c for c in ["Ticker", "ticker", "TICKER"] if c in all_fundamentals.columns), None)
+    period_col = next((c for c in ["FiscalPeriod", "fiscalPeriod", "Period", "period"] if c in all_fundamentals.columns), None)
+    metric_col = next((c for c in ["Metric", "metric"] if c in all_fundamentals.columns), None)
+    value_col  = next((c for c in ["Value", "value"] if c in all_fundamentals.columns), None)
+
+    if not all([period_col, metric_col, value_col]):
+        logger.error("Missing required columns in fundamentals parquet.")
+        return pd.DataFrame()
+
     records = []
+    
+    # Optimize: Pivot the ENTIRE dataframe once!
+    try:
+        # Avoid full uppercase copy if possible, but we need it for reliable indexing
+        all_fundamentals["_Ticker_UPPER"] = all_fundamentals[ticker_col].str.upper()
+        
+        # Aggregate any duplicate entries before pivoting
+        agg_fund = all_fundamentals.groupby(["_Ticker_UPPER", period_col, metric_col], as_index=False)[value_col].first()
+        
+        wide_all = agg_fund.pivot(
+            index=["_Ticker_UPPER", period_col], columns=metric_col, values=value_col
+        ).sort_index()
+    except Exception as e:
+        logger.error(f"Failed to vectorize pivot: {e}")
+        return pd.DataFrame()
+
+    ticker_sectors = _load_ticker_sectors()
+    
     for t in unique_tickers:
         try:
-            t_df = all_fundamentals[all_fundamentals[ticker_col].str.upper() == t.upper()].copy()
-            if t_df.empty:
+            t_upper = t.upper()
+            if t_upper not in wide_all.index.levels[0]:
                 continue
-
-            # Get category for this ticker from sector map
-            t_category = _load_ticker_sectors().get(t.upper(), None)
-
-            # Pivot to wide format: index=FiscalPeriod, columns=Metric, values=Value
-            period_col = next((c for c in ["FiscalPeriod", "fiscalPeriod", "Period", "period"] if c in t_df.columns), None)
-            metric_col = next((c for c in ["Metric", "metric"] if c in t_df.columns), None)
-            value_col  = next((c for c in ["Value", "value"] if c in t_df.columns), None)
-
-            if period_col is None or metric_col is None or value_col is None:
-                continue
-
-            wide = t_df.pivot_table(
-                index=period_col, columns=metric_col, values=value_col, aggfunc="first"
-            ).sort_index()
-
+            
+            # Fast MultiIndex extraction
+            wide = wide_all.loc[t_upper]
+            
             if len(wide) < 2:
-                logger.debug(f"Skipping {t}: need ≥2 periods, got {len(wide)}")
                 continue
+
+            t_category = ticker_sectors.get(t_upper, None)
 
             # ── Raw metric extraction ─────────────────────────────
             rev_latest  = _get_metric_value(wide, "Total Revenue", "Operating Revenue")

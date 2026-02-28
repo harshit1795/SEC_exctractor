@@ -43,9 +43,13 @@ app.include_router(health_scores.router, prefix=settings.api_prefix, tags=["heal
 from app.services.incremental_queue import background_update_scheduler
 import asyncio
 
+from app.database import init_db
+
 @app.on_event("startup")
 async def startup_event():
     """Run database migrations and start background tasks on startup"""
+    # Initialize database tables
+    init_db()
     # Start the automated incremental data pulling queue
     asyncio.create_task(background_update_scheduler())
 
