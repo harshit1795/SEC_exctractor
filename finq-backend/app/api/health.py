@@ -36,3 +36,13 @@ async def config_check():
         )
     
     return config_status
+
+
+@router.get("/cors")
+async def cors_check():
+    """Diagnostic endpoint to see exactly what Origins are configured on the server"""
+    return {
+        "raw_env_variable": settings.cors_origins,
+        "parsed_origins": settings.get_cors_origins(),
+        "host": settings.app_name
+    }
