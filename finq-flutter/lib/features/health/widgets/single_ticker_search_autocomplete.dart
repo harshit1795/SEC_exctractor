@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/widgets/animated_hover_item.dart';
 import '../../dashboard/dashboard_providers.dart';
 
 class SingleTickerSearchAutocomplete extends ConsumerStatefulWidget {
@@ -107,7 +108,11 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
                       textCapitalization: TextCapitalization.characters,
                       onChanged: _onSearchChanged,
                       onSubmitted: (val) {
-                        if (val.trim().isNotEmpty) {
+                        if (val.trim().isEmpty) return;
+                        if (_options.isNotEmpty) {
+                          final firstOption = _options.first;
+                          _selectTicker(firstOption['ticker'] as String);
+                        } else {
                           _selectTicker(val.trim().toUpperCase());
                         }
                       },
@@ -138,10 +143,22 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
                       final option = _options[index];
                       final ticker = option['ticker'] as String;
                       final name = option['name'] as String;
-                      return ListTile(
-                        title: Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      return AnimatedHoverItem(
                         onTap: () => _selectTicker(ticker),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const SizedBox(height: 4),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),

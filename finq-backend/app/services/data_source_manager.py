@@ -20,6 +20,7 @@ from app.config import settings
 from app.services.fred_service import get_multiple_fred_series
 from app.services.sec_service import (
     load_cik_ticker_map,
+    lookup_cik_online,
     get_company_filings,
     get_latest_10k_filing_info,
     get_latest_10q_filing_info,
@@ -94,6 +95,35 @@ class DataSourceManager:
             self.cache.clear()
             logger.info("Cleared all cache entries")
     
+    def _resolve_cik(self, ticker: str) -> Optional[str]:
+        """
+        Resolve a ticker to its CIK number.
+        First tries the local CIK map, then falls back to online SEC EDGAR lookup.
+        
+        Args:
+            ticker: Stock ticker symbol
+        
+        Returns:
+            CIK number as a zero-padded 10-digit string, or None if not found
+        """
+        # Try local CIK map first
+        if not self.cik_df.empty:
+            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
+            if not company_info.empty:
+                cik = company_info.iloc[0]['cik']
+                logger.info(f"Resolved CIK {cik} for {ticker} from local map")
+                return cik
+        
+        # Fallback to online lookup
+        logger.info(f"Local CIK map empty or ticker {ticker} not found, trying online lookup...")
+        cik = lookup_cik_online(ticker)
+        if cik:
+            logger.info(f"Resolved CIK {cik} for {ticker} from SEC EDGAR API")
+            return cik
+        
+        logger.warning(f"Could not resolve CIK for ticker {ticker} from any source")
+        return None
+    
     async def get_yahoo_finance_data(self, ticker: str, period: str = "1y") -> Dict[str, Any]:
         """
         Fetch comprehensive data from Yahoo Finance
@@ -122,7 +152,18 @@ class DataSourceManager:
             earnings_data = []
             if earnings_dates is not None and not earnings_dates.empty:
                 earnings_dates_reset = earnings_dates.reset_index()
-                earnings_data = earnings_dates_reset.to_dict('records')
+                raw_records = earnings_dates_reset.to_dict('records')
+                # Convert Timestamp objects to ISO strings for JSON serialization
+                for record in raw_records:
+                    clean_record = {}
+                    for k, v in record.items():
+                        if hasattr(v, 'isoformat'):
+                            clean_record[k] = v.isoformat()
+                        elif pd.isna(v) if isinstance(v, (float, type(None))) else False:
+                            clean_record[k] = None
+                        else:
+                            clean_record[k] = v
+                    earnings_data.append(clean_record)
             
             # Convert history_df to records with Date field
             history_records = []
@@ -211,16 +252,10 @@ class DataSourceManager:
             return self.cache[cache_key]
         
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}. CIK map may not be loaded.")
-                return {'filings': {}, 'ticker': ticker, 'error': 'CIK map not available'}
+            cik = self._resolve_cik(ticker)
+            if not cik:
+                return {'filings': {}, 'ticker': ticker, 'error': f'Could not resolve CIK for {ticker}'}
             
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}. Available tickers: {self.cik_df['ticker'].head(10).tolist() if not self.cik_df.empty else 'none'}")
-                return {'filings': {}, 'ticker': ticker, 'error': f'Ticker {ticker} not found in CIK map'}
-            
-            cik = company_info.iloc[0]['cik']
             logger.info(f"Found CIK {cik} for ticker {ticker}")
             
             filings_df = get_company_filings(cik)
@@ -364,16 +399,9 @@ class DataSourceManager:
             return self.cache[cache_key]
 
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}")
+            cik = self._resolve_cik(ticker)
+            if not cik:
                 return {}
-            
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}")
-                return {}
-            
-            cik = company_info.iloc[0]['cik']
             filings_df = get_company_filings(cik)
             if filings_df.empty:
                 logger.warning(f"No recent filings found for {ticker}")
@@ -422,16 +450,9 @@ class DataSourceManager:
             return self.cache[cache_key]
 
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}")
+            cik = self._resolve_cik(ticker)
+            if not cik:
                 return {}
-            
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}")
-                return {}
-            
-            cik = company_info.iloc[0]['cik']
             filings_df = get_company_filings(cik)
             if filings_df.empty:
                 logger.warning(f"No recent filings found for {ticker}")

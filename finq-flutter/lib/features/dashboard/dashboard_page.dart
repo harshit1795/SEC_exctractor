@@ -93,7 +93,7 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
   }
 }
 
-class _DashboardContent extends StatelessWidget {
+class _DashboardContent extends StatefulWidget {
   const _DashboardContent({
     required this.tickers,
     required this.period,
@@ -128,92 +128,113 @@ class _DashboardContent extends StatelessWidget {
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final primaryTicker = tickers.isNotEmpty ? tickers.first : '';
-    final isMulti = tickers.length > 1;
+  State<_DashboardContent> createState() => _DashboardContentState();
+}
 
-    return DefaultTabController(
-      length: _tabs.length,
-      initialIndex: 0, // Default to Trend Analysis
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TabBar(
-            isScrollable: true,
-            labelColor: Colors.green.shade700,
-            unselectedLabelColor: Colors.grey.shade600,
-            indicatorColor: Colors.green.shade500,
-            labelStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-            ),
-            unselectedLabelStyle: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.normal,
-            ),
-            tabs: _tabs.map((tab) => Tab(text: tab.$2)).toList(),
+class _DashboardContentState extends State<_DashboardContent> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: _DashboardContent._tabs.length, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primaryTicker = widget.tickers.isNotEmpty ? widget.tickers.first : '';
+    final isMulti = widget.tickers.length > 1;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          labelColor: Colors.green.shade700,
+          unselectedLabelColor: Colors.grey.shade600,
+          indicatorColor: Colors.green.shade500,
+          labelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
           ),
-          const SizedBox(height: 12),
-          // Show warning for single-ticker only tabs
-          if (isMulti)
-             Container(
-                 width: double.infinity,
-                 padding: const EdgeInsets.all(8),
-                 margin: const EdgeInsets.only(bottom: 8),
-                 color: Colors.orange.shade50,
-                 child: Row(
-                     children: [
-                         Icon(Icons.info_outline, size: 16, color: Colors.orange.shade800),
-                         const SizedBox(width: 8),
-                         Expanded(
-                             child: Text(
-                                 'Comparison mode active. Some tabs only show data for $primaryTicker.',
-                                 style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
-                             ),
-                         ),
-                     ],
-                 ),
-             ),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final availableHeight = MediaQuery.of(context).size.height - 300;
-              final tabHeight = availableHeight.clamp(400.0, 1200.0); // Increased max height
-              
-              return SizedBox(
-                height: tabHeight,
-                child: TabBarView(
-                  children: [
-                    TrendTab(
-                      ticker: primaryTicker,
-                      category: category,
-                    ),
-                    SnapshotTab(
-                      ticker: primaryTicker,
-                      category: category,
-                    ),
-                    EarningsTab(ticker: primaryTicker),
-                    PriceChartTab(
-                      period: period,
-                      periods: periods,
-                      onPeriodChanged: onPeriodChanged,
-                      onSubmit: onSubmit,
-                      tickerData: tickerData,
-                      fundamentals: fundamentals,
-                    ),
-                    DisclosuresTab(ticker: primaryTicker),
-                    const MacroeconomicTab(),
-                    FinQ360Tab(
-                      ticker: primaryTicker,
-                      category: category,
-                    ),
-                    FinQChatTab(ticker: primaryTicker),
-                  ],
-                ),
-              );
-            },
+          unselectedLabelStyle: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.normal,
           ),
-        ],
-      ),
+          onTap: (index) {
+            // Explicitly force animation on tap to ensure web compatibility
+            _tabController.animateTo(index);
+          },
+          tabs: _DashboardContent._tabs.map((tab) => Tab(text: tab.$2)).toList(),
+        ),
+        const SizedBox(height: 12),
+        if (isMulti)
+           Container(
+               width: double.infinity,
+               padding: const EdgeInsets.all(8),
+               margin: const EdgeInsets.only(bottom: 8),
+               color: Colors.orange.shade50,
+               child: Row(
+                   children: [
+                       Icon(Icons.info_outline, size: 16, color: Colors.orange.shade800),
+                       const SizedBox(width: 8),
+                       Expanded(
+                           child: Text(
+                               'Comparison mode active. Some tabs only show data for $primaryTicker.',
+                               style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+                           ),
+                       ),
+                   ],
+               ),
+           ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final availableHeight = MediaQuery.of(context).size.height - 300;
+            final tabHeight = availableHeight.clamp(400.0, 1200.0);
+            
+            return SizedBox(
+              height: tabHeight,
+              child: TabBarView(
+                controller: _tabController,
+                physics: const NeverScrollableScrollPhysics(), // Prevent horizontal swipe from eating taps
+                children: [
+                  TrendTab(
+                    ticker: primaryTicker,
+                    category: widget.category,
+                  ),
+                  SnapshotTab(
+                    ticker: primaryTicker,
+                    category: widget.category,
+                  ),
+                  EarningsTab(ticker: primaryTicker),
+                  PriceChartTab(
+                    period: widget.period,
+                    periods: widget.periods,
+                    onPeriodChanged: widget.onPeriodChanged,
+                    onSubmit: widget.onSubmit,
+                    tickerData: widget.tickerData,
+                    fundamentals: widget.fundamentals,
+                  ),
+                  DisclosuresTab(ticker: primaryTicker),
+                  const MacroeconomicTab(),
+                  FinQ360Tab(
+                    ticker: primaryTicker,
+                    category: widget.category,
+                  ),
+                  FinQChatTab(ticker: primaryTicker),
+                ],
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }

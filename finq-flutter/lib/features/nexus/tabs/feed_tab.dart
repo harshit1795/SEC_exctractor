@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../auth/auth_providers.dart';
 
 class FeedTab extends ConsumerStatefulWidget {
@@ -134,8 +135,10 @@ class _FeedTabState extends ConsumerState<FeedTab> {
               final posts = data['posts'] as List? ?? [];
               
               if (posts.isEmpty) {
-                return const Center(
-                  child: Text('No posts yet. Be the first to share!'),
+                return const EmptyState(
+                  icon: Icons.speaker_notes_off,
+                  title: 'Nothing to see here',
+                  message: 'No posts yet. Be the first to share your insights!',
                 );
               }
 

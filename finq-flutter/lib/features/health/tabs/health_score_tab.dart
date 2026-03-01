@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/health_providers.dart';
 import '../../../services/html_export_service.dart';
+import '../../../core/widgets/shimmer_loading.dart';
 
 class HealthScoreTab extends ConsumerStatefulWidget {
   const HealthScoreTab({super.key});
@@ -253,8 +254,8 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                 );
               },
               loading: () => const Padding(
-                padding: EdgeInsets.all(48),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.all(16),
+                child: ShimmerList(itemCount: 8),
               ),
               error: (err, st) => Padding(
                 padding: const EdgeInsets.all(32),

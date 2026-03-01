@@ -2,6 +2,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/widgets/animated_hover_item.dart';
 import '../dashboard_providers.dart';
 
 class TickerSearchAutocomplete extends ConsumerStatefulWidget {
@@ -58,6 +59,16 @@ class _TickerSearchAutocompleteState extends ConsumerState<TickerSearchAutocompl
     }
   }
 
+  void _onSubmitted(String query) {
+    if (query.isEmpty) return;
+    if (_options.isNotEmpty) {
+      final firstOption = _options.first;
+      _selectTicker(firstOption['ticker'] as String);
+    } else {
+      _selectTicker(query.toUpperCase());
+    }
+  }
+
   void _selectTicker(String ticker) {
     ref.read(selectedTickersProvider.notifier).addTicker(ticker);
     _controller.clear();
@@ -99,6 +110,7 @@ class _TickerSearchAutocompleteState extends ConsumerState<TickerSearchAutocompl
                         contentPadding: EdgeInsets.symmetric(vertical: 14),
                       ),
                       onChanged: _onSearchChanged,
+                      onSubmitted: _onSubmitted,
                     ),
                   ),
                   if (_isLoading)
@@ -126,10 +138,22 @@ class _TickerSearchAutocompleteState extends ConsumerState<TickerSearchAutocompl
                       final option = _options[index];
                       final ticker = option['ticker'] as String;
                       final name = option['name'] as String;
-                      return ListTile(
-                        title: Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      return AnimatedHoverItem(
                         onTap: () => _selectTicker(ticker),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            const SizedBox(height: 4),
+                            Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                            ),
+                          ],
+                        ),
                       );
                     },
                   ),

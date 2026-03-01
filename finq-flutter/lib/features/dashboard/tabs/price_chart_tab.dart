@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../price_chart.dart';
 import '../widgets/floating_filter_panel.dart';
+import '../../../core/widgets/shimmer_loading.dart';
 
 class PriceChartTab extends StatefulWidget {
   const PriceChartTab({
@@ -181,7 +182,7 @@ class _PriceChartTabState extends State<PriceChartTab> {
           showRSI: _showRSI,
         );
       },
-      loading: () => const SizedBox(height: 300, child: Center(child: CircularProgressIndicator())),
+      loading: () => const ShimmerChart(height: 300),
       error: (e, s) => SizedBox(height: 300, child: Center(child: Text('Error: $e'))),
     );
   }

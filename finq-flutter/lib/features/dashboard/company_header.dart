@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/html_export_service.dart';
+import '../../core/widgets/shimmer_loading.dart';
 
 import 'dashboard_providers.dart';
 
@@ -297,16 +298,25 @@ class CompanyHeader extends ConsumerWidget {
       child: const Padding(
         padding: EdgeInsets.all(16),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            SizedBox(width: 12),
-            Text(
-              'Loading company info...',
-              style: TextStyle(fontSize: 14, color: Colors.black54),
+            ShimmerLoading(width: 80, height: 80, borderRadius: 12),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ShimmerLoading(width: 250, height: 24),
+                  SizedBox(height: 12),
+                  Row(
+                    children: [
+                      ShimmerLoading(width: 80, height: 20),
+                      SizedBox(width: 8),
+                      ShimmerLoading(width: 100, height: 20),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ],
         ),

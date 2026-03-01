@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/di/providers.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../auth/auth_providers.dart';
 
 class FriendsTab extends ConsumerWidget {
@@ -41,26 +42,10 @@ class FriendsTab extends ConsumerWidget {
                     final friendsList = data['friends'] as List? ?? [];
                     
                     if (friendsList.isEmpty) {
-                      return const Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.people_outline, size: 64, color: Colors.grey),
-                            SizedBox(height: 16),
-                            Text(
-                              'No friends yet',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.grey,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Visit the Directory to find people',
-                              style: TextStyle(color: Colors.grey),
-                            ),
-                          ],
-                        ),
+                      return const EmptyState(
+                        icon: Icons.people_outline,
+                        title: 'No friends yet',
+                        message: 'Visit the Directory to connect with other investors.',
                       );
                     }
 
@@ -119,8 +104,10 @@ class FriendsTab extends ConsumerWidget {
                     final requestsList = data['requests'] as List? ?? [];
                     
                     if (requestsList.isEmpty) {
-                      return const Center(
-                        child: Text('No friend requests'),
+                      return const EmptyState(
+                        icon: Icons.person_add_disabled,
+                        title: 'No Pending Requests',
+                        message: 'You have no pending friend requests at this time.',
                       );
                     }
 

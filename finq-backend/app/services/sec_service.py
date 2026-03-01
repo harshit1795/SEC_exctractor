@@ -74,6 +74,36 @@ def load_cik_ticker_map(cik_map_path: str = "../company_tickers.json") -> pd.Dat
         return pd.DataFrame()
 
 
+def lookup_cik_online(ticker: str) -> Optional[str]:
+    """
+    Look up a company's CIK number directly from SEC EDGAR API.
+    This serves as a fallback when the local CIK map file is unavailable.
+    
+    Args:
+        ticker: Stock ticker symbol (e.g., 'META', 'AAPL')
+    
+    Returns:
+        CIK number as a zero-padded 10-digit string, or None if not found
+    """
+    try:
+        url = "https://www.sec.gov/files/company_tickers.json"
+        response = requests.get(url, headers=SEC_HEADERS, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        # data is {0: {cik_str: ..., ticker: ..., title: ...}, 1: {...}, ...}
+        for entry in data.values():
+            if entry.get('ticker', '').upper() == ticker.upper():
+                cik = str(entry.get('cik_str', ''))
+                return cik.zfill(10)
+        
+        logger.warning(f"Ticker {ticker} not found in SEC EDGAR company_tickers.json")
+        return None
+    except Exception as e:
+        logger.error(f"Error looking up CIK online for {ticker}: {e}")
+        return None
+
+
 def get_company_filings(cik: str) -> pd.DataFrame:
     """Fetches a company's recent filing history from SEC EDGAR API."""
     url = f"https://data.sec.gov/submissions/CIK{cik}.json"

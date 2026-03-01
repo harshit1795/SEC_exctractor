@@ -711,7 +711,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
 
   _EarningsData _parseTickerData(Map<String, dynamic> data) {
     if (data.containsKey('tickers') && data['data'] is Map) {
-         // Multi-ticker
+         // Multi-ticker response: {tickers: [...], data: {TICKER: {data: {...}}, ...}}
          final tickers = (data['tickers'] as List).cast<String>();
          final rawDataMap = data['data'] as Map<String, dynamic>;
          
@@ -720,7 +720,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
          for (final ticker in tickers) {
               final singleData = rawDataMap[ticker];
               if (singleData != null) {
-                  tickerData[ticker] = _parseSingleEarningsData(singleData);
+                  tickerData[ticker] = _parseSingleEarningsData(_unwrapData(singleData));
               } else {
                   tickerData[ticker] = [];
               }
@@ -728,14 +728,37 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
          
          return _EarningsData(tickers: tickers, tickerData: tickerData);
     } else {
-        // Single
+        // Single ticker response: {ticker: "META", period: "1y", data: {earnings_dates: [...]}}
         final ticker = data['ticker'] as String? ?? 'Stock';
-        final earnings = _parseSingleEarningsData(data);
+        final earnings = _parseSingleEarningsData(_unwrapData(data));
         return _EarningsData(
             tickers: [ticker], 
             tickerData: {ticker: earnings}
         );
     }
+  }
+
+  /// Unwrap the nested 'data' field from the API response.
+  /// The API returns {ticker, period, data: {info, financials, earnings_dates, ...}}
+  /// but we need the inner 'data' map for parsing.
+  Map<String, dynamic> _unwrapData(dynamic data) {
+    if (data is Map<String, dynamic>) {
+      // If the response has a nested 'data' field containing the actual financial data
+      final nested = data['data'];
+      if (nested is Map<String, dynamic> && nested.containsKey('earnings_dates')) {
+        return nested;
+      }
+      // Also check if earnings_dates exists at top level (direct data format)
+      if (data.containsKey('earnings_dates')) {
+        return data;
+      }
+      // Fallback: try to use the nested 'data' field anyway
+      if (nested is Map<String, dynamic>) {
+        return nested;
+      }
+      return data;
+    }
+    return {};
   }
 
   List<_EarningsDataPoint> _parseSingleEarningsData(Map<String, dynamic> data) {
@@ -769,6 +792,12 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
         date = DateTime.tryParse(dateValue);
       } else if (dateValue is DateTime) {
         date = dateValue;
+      } else if (dateValue is int) {
+        // Handle epoch milliseconds from pandas Timestamp serialization
+        date = DateTime.fromMillisecondsSinceEpoch(dateValue);
+      } else if (dateValue is double) {
+        // Handle epoch milliseconds as double
+        date = DateTime.fromMillisecondsSinceEpoch(dateValue.toInt());
       }
 
       if (date == null) continue;
