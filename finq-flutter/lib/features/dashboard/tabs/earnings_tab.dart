@@ -781,7 +781,9 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
         item['Surprise(%)'] ?? item['surprise'] ?? item['Surprise'],
       );
 
-      if (reportedEPS == null || estimatedEPS == null) continue;
+      // Skip only if BOTH are null (no EPS data at all)
+      // Items with only one value populated (e.g., future estimates) are still useful
+      if (reportedEPS == null && estimatedEPS == null) continue;
 
       final dateValue =
           item['Earnings Date'] ?? item['EarningsDate'] ?? item['earningsDate'] ?? item['date'] ?? item['Date'];
@@ -804,8 +806,8 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
 
       parsed.add(_EarningsDataPoint(
         date: date,
-        reportedEPS: reportedEPS,
-        estimatedEPS: estimatedEPS,
+        reportedEPS: reportedEPS ?? 0.0,
+        estimatedEPS: estimatedEPS ?? 0.0,
         surprise: surprise,
       ));
     }
