@@ -1,6 +1,8 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config/app_config.dart';
@@ -68,7 +70,56 @@ class _DashboardPageState extends ConsumerState<DashboardPage> {
           children: [
             // Filter Widget at the top
             const DashboardFilters(),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
+            // Share / copy-link row
+            Align(
+              alignment: Alignment.centerRight,
+              child: Tooltip(
+                message: 'Copy shareable link to clipboard',
+                child: TextButton.icon(
+                  icon: const Icon(Icons.link, size: 16),
+                  label: const Text('Copy Link', style: TextStyle(fontSize: 12)),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 4),
+                    visualDensity: VisualDensity.compact,
+                    foregroundColor:
+                        Theme.of(context).colorScheme.primary,
+                  ),
+                  onPressed: () {
+                    final period = ref.read(periodProvider);
+                    final tickers = ref.read(selectedTickersProvider);
+                    final tickerStr = tickers.join(',');
+                    String url;
+                    if (kIsWeb) {
+                      // Build URL based on current web origin
+                      final base = Uri.base;
+                      final origin =
+                          '${base.scheme}://${base.host}${base.port != 0 && base.port != 80 && base.port != 443 ? ':${base.port}' : ''}';
+                      url = tickers.length == 1
+                          ? '$origin/#/?ticker=${tickers.first}&period=$period'
+                          : '$origin/#/?tickers=$tickerStr&period=$period';
+                    } else {
+                      url = tickers.length == 1
+                          ? 'https://finq-web.web.app/#/?ticker=${tickers.first}&period=$period'
+                          : 'https://finq-web.web.app/#/?tickers=$tickerStr&period=$period';
+                    }
+                    Clipboard.setData(ClipboardData(text: url));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Link copied: $url'),
+                        duration: const Duration(seconds: 3),
+                        action: SnackBarAction(
+                          label: 'Dismiss',
+                          onPressed: () {},
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
             
             CompanyHeader(tickerData: tickerData),
             const SizedBox(height: 12),

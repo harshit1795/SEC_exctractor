@@ -60,15 +60,74 @@ class _PreferencesSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final currentTheme = ref.watch(themeProvider);
-    
+    final currentMode = ref.watch(themeModeProvider);
+
     return Card(
       child: Column(
         children: [
           _ConnectionSettingsTile(),
           const Divider(height: 1),
+          // --- Dark Mode Toggle ---
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Icon(
+                  currentMode == ThemeMode.dark
+                      ? Icons.dark_mode
+                      : currentMode == ThemeMode.light
+                          ? Icons.light_mode
+                          : Icons.brightness_auto,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Appearance',
+                          style: TextStyle(fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 6),
+                      SegmentedButton<ThemeMode>(
+                        segments: const [
+                          ButtonSegment(
+                            value: ThemeMode.light,
+                            icon: Icon(Icons.light_mode, size: 16),
+                            label: Text('Light'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.system,
+                            icon: Icon(Icons.brightness_auto, size: 16),
+                            label: Text('System'),
+                          ),
+                          ButtonSegment(
+                            value: ThemeMode.dark,
+                            icon: Icon(Icons.dark_mode, size: 16),
+                            label: Text('Dark'),
+                          ),
+                        ],
+                        selected: {currentMode},
+                        onSelectionChanged: (modes) {
+                          ref
+                              .read(themeModeProvider.notifier)
+                              .setMode(modes.first);
+                        },
+                        showSelectedIcon: false,
+                        style: SegmentedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
           ListTile(
             leading: const Icon(Icons.palette),
-            title: const Text('Theme'),
+            title: const Text('Color Theme'),
             subtitle: Text(ThemeNotifier.getThemeName(currentTheme)),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showThemeSelector(context, ref),

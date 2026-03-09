@@ -12,7 +12,8 @@ class FinqApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     final themeScheme = ref.watch(themeProvider);
-    
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp.router(
       title: 'FinQ',
       debugShowCheckedModeBanner: false,
@@ -40,7 +41,7 @@ class FinqApp extends ConsumerWidget {
         visualDensity: FlexColorScheme.comfortablePlatformDensity,
         useMaterial3: true,
       ),
-      themeMode: ThemeMode.light,
+      themeMode: themeMode,
       routerConfig: router,
     );
   }

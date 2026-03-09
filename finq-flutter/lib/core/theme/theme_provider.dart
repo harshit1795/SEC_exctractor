@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,4 +51,37 @@ class ThemeNotifier extends StateNotifier<FlexScheme> {
 final themeProvider = StateNotifierProvider<ThemeNotifier, FlexScheme>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
   return ThemeNotifier(prefs);
+});
+
+/// Manages the app's light/dark/system mode with persistence
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier(this._prefs) : super(_load(_prefs));
+
+  final SharedPreferences _prefs;
+  static const _key = 'theme_mode';
+
+  static ThemeMode _load(SharedPreferences prefs) {
+    switch (prefs.getString(_key)) {
+      case 'dark': return ThemeMode.dark;
+      case 'light': return ThemeMode.light;
+      default: return ThemeMode.system;
+    }
+  }
+
+  Future<void> setMode(ThemeMode mode) async {
+    String value;
+    switch (mode) {
+      case ThemeMode.dark: value = 'dark'; break;
+      case ThemeMode.light: value = 'light'; break;
+      default: value = 'system';
+    }
+    await _prefs.setString(_key, value);
+    state = mode;
+  }
+}
+
+/// Provider for the current theme mode (light/dark/system)
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return ThemeModeNotifier(prefs);
 });
