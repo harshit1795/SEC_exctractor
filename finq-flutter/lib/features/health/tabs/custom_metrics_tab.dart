@@ -214,9 +214,23 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                             onChanged: (value) {
                               setState(() {
                                 _selectedMetrics[entry.key] = value;
-                                _shouldCalculate = false;
-                                _reportText = null;
                               });
+                            },
+                            onChangeEnd: (value) {
+                              final totalW = _selectedMetrics.values.fold(0.0, (s, v) => s + v);
+                              final isValid = (totalW - 1.0).abs() < 0.01;
+                              if (isValid && _selectedTicker.isNotEmpty) {
+                                setState(() {
+                                  ref.invalidate(customHealthScoreProvider(queryParams));
+                                  _shouldCalculate = true;
+                                  _reportText = null;
+                                });
+                              } else {
+                                setState(() {
+                                  _shouldCalculate = false;
+                                  _reportText = null;
+                                });
+                              }
                             },
                           ),
                         ],
