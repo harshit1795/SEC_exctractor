@@ -383,11 +383,28 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                                       children: [
                                         Text(metric, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                                        Text('${(metricScore * 100).toStringAsFixed(0)}%',
-                                            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _getScoreColor(metricScore))),
+                                        Row(
+                                          children: [
+                                            if (score.rawMetrics.containsKey(metric) && score.rawMetrics[metric] != null)
+                                              Text(
+                                                _formatRawMetric(metric, score.rawMetrics[metric]!),
+                                                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                              ),
+                                            const SizedBox(width: 8),
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              decoration: BoxDecoration(
+                                                color: _getScoreColor(metricScore).withOpacity(0.1),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text('Rank: ${(metricScore * 100).toStringAsFixed(0)}%',
+                                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _getScoreColor(metricScore))),
+                                            ),
+                                          ],
+                                        ),
                                       ],
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(height: 6),
                                     LinearProgressIndicator(
                                       value: metricScore.clamp(0.0, 1.0),
                                       backgroundColor: Colors.grey.shade200,
@@ -544,16 +561,27 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   }
 
   Color _getScoreColor(double score) {
-    if (score >= 0.8) return Colors.green;
-    if (score >= 0.6) return Colors.lightGreen;
-    if (score >= 0.4) return Colors.orange;
+    if (score >= 0.7) return Colors.green;
+    if (score >= 0.4) return Colors.amber.shade600;
     return Colors.red;
   }
 
   String _getScoreLabel(double score) {
-    if (score >= 0.8) return 'EXCELLENT';
-    if (score >= 0.6) return 'GOOD';
-    if (score >= 0.4) return 'AVERAGE';
-    return 'AT RISK';
+    if (score >= 0.7) return 'Strong';
+    if (score >= 0.4) return 'Moderate';
+    return 'Weak';
+  }
+
+  String _formatRawMetric(String metricName, double value) {
+    // Determine if the metric is naturally a percentage or a raw ratio based on its name.
+    final lowerName = metricName.toLowerCase();
+    if (lowerName.contains('margin') ||
+        lowerName.contains('growth') ||
+        lowerName.contains('roe') ||
+        lowerName.contains('roa')) {
+      return '${(value * 100).toStringAsFixed(2)}%';
+    }
+    // E.g., Debt/Equity, Current Ratio
+    return value.toStringAsFixed(2);
   }
 }
