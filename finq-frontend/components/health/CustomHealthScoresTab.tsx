@@ -19,14 +19,29 @@ const CATEGORIES = [
   'Other',
 ];
 
+// Metrics that the backend computes as derived ratios (plus any raw parquet column falls through)
+const DERIVED_METRIC_OPTIONS = [
+  'Revenue Growth',
+  'Net Margin',
+  'FCF Margin',
+  'Debt to Equity',
+  'ROA',
+  'ROE',
+  'Current Ratio',
+  'Quick Ratio',
+  'P/E Ratio',
+];
+
 export function CustomHealthScoresTab() {
   const { user } = useAuth();
   const [selectedMetrics, setSelectedMetrics] = useState<string[]>([]);
+  // Weights stored per metric name, default 50 (slider value 0-100)
+  const [metricWeights, setMetricWeights] = useState<Record<string, number>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('Technology');
-  
-  // Get available metrics from fundamentals data (use first available ticker as sample)
+
+  // Get available raw metrics from fundamentals data
   const { data: sampleFundamentals } = useFundamentals('AAPL');
-  const availableMetrics = useMemo(() => {
+  const rawFundamentalsMetrics = useMemo(() => {
     const dataArray = sampleFundamentals?.data?.data || sampleFundamentals?.data || [];
     if (!Array.isArray(dataArray)) return [];
     const metrics = new Set<string>();
@@ -36,6 +51,12 @@ export function CustomHealthScoresTab() {
     });
     return Array.from(metrics).sort();
   }, [sampleFundamentals]);
+
+  // Combine derived + raw metrics (deduplicated)
+  const availableMetrics = useMemo(() => {
+    const combined = new Set([...DERIVED_METRIC_OPTIONS, ...rawFundamentalsMetrics]);
+    return Array.from(combined).sort();
+  }, [rawFundamentalsMetrics]);
 
   // Load saved preferences
   useEffect(() => {
@@ -51,14 +72,52 @@ export function CustomHealthScoresTab() {
           // Ignore parse errors
         }
       }
+      const savedWeights = localStorage.getItem(`health_weights_${user.uid}`);
+      if (savedWeights) {
+        try {
+          const parsed = JSON.parse(savedWeights);
+          if (parsed && typeof parsed === 'object') {
+            setMetricWeights(parsed);
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
     }
   }, [user?.uid]);
 
-  const { data, isLoading, error } = useCustomHealthScores(selectedMetrics, 10);
+  // Initialise weights for any newly selected metric to 50
+  useEffect(() => {
+    setMetricWeights((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      selectedMetrics.forEach((m) => {
+        if (next[m] === undefined) {
+          next[m] = 50;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedMetrics]);
+
+  // Normalised weights (sum to 1)
+  const normalisedWeights = useMemo(() => {
+    const total = selectedMetrics.reduce((sum, m) => sum + (metricWeights[m] ?? 50), 0);
+    if (total === 0) return selectedMetrics.map(() => 1 / selectedMetrics.length);
+    return selectedMetrics.map((m) => (metricWeights[m] ?? 50) / total);
+  }, [selectedMetrics, metricWeights]);
+
+  const { data, isLoading, error } = useCustomHealthScores(
+    selectedMetrics,
+    normalisedWeights,
+    10,
+  );
 
   const handleSavePreferences = () => {
     if (user?.uid && selectedMetrics.length > 0) {
       localStorage.setItem(`health_metrics_${user.uid}`, JSON.stringify(selectedMetrics));
+      localStorage.setItem(`health_weights_${user.uid}`, JSON.stringify(metricWeights));
       alert('Preferences saved!');
     }
   };
@@ -78,7 +137,7 @@ export function CustomHealthScoresTab() {
       <Card>
         <div className="mb-6">
           <h3 className="text-lg font-semibold mb-4">Your Selections</h3>
-          
+
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Select your preferred metrics for health score calculation:
@@ -90,6 +149,47 @@ export function CustomHealthScoresTab() {
               placeholder="Search and select metrics..."
             />
           </div>
+
+          {/* Weight sliders */}
+          {selectedMetrics.length > 0 && (
+            <div className="mb-4 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                Metric Weights
+                <span className="ml-2 text-xs font-normal text-gray-500">
+                  (adjust importance of each metric — different weights produce different rankings)
+                </span>
+              </h4>
+              <div className="space-y-3">
+                {selectedMetrics.map((metric, idx) => {
+                  const sliderVal = metricWeights[metric] ?? 50;
+                  const pct = (normalisedWeights[idx] * 100).toFixed(1);
+                  return (
+                    <div key={metric} className="flex items-center gap-3">
+                      <span className="w-40 text-sm text-gray-700 truncate" title={metric}>
+                        {metric}
+                      </span>
+                      <input
+                        type="range"
+                        min={0}
+                        max={100}
+                        value={sliderVal}
+                        onChange={(e) =>
+                          setMetricWeights((prev) => ({
+                            ...prev,
+                            [metric]: parseInt(e.target.value),
+                          }))
+                        }
+                        className="flex-1 accent-blue-600"
+                      />
+                      <span className="w-16 text-right text-sm font-medium text-blue-700">
+                        {pct}%
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <button
             onClick={handleSavePreferences}
@@ -106,7 +206,9 @@ export function CustomHealthScoresTab() {
               <p className="text-sm text-gray-700 mb-2">
                 <strong>Custom Health Score Formula:</strong>{' '}
                 <code className="bg-white px-2 py-1 rounded">
-                  ({selectedMetrics.map(m => `\`${m}_score\``).join(' + ')}) / {selectedMetrics.length}
+                  {selectedMetrics
+                    .map((m, i) => `${(normalisedWeights[i] * 100).toFixed(0)}% × \`${m}_score\``)
+                    .join(' + ')}
                 </code>
               </p>
               <details className="mt-2">
@@ -115,13 +217,13 @@ export function CustomHealthScoresTab() {
                 </summary>
                 <div className="mt-2 text-sm text-gray-700">
                   <p>
-                    Each selected metric is converted into a score between 0 and 1 using percentile ranking. 
-                    A higher percentile rank indicates a better score.
+                    Each selected metric is converted into a score between 0 and 1 using percentile
+                    ranking across all companies. A higher percentile rank indicates a better score.
                   </p>
                   <p className="mt-2">
-                    <strong>Note:</strong> For simplicity, this calculation assumes that a higher value for each selected metric is always better. 
-                    If you select metrics where a lower value is preferable (e.g., Debt-to-Equity Ratio), 
-                    you may need to manually invert its contribution to the overall score for accurate results.
+                    <strong>Note:</strong> For metrics where a lower value is preferable (e.g.,{' '}
+                    Debt-to-Equity, P/E Ratio), the backend automatically inverts the percentile
+                    rank so a higher score still means better financial health.
                   </p>
                 </div>
               </details>
@@ -192,13 +294,12 @@ export function CustomHealthScoresTab() {
                               <div className="flex-1">
                                 <div className="w-full bg-gray-200 rounded-full h-2.5">
                                   <div
-                                    className={`h-2.5 rounded-full ${
-                                      (score.healthScore || 0) >= 0.7
+                                    className={`h-2.5 rounded-full ${(score.healthScore || 0) >= 0.7
                                         ? 'bg-green-600'
                                         : (score.healthScore || 0) >= 0.5
-                                        ? 'bg-yellow-500'
-                                        : 'bg-red-600'
-                                    }`}
+                                          ? 'bg-yellow-500'
+                                          : 'bg-red-600'
+                                      }`}
                                     style={{ width: `${((score.healthScore || 0) * 100)}%` }}
                                   />
                                 </div>
@@ -234,4 +335,3 @@ export function CustomHealthScoresTab() {
     </div>
   );
 }
-

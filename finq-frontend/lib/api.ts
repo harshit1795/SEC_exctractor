@@ -73,12 +73,20 @@ export const api = {
     apiClient.get(`/financial/fundamentals/${ticker}`),
   getAvailableTickers: () =>
     apiClient.get('/financial/tickers/available'),
-  
+
   // Health Scores
   getFinqHealthScores: (category?: string, limit?: number) =>
     apiClient.get('/health-scores/finq', { params: { category, limit } }),
-  getCustomHealthScores: (metrics: string[], limit?: number) =>
-    apiClient.get('/health-scores/custom', { params: { metrics: metrics.join(','), limit } }),
+  getCustomHealthScores: (metrics: string[], weights?: number[], limit?: number) =>
+    apiClient.get('/health-scores/custom', {
+      params: {
+        metrics: metrics.join(','),
+        weights: weights && weights.length > 0 ? weights.join(',') : undefined,
+        limit,
+      },
+    }),
+  generateHealthReport: (payload: any) =>
+    apiClient.post('/health-scores/report', payload),
 
   // Chat
   analyzeFinancialData: (data: {

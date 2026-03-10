@@ -1,0 +1,11 @@
+{
+    "API_BASE_URL": "https://sec-exctractor-h23x.onrender.com/api",
+    "FIREBASE_API_KEY": "AIzaSyAIDrul0LRFaZx_1cax3KKdOsyVwicTouM",
+    "FIREBASE_AUTH_DOMAIN": "finq-web.firebaseapp.com",
+    "FIREBASE_PROJECT_ID": "finq-web",
+    "FIREBASE_STORAGE_BUCKET": "finq-web.firebasestorage.app",
+    "FIREBASE_MESSAGING_SENDER_ID": "1018449310993",
+    "FIREBASE_APP_ID": "1:1018449310993:web:03c139a5aa0c2adab808b0",
+    "FIREBASE_MEASUREMENT_ID": "G-BSY4P4TMXD",
+    "API_NINJA_KEY": "livTDbNkoOMN7yeNkNIhNA==4OpEMBaOVHwqOn8g"
+}

@@ -1,0 +1,34 @@
+# Dart/Flutter tool artifacts
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+.pub/
+build/
+
+# IDE/editor files
+.idea/
+.vscode/
+*.iml
+
+# Platform build outputs
+android/.gradle/
+android/local.properties
+android/key.properties
+ios/Pods/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/.symlinks/
+macos/Flutter/ephemeral/
+web/.dart_tool/
+
+# OS files
+.DS_Store
+
+# Local env files
+.env
+.env.*
+.dart-define.json

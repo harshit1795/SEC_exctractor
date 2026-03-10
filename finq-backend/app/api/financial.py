@@ -11,8 +11,11 @@ from app.schemas.financial import (
     MultipleTickersResponse,
     FredDataResponse,
     SecFilingResponse,
+    SecFilingResponse,
     SecSectionResponse,
-    FundamentalsResponse
+    FundamentalsResponse,
+    TickerSearchResponse,
+    TickerSearchResult
 )
 import pandas as pd
 import logging
@@ -63,7 +66,17 @@ async def get_ticker_data(
     """
     try:
         manager = get_data_source_manager()
-        data = await manager.get_yahoo_finance_data(ticker.upper(), period)
+        
+        # Map frontend period strings to Yahoo Finance compatible strings
+        yf_period = period
+        if period == "1m":
+            yf_period = "1mo"
+        elif period == "3m":
+            yf_period = "3mo"
+        elif period == "6m":
+            yf_period = "6mo"
+            
+        data = await manager.get_yahoo_finance_data(ticker.upper(), yf_period)
         
         if not data:
             raise HTTPException(
@@ -117,9 +130,18 @@ async def get_multiple_tickers(
         manager = get_data_source_manager()
         results = {}
         
+        # Map frontend period strings to Yahoo Finance compatible strings
+        yf_period = period
+        if period == "1m":
+            yf_period = "1mo"
+        elif period == "3m":
+            yf_period = "3mo"
+        elif period == "6m":
+            yf_period = "6mo"
+        
         for ticker in ticker_list:
             try:
-                data = await manager.get_yahoo_finance_data(ticker, period)
+                data = await manager.get_yahoo_finance_data(ticker, yf_period)
                 results[ticker] = data if data else {}
             except Exception as e:
                 logger.error(f"Error fetching data for {ticker}: {e}")
@@ -251,6 +273,7 @@ async def get_sec_filings(
 async def get_10k_sections(
     ticker: str,
     sections: str = "business,risk,mda",  # Comma-separated
+    summarize: bool = True,
     db: Session = Depends(get_db)
 ):
     """
@@ -259,9 +282,10 @@ async def get_10k_sections(
     Args:
         ticker: Stock ticker symbol
         sections: Comma-separated sections to fetch (business, risk, mda)
+        summarize: Whether to include AI-generated summaries (default: True)
     
     Returns:
-        Dictionary with section names and content
+        Dictionary with section names, content, and optional summaries
     """
     section_list = [s.strip().lower() for s in sections.split(",") if s.strip()]
     
@@ -280,9 +304,14 @@ async def get_10k_sections(
                 filing_type="10-K"
             )
         
+        summaries = None
+        if summarize and data:
+            summaries = await manager.summarize_sec_sections(ticker.upper(), data)
+        
         return SecSectionResponse(
             ticker=ticker.upper(),
             sections=data,
+            summaries=summaries,
             filing_type="10-K"
         )
     except HTTPException:
@@ -299,6 +328,7 @@ async def get_10k_sections(
 async def get_10q_sections(
     ticker: str,
     sections: str = "risk,mda",  # Comma-separated
+    summarize: bool = True,
     db: Session = Depends(get_db)
 ):
     """
@@ -307,9 +337,10 @@ async def get_10q_sections(
     Args:
         ticker: Stock ticker symbol
         sections: Comma-separated sections to fetch (risk, mda)
+        summarize: Whether to include AI-generated summaries (default: True)
     
     Returns:
-        Dictionary with section names and content
+        Dictionary with section names, content, and optional summaries
     """
     section_list = [s.strip().lower() for s in sections.split(",") if s.strip()]
     
@@ -328,9 +359,14 @@ async def get_10q_sections(
                 filing_type="10-Q"
             )
         
+        summaries = None
+        if summarize and data:
+            summaries = await manager.summarize_sec_sections(ticker.upper(), data)
+            
         return SecSectionResponse(
             ticker=ticker.upper(),
             sections=data,
+            summaries=summaries,
             filing_type="10-Q"
         )
     except HTTPException:
@@ -341,6 +377,57 @@ async def get_10q_sections(
             status_code=500,
             detail=f"Error fetching 10-Q sections: {str(e)}"
         )
+
+
+@router.post("/sec/summarize-section")
+async def summarize_section(
+    payload: Dict[str, str],
+    db: Session = Depends(get_db)
+):
+    """
+    Summarize a single SEC section on-demand.
+    """
+    section_name = payload.get("section_name", "Section")
+    section_text = payload.get("section_text", "")
+    
+    if not section_text:
+        raise HTTPException(status_code=400, detail="section_text is required")
+        
+    try:
+        from app.services.financial_analyzer import FinancialAnalyzer
+        # Get data source manager for cache access
+        manager = get_data_source_manager()
+        analyzer = FinancialAnalyzer(cache=manager.cache)
+        
+        summary = await analyzer.summarize_sec_section(section_name, section_text)
+        return {"summary": summary}
+    except Exception as e:
+        logger.error(f"Error summarizing section: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sec/summarize-comparison")
+async def summarize_comparison(
+    payload: Dict[str, Any],
+    db: Session = Depends(get_db)
+):
+    """
+    Generate a comparative summary for multiple tickers on-demand.
+    """
+    tickers = payload.get("tickers", [])
+    report_type = payload.get("report_type", "10-k")
+    section_key = payload.get("section_key", "business")
+    
+    if not tickers:
+        raise HTTPException(status_code=400, detail="tickers list is required")
+        
+    try:
+        manager = get_data_source_manager()
+        summary = await manager.get_comparison_summary(tickers, report_type, section_key)
+        return {"summary": summary}
+    except Exception as e:
+        logger.error(f"Error in summarize_comparison: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/fundamentals/{ticker}", response_model=FundamentalsResponse)
@@ -425,3 +512,38 @@ async def get_available_tickers(db: Session = Depends(get_db)):
         )
 
 
+
+@router.get("/search", response_model=TickerSearchResponse)
+async def search_tickers(
+    q: str,
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """
+    Search for tickers by symbol or company name
+    
+    Args:
+        q: Search query
+        limit: Maximum number of results
+        
+    Returns:
+        List of matching tickers and company names
+    """
+    if not q or len(q.strip()) < 1:
+        raise HTTPException(status_code=400, detail="Query string 'q' is required")
+        
+    try:
+        manager = get_data_source_manager()
+        results = manager.search_tickers(q, limit)
+        
+        return TickerSearchResponse(
+            query=q,
+            results=results,
+            count=len(results)
+        )
+    except Exception as e:
+        logger.error(f"Error searching tickers: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error searching tickers: {str(e)}"
+        )

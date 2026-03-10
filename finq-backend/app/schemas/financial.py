@@ -43,6 +43,7 @@ class SecSectionResponse(BaseModel):
     """Response schema for SEC section data"""
     ticker: str
     sections: Dict[str, str]
+    summaries: Optional[Dict[str, str]] = None
     filing_type: str  # "10-K" or "10-Q"
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
@@ -53,3 +54,15 @@ class FundamentalsResponse(BaseModel):
     data: List[Dict[str, Any]]  # DataFrame converted to list of dicts
     timestamp: datetime = Field(default_factory=datetime.utcnow)
 
+
+class TickerSearchResult(BaseModel):
+    """Response schema for ticker search"""
+    ticker: str
+    name: str
+
+class TickerSearchResponse(BaseModel):
+    """Response wrapper for search results"""
+    query: str
+    results: List[TickerSearchResult]
+    count: int
+    timestamp: datetime = Field(default_factory=datetime.utcnow)

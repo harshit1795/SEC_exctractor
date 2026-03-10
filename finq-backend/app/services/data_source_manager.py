@@ -9,6 +9,8 @@ This service provides unified access to multiple financial data sources:
 - Fundamentals Data
 """
 import logging
+import asyncio
+import diskcache as dc
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -18,6 +20,7 @@ from app.config import settings
 from app.services.fred_service import get_multiple_fred_series
 from app.services.sec_service import (
     load_cik_ticker_map,
+    lookup_cik_online,
     get_company_filings,
     get_latest_10k_filing_info,
     get_latest_10q_filing_info,
@@ -33,12 +36,14 @@ class DataSourceManager:
     """
     MCP-style data source manager for accessing financial data.
     Migrated from Streamlit with async support added.
+    Uses diskcache for persistence across restarts.
     """
     
-    def __init__(self, cik_df: Optional[pd.DataFrame] = None):
-        self.cache: Dict[str, tuple] = {}
+    def __init__(self, cik_df: Any = None):
+        self.cache_dir = settings.cache_dir
+        self.cache = dc.Cache(self.cache_dir)
         self.cache_ttl = settings.cache_ttl  # 5 minutes default
-        self.cik_df = cik_df
+        self.cik_df = cik_df if cik_df is not None else pd.DataFrame()
         
         # Load CIK mapping if not provided
         if self.cik_df is None or self.cik_df.empty:
@@ -61,15 +66,16 @@ class DataSourceManager:
                 self.cik_df = pd.DataFrame()
     
     def _is_cache_valid(self, key: str) -> bool:
-        """Check if cached data is still valid"""
-        if key not in self.cache:
-            return False
-        cache_time, _ = self.cache[key]
-        return (datetime.now() - cache_time).seconds < self.cache_ttl
+        """
+        Check if cached data is still valid.
+        Note: diskcache handles TTL automatically if passed during set(),
+        but we keep this for compatibility with existing logic or custom checks.
+        """
+        return key in self.cache
     
     def _cache_data(self, key: str, data: Any) -> None:
-        """Cache data with timestamp"""
-        self.cache[key] = (datetime.now(), data)
+        """Cache data with configured TTL"""
+        self.cache.set(key, data, expire=self.cache_ttl)
     
     def clear_cache(self, key_pattern: Optional[str] = None) -> None:
         """
@@ -80,13 +86,43 @@ class DataSourceManager:
                         If None, clears all cache
         """
         if key_pattern:
-            keys_to_remove = [k for k in self.cache.keys() if key_pattern in k]
+            # diskcache doesn't have a direct 'matching' delete, so we iterate
+            keys_to_remove = [k for k in self.cache.iterkeys() if isinstance(k, str) and key_pattern in k]
             for key in keys_to_remove:
-                del self.cache[key]
+                self.cache.delete(key)
             logger.info(f"Cleared {len(keys_to_remove)} cache entries matching '{key_pattern}'")
         else:
             self.cache.clear()
             logger.info("Cleared all cache entries")
+    
+    def _resolve_cik(self, ticker: str) -> Optional[str]:
+        """
+        Resolve a ticker to its CIK number.
+        First tries the local CIK map, then falls back to online SEC EDGAR lookup.
+        
+        Args:
+            ticker: Stock ticker symbol
+        
+        Returns:
+            CIK number as a zero-padded 10-digit string, or None if not found
+        """
+        # Try local CIK map first
+        if not self.cik_df.empty:
+            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
+            if not company_info.empty:
+                cik = company_info.iloc[0]['cik']
+                logger.info(f"Resolved CIK {cik} for {ticker} from local map")
+                return cik
+        
+        # Fallback to online lookup
+        logger.info(f"Local CIK map empty or ticker {ticker} not found, trying online lookup...")
+        cik = lookup_cik_online(ticker)
+        if cik:
+            logger.info(f"Resolved CIK {cik} for {ticker} from SEC EDGAR API")
+            return cik
+        
+        logger.warning(f"Could not resolve CIK for ticker {ticker} from any source")
+        return None
     
     async def get_yahoo_finance_data(self, ticker: str, period: str = "1y") -> Dict[str, Any]:
         """
@@ -102,40 +138,58 @@ class DataSourceManager:
         cache_key = f"yf_{ticker}_{period}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             ticker_obj = yf.Ticker(ticker)
             
             # Fetch multiple data types
             # Note: Some of these are DataFrames, we'll convert to dict for JSON serialization
-            history_df = ticker_obj.history(period=period)
+            try:
+                history_df = ticker_obj.history(period=period)
+            except Exception as e:
+                logger.warning(f"Error fetching history for {ticker}: {e}")
+                history_df = pd.DataFrame()
             
             # Get earnings dates
-            earnings_dates = ticker_obj.earnings_dates
             earnings_data = []
-            if earnings_dates is not None and not earnings_dates.empty:
-                earnings_dates_reset = earnings_dates.reset_index()
-                earnings_data = earnings_dates_reset.to_dict('records')
+            try:
+                earnings_dates = ticker_obj.earnings_dates
+                if earnings_dates is not None and not earnings_dates.empty:
+                    earnings_dates_reset = earnings_dates.reset_index()
+                    raw_records = earnings_dates_reset.to_dict('records')
+                    # Convert Timestamp objects to ISO strings for JSON serialization
+                    for record in raw_records:
+                        clean_record = {}
+                        for k, v in record.items():
+                            if hasattr(v, 'isoformat'):
+                                clean_record[k] = v.isoformat()
+                            elif pd.isna(v) if isinstance(v, (float, type(None))) else False:
+                                clean_record[k] = None
+                            else:
+                                clean_record[k] = v
+                        earnings_data.append(clean_record)
+            except Exception as e:
+                logger.warning(f"Error fetching earnings dates for {ticker}: {e}")
             
-            # Convert history_df to records with Date field
-            history_records = []
-            if not history_df.empty:
-                history_df_reset = history_df.reset_index()
-                history_df_reset.rename(columns={'Date': 'Date'}, inplace=True)
-                history_records = history_df_reset.to_dict('records')
+            # Get info safely
+            try:
+                info = ticker_obj.info
+            except Exception as e:
+                logger.warning(f"Error fetching info for {ticker}: {e}")
+                info = {}
             
             data = {
-                'info': ticker_obj.info,
-                'financials': ticker_obj.financials.to_dict() if not ticker_obj.financials.empty else {},
-                'balance_sheet': ticker_obj.balance_sheet.to_dict() if not ticker_obj.balance_sheet.empty else {},
-                'cashflow': ticker_obj.cashflow.to_dict() if not ticker_obj.cashflow.empty else {},
-                'quarterly_financials': ticker_obj.quarterly_financials.to_dict() if not ticker_obj.quarterly_financials.empty else {},
-                'quarterly_balance_sheet': ticker_obj.quarterly_balance_sheet.to_dict() if not ticker_obj.quarterly_balance_sheet.empty else {},
-                'quarterly_cashflow': ticker_obj.quarterly_cashflow.to_dict() if not ticker_obj.quarterly_cashflow.empty else {},
+                'info': info,
+                'financials': ticker_obj.financials.to_dict() if hasattr(ticker_obj, 'financials') and not ticker_obj.financials.empty else {},
+                'balance_sheet': ticker_obj.balance_sheet.to_dict() if hasattr(ticker_obj, 'balance_sheet') and not ticker_obj.balance_sheet.empty else {},
+                'cashflow': ticker_obj.cashflow.to_dict() if hasattr(ticker_obj, 'cashflow') and not ticker_obj.cashflow.empty else {},
+                'quarterly_financials': ticker_obj.quarterly_financials.to_dict() if hasattr(ticker_obj, 'quarterly_financials') and not ticker_obj.quarterly_financials.empty else {},
+                'quarterly_balance_sheet': ticker_obj.quarterly_balance_sheet.to_dict() if hasattr(ticker_obj, 'quarterly_balance_sheet') and not ticker_obj.quarterly_balance_sheet.empty else {},
+                'quarterly_cashflow': ticker_obj.quarterly_cashflow.to_dict() if hasattr(ticker_obj, 'quarterly_cashflow') and not ticker_obj.quarterly_cashflow.empty else {},
                 'history': history_df.to_dict() if not history_df.empty else {},
-                'history_df': history_records,  # Records with Date field included
-                'recommendations': ticker_obj.recommendations.to_dict() if ticker_obj.recommendations is not None and not ticker_obj.recommendations.empty else {},
+                'history_df': history_df.reset_index().to_dict('records') if not history_df.empty else [],
+                'recommendations': ticker_obj.recommendations.to_dict() if hasattr(ticker_obj, 'recommendations') and ticker_obj.recommendations is not None and not ticker_obj.recommendations.empty else {},
                 'earnings_dates': earnings_data,
             }
             
@@ -166,7 +220,7 @@ class DataSourceManager:
         cache_key = f"fred_{'_'.join(series_ids)}_{start_date}_{end_date}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             # Convert list to dict format expected by get_multiple_fred_series
@@ -202,19 +256,13 @@ class DataSourceManager:
         cache_key = f"sec_{ticker}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}. CIK map may not be loaded.")
-                return {'filings': {}, 'ticker': ticker, 'error': 'CIK map not available'}
+            cik = self._resolve_cik(ticker)
+            if not cik:
+                return {'filings': {}, 'ticker': ticker, 'error': f'Could not resolve CIK for {ticker}'}
             
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}. Available tickers: {self.cik_df['ticker'].head(10).tolist() if not self.cik_df.empty else 'none'}")
-                return {'filings': {}, 'ticker': ticker, 'error': f'Ticker {ticker} not found in CIK map'}
-            
-            cik = company_info.iloc[0]['cik']
             logger.info(f"Found CIK {cik} for ticker {ticker}")
             
             filings_df = get_company_filings(cik)
@@ -250,6 +298,98 @@ class DataSourceManager:
             logger.error(f"Error fetching SEC filing data for {ticker}: {e}", exc_info=True)
             return {'filings': {}, 'ticker': ticker, 'error': str(e)}
     
+    async def summarize_sec_sections(
+        self, 
+        ticker: str, 
+        sections: Dict[str, str]
+    ) -> Dict[str, str]:
+        """
+        Summarizes multiple SEC filing sections using FinancialAnalyzer.
+        
+        Args:
+            ticker: Stock ticker symbol
+            sections: Dictionary mapping section names to full text
+        
+        Returns:
+            Dictionary mapping section names to AI summaries
+        """
+        from app.services.financial_analyzer import FinancialAnalyzer
+        
+        try:
+            analyzer = FinancialAnalyzer(cache=self.cache)
+            summaries = {}
+            
+            # Summarize sections in parallel to save time
+            tasks = []
+            section_keys = []
+            
+            for section_name, text in sections.items():
+                if text and len(text.strip()) > 100:
+                    tasks.append(analyzer.summarize_sec_section(section_name, text))
+                    section_keys.append(section_name)
+            
+            if not tasks:
+                return {}
+                
+            results = await asyncio.gather(*tasks)
+            
+            for i, summary in enumerate(results):
+                summaries[section_keys[i]] = summary
+                
+            return summaries
+        except Exception as e:
+            logger.error(f"Error in summarize_sec_sections for {ticker}: {e}")
+            return {}
+
+    async def get_comparison_summary(
+        self,
+        tickers: List[str],
+        report_type: str,
+        section_key: str
+    ) -> str:
+        """
+        Orchestrates comparative summary for multiple tickers.
+        
+        Args:
+            tickers: List of ticker symbols
+            report_type: '10-k' or '10-q'
+            section_key: Key of the section to compare (e.g. 'business', 'risk', 'mda')
+            
+        Returns:
+            Comparative AI summary string
+        """
+        from app.services.financial_analyzer import FinancialAnalyzer
+        
+        try:
+            ticker_texts = {}
+            tasks = []
+            valid_tickers = []
+            
+            for ticker in tickers:
+                if report_type.lower() == '10-k':
+                    tasks.append(self.get_10k_section_data(ticker, [section_key]))
+                else:
+                    tasks.append(self.get_10q_section_data(ticker, [section_key]))
+                valid_tickers.append(ticker)
+            
+            results = await asyncio.gather(*tasks)
+            
+            for i, result in enumerate(results):
+                if result:
+                    text = list(result.values())[0] if result.values() else ""
+                    ticker_texts[valid_tickers[i]] = text
+            
+            if not ticker_texts:
+                return "Could not retrieve section data for any of the selected companies."
+            
+            analyzer = FinancialAnalyzer(cache=self.cache)
+            section_label = section_key.replace('_', ' ').title()
+            
+            return await analyzer.summarize_sec_comparison(section_label, ticker_texts)
+        except Exception as e:
+            logger.error(f"Error in get_comparison_summary: {e}")
+            return f"Comparison failed: {str(e)}"
+
     async def get_10k_section_data(self, ticker: str, sections: List[str]) -> Dict[str, str]:
         """
         Fetches and parses key sections from the latest 10-K filing.
@@ -263,19 +403,12 @@ class DataSourceManager:
         """
         cache_key = f"10k_{ticker}_{'_'.join(sections)}"
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
 
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}")
+            cik = self._resolve_cik(ticker)
+            if not cik:
                 return {}
-            
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}")
-                return {}
-            
-            cik = company_info.iloc[0]['cik']
             filings_df = get_company_filings(cik)
             if filings_df.empty:
                 logger.warning(f"No recent filings found for {ticker}")
@@ -321,19 +454,12 @@ class DataSourceManager:
         """
         cache_key = f"10q_{ticker}_{'_'.join(sections)}"
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
 
         try:
-            if self.cik_df.empty:
-                logger.warning(f"No CIK information available for {ticker}")
+            cik = self._resolve_cik(ticker)
+            if not cik:
                 return {}
-            
-            company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
-            if company_info.empty:
-                logger.warning(f"No CIK information found for {ticker}")
-                return {}
-            
-            cik = company_info.iloc[0]['cik']
             filings_df = get_company_filings(cik)
             if filings_df.empty:
                 logger.warning(f"No recent filings found for {ticker}")
@@ -377,7 +503,7 @@ class DataSourceManager:
         cache_key = f"fundamentals_{ticker}"
         
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key][1]
+            return self.cache[cache_key]
         
         try:
             # Try multiple possible paths
@@ -527,3 +653,48 @@ class DataSourceManager:
                 'WMT', 'JPM', 'MA', 'PG', 'UNH', 'HD', 'DIS', 'BAC', 'ADBE', 'NFLX'
             ]
 
+
+    def search_tickers(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
+        """
+        Search for tickers by symbol or company name using the CIK map.
+        
+        Args:
+            query: Search query string
+            limit: Maximum number of results to return
+            
+        Returns:
+            List of dictionaries with 'ticker' and 'name'
+        """
+        if not query or self.cik_df.empty:
+            return []
+            
+        query = query.upper().strip()
+        
+        # Search in ticker column (exact match first, then starts with)
+        # Using string constraints for better performance
+        mask_ticker = self.cik_df['ticker'].astype(str).str.contains(query, case=False, na=False)
+        mask_name = self.cik_df['name'].astype(str).str.contains(query, case=False, na=False)
+        
+        # Combine masks
+        matches = self.cik_df[mask_ticker | mask_name]
+        
+        if matches.empty:
+            return []
+            
+        # Prioritize ticker matches that start with query
+        matches['score'] = 0
+        
+        # Exact ticker match gets highest score
+        matches.loc[matches['ticker'] == query, 'score'] = 3
+        # Ticker starts with query gets medium score
+        matches.loc[matches['ticker'].str.startswith(query), 'score'] = 2
+        # Name starts with query gets low score
+        matches.loc[matches['name'].str.upper().str.startswith(query), 'score'] = 1
+        
+        # Sort by score descending, then by ticker length (shorter tickers usually more popular)
+        matches = matches.sort_values(by=['score', 'ticker'], ascending=[False, True])
+        
+        # Limit results
+        matches = matches.head(limit)
+        
+        return matches[['ticker', 'name']].to_dict('records')

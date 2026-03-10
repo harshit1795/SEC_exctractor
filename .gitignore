@@ -72,3 +72,6 @@ node_modules/
 build/
 dist/
 *.egg-info/
+
+# Pyre / Cache
+.cache/

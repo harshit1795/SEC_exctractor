@@ -36,9 +36,12 @@ class Settings(BaseSettings):
     firebase_credentials_json: str = Field(default="", env="FIREBASE_CREDENTIALS_JSON")
     firebase_credentials_path: str = Field(default="", env="FIREBASE_CREDENTIALS_PATH")
     
+    # Encryption (for BYOK - Bring Your Own Key)
+    encryption_key: str = Field(default="", env="ENCRYPTION_KEY")
+    
     # CORS (comma-separated string, will be split)
     cors_origins: str = Field(
-        default="http://localhost:8501,http://localhost:3000,http://localhost:8080",
+        default="http://localhost:8501,http://localhost:3000,http://localhost:8080,http://localhost:5000,http://localhost:5001",
         env="CORS_ORIGINS"
     )
     
@@ -48,10 +51,11 @@ class Settings(BaseSettings):
     
     # Cache
     cache_ttl: int = Field(default=300, env="CACHE_TTL")  # 5 minutes
+    cache_dir: str = Field(default=".cache", env="CACHE_DIR")
     
     # Data Paths (relative to project root)
     data_dir: str = Field(default="../data", env="DATA_DIR")
-    cik_map_path: str = Field(default="../secedgarticker.json", env="CIK_MAP_PATH")
+    cik_map_path: str = Field(default="../company_tickers.json", env="CIK_MAP_PATH")
     fundamentals_path: str = Field(default="../fundamentals_tall.parquet", env="FUNDAMENTALS_PATH")
     
     class Config:
