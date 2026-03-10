@@ -204,26 +204,10 @@ async def compute_finq_health_scores(
         logger.error("No Ticker column found in fundamentals data.")
         return pd.DataFrame()
 
-    # Build the set of tickers to process
-    allowed_tickers: Optional[List[str]] = None
-
-    if ticker:
-        # Multi-ticker support: split by comma
-        allowed_tickers = [t.strip().upper() for t in ticker.split(",") if t.strip()]
-    elif category:
-        # Filter by sector using pre-built ticker_sectors.json
-        allowed_tickers = _tickers_for_category(category)
-        if allowed_tickers is not None and len(allowed_tickers) == 0:
-            logger.warning(f"No tickers found for category '{category}'")
-            return pd.DataFrame()
-
-    if allowed_tickers is not None:
-        t_mask = all_fundamentals[ticker_col].str.upper().isin([t.upper() for t in allowed_tickers])
-        all_fundamentals = all_fundamentals[t_mask]
-        if all_fundamentals.empty:
-            logger.warning(f"No fundamentals data found after category/ticker filter")
-            return pd.DataFrame()
-
+    # We must NOT filter all_fundamentals here, because percentile ranking MUST 
+    # occur across the entire dataset to be mathematically valid. We will filter 
+    # the final result set instead.
+    
     unique_tickers = all_fundamentals[ticker_col].unique().tolist()
     logger.info(f"Processing {len(unique_tickers)} tickers for health scores.")
 
@@ -336,7 +320,18 @@ async def compute_finq_health_scores(
         lambda row: _generate_text_insight(row["Ticker"], row.to_dict()), axis=1
     )
 
-    result = score_df.sort_values("HealthScore", ascending=False).head(limit)
+    result = score_df.sort_values("HealthScore", ascending=False)
+    
+    # NOW filter to requested ticker / category
+    if ticker:
+        allowed = [t.strip().upper() for t in ticker.split(",") if t.strip()]
+        result = result[result["Ticker"].isin(allowed)]
+    elif category:
+        allowed = _tickers_for_category(category)
+        if allowed is not None:
+            result = result[result["Ticker"].isin([t.upper() for t in allowed])]
+            
+    result = result.head(limit)
     logger.info(f"Returning {len(result)} health score records.")
     return result
 
@@ -437,37 +432,66 @@ async def get_custom_health_scores(
         if not all([ticker_col, period_col, metric_col, value_col]):
             raise HTTPException(status_code=500, detail="Unexpected parquet schema.")
 
-        # Apply filters using sector-aware category mapping
-        filtered = all_fundamentals
-        if ticker:
-            filtered = filtered[filtered[ticker_col].str.upper() == ticker.upper()]
-        elif category:
-            allowed = _tickers_for_category(category)
-            if allowed is not None:
-                filtered = filtered[filtered[ticker_col].str.upper().isin([t.upper() for t in allowed])]
-
-        if filtered.empty:
+        # ── Compute custom composite metrics ──────────────────────────
+        # We must rank across the entire universe, so we pivot ALL data first.
+        try:
+            filtered["_Ticker_UPPER"] = filtered[ticker_col].str.upper()
+            agg_fund = filtered.groupby(["_Ticker_UPPER", period_col, metric_col], as_index=False)[value_col].first()
+            wide_all = agg_fund.pivot(
+                index=["_Ticker_UPPER", period_col], columns=metric_col, values=value_col
+            ).sort_index()
+        except Exception as e:
+            logger.error(f"Failed to vectorize pivot for custom score: {e}")
             return {"scores": [], "count": 0}
 
         unique_tickers = filtered[ticker_col].unique()
         records = []
+        ticker_sectors = _load_ticker_sectors()
 
         for t in unique_tickers:
             try:
-                t_df = filtered[filtered[ticker_col].str.upper() == t.upper()]
-                t_category = _load_ticker_sectors().get(t.upper(), None)
-
-                wide = t_df.pivot_table(
-                    index=period_col, columns=metric_col, values=value_col, aggfunc="first"
-                ).sort_index()
-
-                if wide.empty:
+                t_upper = t.upper()
+                if t_upper not in wide_all.index.levels[0]:
+                    continue
+                wide = wide_all.loc[t_upper]
+                if len(wide) < 2:
                     continue
 
-                row: Dict[str, Any] = {"Ticker": t.upper(), "Category": t_category}
+                t_category = ticker_sectors.get(t_upper, None)
+
+                # Fetch basic pieces
+                rev_latest = _get_metric_value(wide, "Total Revenue", "Operating Revenue")
+                rev_prev   = _get_prev_metric_value(wide, "Total Revenue", "Operating Revenue")
+                net_income = _get_metric_value(wide, "Net Income", "Net Income Common Stockholders", "Operating Income")
+                fcf        = _get_metric_value(wide, "Free Cash Flow")
+                total_debt = _get_metric_value(wide, "Total Debt", "Long Term Debt And Capital Lease Obligation", "Current Debt And Capital Lease Obligation")
+                equity     = _get_metric_value(wide, "Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest")
+                assets     = _get_metric_value(wide, "Total Assets")
+
+                row: Dict[str, Any] = {"Ticker": t_upper, "Category": t_category}
                 any_valid = False
+                
+                # Compute requested UI metrics
                 for m in metric_list:
-                    val = _get_metric_value(wide, m)
+                    val = None
+                    if m == "Revenue Growth":
+                        val = _safe_div((rev_latest - rev_prev) if rev_latest is not None and rev_prev is not None else None, rev_prev)
+                    elif m == "Net Margin":
+                        val = _safe_div(net_income, rev_latest)
+                    elif m == "FCF Margin":
+                        val = _safe_div(fcf, rev_latest)
+                    elif m == "Debt to Equity":
+                        val = _safe_div(total_debt, equity) if equity and equity > 0 else None
+                    elif m == "ROA":
+                        val = _safe_div(net_income, assets)
+                    elif m == "ROE":
+                        val = _safe_div(net_income, equity) if equity and equity > 0 else None
+                    elif m == "P/E Ratio":
+                        val = None # Not available in simple fundamental data
+                    else:
+                        # Fallback for generic raw columns
+                        val = _get_metric_value(wide, m)
+
                     row[m] = val
                     if val is not None:
                         any_valid = True
@@ -490,7 +514,12 @@ async def get_custom_health_scores(
                 continue
             valid = score_df[m].notna()
             if valid.sum() > 0:
-                ranked = score_df.loc[valid, m].rank(pct=True, method="average")
+                # Invert logic for metrics where lower is better (e.g., Debt/Equity, P/E ratio)
+                ascending = True
+                if m in ["Debt to Equity", "P/E Ratio"]:
+                    ascending = False
+                    
+                ranked = score_df.loc[valid, m].rank(pct=True, ascending=ascending, method="average")
                 score_df[f"{m}_score"] = np.nan
                 score_df.loc[valid, f"{m}_score"] = ranked
                 score_df["HealthScore"] += score_df[f"{m}_score"].fillna(0) * w
@@ -499,7 +528,18 @@ async def get_custom_health_scores(
             lambda r: _generate_text_insight(r["Ticker"], r.to_dict()), axis=1
         )
 
-        result = score_df.sort_values("HealthScore", ascending=False).head(limit)
+        result = score_df.sort_values("HealthScore", ascending=False)
+        
+        # NOW filter to requested ticker / category
+        if ticker:
+            allowed = [t.strip().upper() for t in ticker.split(",") if t.strip()]
+            result = result[result["Ticker"].isin(allowed)]
+        elif category:
+            allowed = _tickers_for_category(category)
+            if allowed is not None:
+                result = result[result["Ticker"].isin([t.upper() for t in allowed])]
+                
+        result = result.head(limit)
         scores = _df_to_scores_list(result)
         return {"scores": scores, "count": len(scores)}
 

@@ -85,9 +85,9 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
+            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
           ),
           child: Column(
             children: [
@@ -100,10 +100,12 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
                     child: TextField(
                       controller: _controller,
                       focusNode: _focusNode,
-                      decoration: const InputDecoration(
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                      decoration: InputDecoration(
                         border: InputBorder.none,
                         hintText: 'Search Ticker or Company Name',
-                        contentPadding: EdgeInsets.symmetric(vertical: 14),
+                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       textCapitalization: TextCapitalization.characters,
                       onChanged: _onSearchChanged,
@@ -133,7 +135,7 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
                 Container(
                   constraints: const BoxConstraints(maxHeight: 200),
                   decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                    border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
                   ),
                   child: ListView.separated(
                     shrinkWrap: true,
@@ -149,13 +151,13 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            Text(ticker, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
                             const SizedBox(height: 4),
                             Text(
                               name,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
                             ),
                           ],
                         ),
