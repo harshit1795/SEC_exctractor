@@ -145,44 +145,51 @@ class DataSourceManager:
             
             # Fetch multiple data types
             # Note: Some of these are DataFrames, we'll convert to dict for JSON serialization
-            history_df = ticker_obj.history(period=period)
+            try:
+                history_df = ticker_obj.history(period=period)
+            except Exception as e:
+                logger.warning(f"Error fetching history for {ticker}: {e}")
+                history_df = pd.DataFrame()
             
             # Get earnings dates
-            earnings_dates = ticker_obj.earnings_dates
             earnings_data = []
-            if earnings_dates is not None and not earnings_dates.empty:
-                earnings_dates_reset = earnings_dates.reset_index()
-                raw_records = earnings_dates_reset.to_dict('records')
-                # Convert Timestamp objects to ISO strings for JSON serialization
-                for record in raw_records:
-                    clean_record = {}
-                    for k, v in record.items():
-                        if hasattr(v, 'isoformat'):
-                            clean_record[k] = v.isoformat()
-                        elif pd.isna(v) if isinstance(v, (float, type(None))) else False:
-                            clean_record[k] = None
-                        else:
-                            clean_record[k] = v
-                    earnings_data.append(clean_record)
+            try:
+                earnings_dates = ticker_obj.earnings_dates
+                if earnings_dates is not None and not earnings_dates.empty:
+                    earnings_dates_reset = earnings_dates.reset_index()
+                    raw_records = earnings_dates_reset.to_dict('records')
+                    # Convert Timestamp objects to ISO strings for JSON serialization
+                    for record in raw_records:
+                        clean_record = {}
+                        for k, v in record.items():
+                            if hasattr(v, 'isoformat'):
+                                clean_record[k] = v.isoformat()
+                            elif pd.isna(v) if isinstance(v, (float, type(None))) else False:
+                                clean_record[k] = None
+                            else:
+                                clean_record[k] = v
+                        earnings_data.append(clean_record)
+            except Exception as e:
+                logger.warning(f"Error fetching earnings dates for {ticker}: {e}")
             
-            # Convert history_df to records with Date field
-            history_records = []
-            if not history_df.empty:
-                history_df_reset = history_df.reset_index()
-                history_df_reset.rename(columns={'Date': 'Date'}, inplace=True)
-                history_records = history_df_reset.to_dict('records')
+            # Get info safely
+            try:
+                info = ticker_obj.info
+            except Exception as e:
+                logger.warning(f"Error fetching info for {ticker}: {e}")
+                info = {}
             
             data = {
-                'info': ticker_obj.info,
-                'financials': ticker_obj.financials.to_dict() if not ticker_obj.financials.empty else {},
-                'balance_sheet': ticker_obj.balance_sheet.to_dict() if not ticker_obj.balance_sheet.empty else {},
-                'cashflow': ticker_obj.cashflow.to_dict() if not ticker_obj.cashflow.empty else {},
-                'quarterly_financials': ticker_obj.quarterly_financials.to_dict() if not ticker_obj.quarterly_financials.empty else {},
-                'quarterly_balance_sheet': ticker_obj.quarterly_balance_sheet.to_dict() if not ticker_obj.quarterly_balance_sheet.empty else {},
-                'quarterly_cashflow': ticker_obj.quarterly_cashflow.to_dict() if not ticker_obj.quarterly_cashflow.empty else {},
+                'info': info,
+                'financials': ticker_obj.financials.to_dict() if hasattr(ticker_obj, 'financials') and not ticker_obj.financials.empty else {},
+                'balance_sheet': ticker_obj.balance_sheet.to_dict() if hasattr(ticker_obj, 'balance_sheet') and not ticker_obj.balance_sheet.empty else {},
+                'cashflow': ticker_obj.cashflow.to_dict() if hasattr(ticker_obj, 'cashflow') and not ticker_obj.cashflow.empty else {},
+                'quarterly_financials': ticker_obj.quarterly_financials.to_dict() if hasattr(ticker_obj, 'quarterly_financials') and not ticker_obj.quarterly_financials.empty else {},
+                'quarterly_balance_sheet': ticker_obj.quarterly_balance_sheet.to_dict() if hasattr(ticker_obj, 'quarterly_balance_sheet') and not ticker_obj.quarterly_balance_sheet.empty else {},
+                'quarterly_cashflow': ticker_obj.quarterly_cashflow.to_dict() if hasattr(ticker_obj, 'quarterly_cashflow') and not ticker_obj.quarterly_cashflow.empty else {},
                 'history': history_df.to_dict() if not history_df.empty else {},
-                'history_df': history_records,  # Records with Date field included
-                'recommendations': ticker_obj.recommendations.to_dict() if ticker_obj.recommendations is not None and not ticker_obj.recommendations.empty else {},
+                'history_df': history_df.reset_index().to_dict('records') if not history_df.empty else [],
+                'recommendations': ticker_obj.recommendations.to_dict() if hasattr(ticker_obj, 'recommendations') and ticker_obj.recommendations is not None and not ticker_obj.recommendations.empty else {},
                 'earnings_dates': earnings_data,
             }
             

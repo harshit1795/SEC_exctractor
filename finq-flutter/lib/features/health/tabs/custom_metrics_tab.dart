@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../providers/health_providers.dart';
 import '../widgets/single_ticker_search_autocomplete.dart';
+import '../../../services/html_export_service.dart';
 import '../../../services/report_cache_service.dart';
 
 class CustomMetricsTab extends ConsumerStatefulWidget {
@@ -49,7 +49,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   String _selectedTicker = '';
   bool _shouldCalculate = false;
   bool _isGeneratingReport = false;
-  String? _reportText;
   Key _dropdownKey = UniqueKey();
 
   @override
@@ -120,7 +119,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                       setState(() {
                         _selectedTicker = val;
                         _shouldCalculate = false;
-                        _reportText = null;
                       });
                     },
                   ),
@@ -198,7 +196,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                                     setState(() {
                                       _selectedMetrics.remove(entry.key);
                                       _shouldCalculate = false;
-                                      _reportText = null;
+    
                                     });
                                   },
                                 ),
@@ -223,12 +221,12 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                                 setState(() {
                                   ref.invalidate(customHealthScoreProvider(queryParams));
                                   _shouldCalculate = true;
-                                  _reportText = null;
+
                                 });
                               } else {
                                 setState(() {
                                   _shouldCalculate = false;
-                                  _reportText = null;
+
                                 });
                               }
                             },
@@ -254,7 +252,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                           _dropdownKey = UniqueKey();
                           _selectedMetrics[value] = 0.1;
                           _shouldCalculate = false;
-                          _reportText = null;
                         });
                       }
                     },
@@ -285,7 +282,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                         setState(() {
                           ref.invalidate(customHealthScoreProvider(queryParams));
                           _shouldCalculate = true;
-                          _reportText = null;
                         });
                       },
                       child: const Text('Calculate Custom Score', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
@@ -370,7 +366,52 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 20),
+                            const SizedBox(height: 24),
+                            // Metric Highlights Grid
+                            GridView.count(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              crossAxisCount: 2,
+                              mainAxisSpacing: 12,
+                              crossAxisSpacing: 12,
+                              childAspectRatio: 2.2,
+                              children: _selectedMetrics.keys.map((metric) {
+                                final val = score.rawMetrics[metric];
+                                return Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        metric,
+                                        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        val != null ? _formatRawMetric(metric, val) : 'N/A',
+                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
+                            const SizedBox(height: 24),
+                            const Divider(),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Detailed Rankings',
+                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
+                            ),
+                            const SizedBox(height: 12),
                             // Metric Bars
                             ..._selectedMetrics.keys.map((metric) {
                               final metricScore = score.metricScores[metric] ?? 0.0;
@@ -445,11 +486,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                         ),
                       ),
                     ),
-                    // Report display
-                    if (_reportText != null) ...[
-                      const SizedBox(height: 16),
-                      _buildReportCard(_reportText!),
-                    ],
+                    // Report display removed — report opens in a new browser tab via HtmlExportService
                   ],
                 );
               },
@@ -468,10 +505,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   }
 
   Future<void> _generateReport(dynamic score) async {
-    setState(() {
-      _isGeneratingReport = true;
-      _reportText = null;
-    });
+    setState(() => _isGeneratingReport = true);
 
     try {
       final payload = <String, dynamic>{
@@ -486,17 +520,19 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
         'fcfMarginScore': score.fcfMarginScore,
         'debtEquityScore': score.debtEquityScore,
         'insight': score.insight,
+        ...score.rawMetrics, // Include all raw metrics (P/E, ROA, etc.)
         'customWeights': Map<String, double>.from(
-          Map.fromIterables(
-            _selectedMetrics.keys,
-            _selectedMetrics.values,
-          ),
+          Map.fromIterables(_selectedMetrics.keys, _selectedMetrics.values),
         ),
       };
-      final result = await ref.read(healthReportProvider(payload).future);
-      setState(() {
-        _reportText = result;
-      });
+      await HtmlExportService.generateAndOpenReport(
+        htmlGenerator: () async {
+          final result = await ref.read(healthReportProvider(payload).future);
+          if (result == null) throw Exception('Failed to generate report');
+          return result;
+        },
+        filenamePrefix: score.ticker,
+      );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -504,9 +540,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
         );
       }
     } finally {
-      setState(() {
-        _isGeneratingReport = false;
-      });
+      if (mounted) setState(() => _isGeneratingReport = false);
     }
   }
 
@@ -515,50 +549,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
     return _generateReport(score);
   }
 
-  Widget _buildReportCard(String reportText) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'AI Health Report',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Row(children: [
-                  IconButton(
-                    tooltip: 'Copy Report',
-                    icon: const Icon(Icons.copy_outlined),
-                    onPressed: () {
-                      Clipboard.setData(ClipboardData(text: reportText));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Report copied to clipboard!')),
-                      );
-                    },
-                  ),
-                ]),
-              ],
-            ),
-            const Divider(),
-            const SizedBox(height: 8),
-            MarkdownBody(
-              data: reportText,
-              styleSheet: MarkdownStyleSheet(
-                h1: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                h2: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                p: const TextStyle(fontSize: 14, height: 1.5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Color _getScoreColor(double score) {
     if (score >= 0.7) return Colors.green;
@@ -573,15 +563,19 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   }
 
   String _formatRawMetric(String metricName, double value) {
-    // Determine if the metric is naturally a percentage or a raw ratio based on its name.
     final lowerName = metricName.toLowerCase();
+    // P/E Ratio is a multiplier (e.g. 28.5x), not a percentage
+    if (lowerName.contains('p/e') || lowerName.contains('pe ratio')) {
+      return '${value.toStringAsFixed(1)}x';
+    }
+    // Percentage-type metrics
     if (lowerName.contains('margin') ||
         lowerName.contains('growth') ||
         lowerName.contains('roe') ||
         lowerName.contains('roa')) {
       return '${(value * 100).toStringAsFixed(2)}%';
     }
-    // E.g., Debt/Equity, Current Ratio
+    // E.g., Debt/Equity, Current Ratio, Quick Ratio
     return value.toStringAsFixed(2);
   }
 }

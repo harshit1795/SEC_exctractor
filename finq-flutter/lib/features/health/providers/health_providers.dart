@@ -12,12 +12,14 @@ class HealthScoreModel {
   final double? netMargin;
   final double? fcfMargin;
   final double? debtEquity;
+  final double? peRatio;
   
   // Base metric scores (percentiles)
   final double? growthScore;
   final double? netMarginScore;
   final double? fcfMarginScore;
   final double? debtEquityScore;
+  final double? peRatioScore;
   
   final String? insight;
 
@@ -32,10 +34,12 @@ class HealthScoreModel {
     this.netMargin,
     this.fcfMargin,
     this.debtEquity,
+    this.peRatio,
     this.growthScore,
     this.netMarginScore,
     this.fcfMarginScore,
     this.debtEquityScore,
+    this.peRatioScore,
     this.insight,
     this.rawMetrics = const {},
     this.metricScores = const {},
@@ -66,11 +70,13 @@ class HealthScoreModel {
       netMargin: rawMetrics['NetMargin'] ?? rawMetrics['Net Margin'],
       fcfMargin: rawMetrics['FCFMargin'] ?? rawMetrics['FCF Margin'],
       debtEquity: rawMetrics['DebtEquity'] ?? rawMetrics['Debt to Equity'],
+      peRatio: rawMetrics['PE'] ?? rawMetrics['P/E Ratio'],
       
       growthScore: metricScores['Growth'] ?? metricScores['Revenue Growth'],
       netMarginScore: metricScores['NetMargin'] ?? metricScores['Net Margin'],
       fcfMarginScore: metricScores['FCFMargin'] ?? metricScores['FCF Margin'],
       debtEquityScore: metricScores['DebtEquity'] ?? metricScores['Debt to Equity'],
+      peRatioScore: metricScores['PE'] ?? metricScores['P/E Ratio'] ?? metricScores['PE_score'] ?? metricScores['P/E Ratio_score'],
 
       // Assign the full maps
       rawMetrics: rawMetrics,

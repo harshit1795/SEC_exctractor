@@ -14,14 +14,14 @@ export function useFinqHealthScores(category?: string, limit: number = 10) {
   });
 }
 
-export function useCustomHealthScores(metrics: string[], limit: number = 10) {
+export function useCustomHealthScores(metrics: string[], weights?: number[], limit: number = 10) {
   return useQuery({
-    queryKey: ['health-scores', 'custom', metrics.join(','), limit],
+    queryKey: ['health-scores', 'custom', metrics.join(','), (weights || []).join(','), limit],
     queryFn: async () => {
       if (metrics.length === 0) {
         return { scores: [], total: 0 };
       }
-      const response = await api.getCustomHealthScores(metrics, limit);
+      const response = await api.getCustomHealthScores(metrics, weights, limit);
       return response.data;
     },
     enabled: metrics.length > 0,

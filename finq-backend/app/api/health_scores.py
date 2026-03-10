@@ -23,6 +23,8 @@ import json
 import pandas as pd
 import numpy as np
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from starlette.concurrency import run_in_threadpool
 
 # Flutter UI category name → Yahoo Finance sector names
 CATEGORY_TO_YF_SECTORS: Dict[str, List[str]] = {
@@ -134,6 +136,69 @@ def _safe_div(a: Optional[float], b: Optional[float]) -> Optional[float]:
     return a / b
 
 
+# Simple in-memory cache for P/E ratios (ticker -> value or None)
+_pe_ratio_cache: Dict[str, Optional[float]] = {}
+
+
+def _get_pe_ratio(ticker: str) -> Optional[float]:
+    """Fetch trailing P/E ratio from yfinance with an in-memory cache."""
+    ticker = ticker.upper().strip()
+    if not ticker or ticker.startswith('^'):
+        return None
+    
+    # Check cache
+    if ticker in _pe_ratio_cache:
+        return _pe_ratio_cache[ticker]
+    
+    try:
+        import yfinance as yf
+        import logging
+        # Suppress yfinance logs
+        logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+        
+        ticker_obj = yf.Ticker(ticker)
+        # Fast path: try to get trailingPE or forwardPE from info
+        info = ticker_obj.info
+        if not info:
+             return None
+             
+        pe = info.get("trailingPE") or info.get("forwardPE")
+        
+        if pe is not None and not (isinstance(pe, float) and (pe != pe)): # Check for NaN
+            val = round(float(pe), 2)
+            _pe_ratio_cache[ticker] = val
+            return val
+        
+        # If PE is missing but info exists, we cache None to avoid re-fetching
+        _pe_ratio_cache[ticker] = None
+        return None
+    except Exception as e:
+        # Don't cache None on error, allow retry later or in batch
+        logger.debug(f"Could not fetch P/E ratio for {ticker}: {e}")
+        return None
+
+
+def _batch_prefetch_pe_ratios(tickers: List[str]):
+    """Pre-fetch P/E ratios for a list of tickers in parallel to avoid slow sequential blocking."""
+    # Filter tickers that are NOT in cache and are NOT indices
+    unique_tickers = list(set([
+        t.upper().strip() for t in tickers 
+        if t.upper().strip() and not t.strip().startswith('^') and t.upper().strip() not in _pe_ratio_cache
+    ]))
+    
+    if not unique_tickers:
+        return
+
+    logger.info(f"Parallel pre-fetching P/E ratios for {len(unique_tickers)} tickers...")
+    
+    # Use a ThreadPoolExecutor for parallel requests
+    # Limit to 20 concurrent requests to avoid being blocked by Yahoo
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        executor.map(_get_pe_ratio, unique_tickers)
+    
+    logger.info(f"Parallel pre-fetch complete.")
+
+
 def _generate_text_insight(ticker: str, metrics: Dict[str, Any]) -> str:
     """Generate a concise human-readable insight string from metric scores."""
     parts = []
@@ -163,6 +228,13 @@ def _generate_text_insight(ticker: str, metrics: Dict[str, Any]) -> str:
         parts.append("conservative balance sheet")
     elif ds is not None and ds <= 0.3:
         parts.append("elevated leverage")
+
+    pe_score = metrics.get("PE_score") or metrics.get("P/E Ratio_score")
+    if pe_score is not None:
+        if pe_score >= 0.7:
+            parts.append("attractive valuation")
+        elif pe_score <= 0.3:
+            parts.append("premium valuation")
 
     if not parts:
         hs = metrics.get("HealthScore") or metrics.get("healthScore") or 0
@@ -210,6 +282,15 @@ async def compute_finq_health_scores(
     
     unique_tickers = all_fundamentals[ticker_col].unique().tolist()
     logger.info(f"Processing {len(unique_tickers)} tickers for health scores.")
+
+    # Pre-fetch PE ratios to avoid 1x1 slow requests in the loop
+    # We use run_in_threadpool so this DOES NOT block the FastAPI event loop!
+    try:
+        # If no specific ticker is provided, we might be fetching hundreds.
+        # Let's still prefetch but in parallel.
+        await run_in_threadpool(_batch_prefetch_pe_ratios, unique_tickers)
+    except Exception as e:
+        logger.error(f"Failed parallel prefetch: {e}")
 
     # Detect column names once
     ticker_col = next((c for c in ["Ticker", "ticker", "TICKER"] if c in all_fundamentals.columns), None)
@@ -279,6 +360,7 @@ async def compute_finq_health_scores(
                 "NetMargin": net_margin,
                 "FCFMargin": fcf_margin,
                 "DebtEquity": debt_equity,
+                "PE": _get_pe_ratio(t_upper),
             })
         except Exception as e:
             logger.error(f"Error processing ticker {t}: {e}")
@@ -311,8 +393,17 @@ async def compute_finq_health_scores(
     else:
         score_df["DebtEquity_score"] = np.nan
 
+    # PE: lower P/E ratio → higher score (invert)
+    valid_mask = score_df["PE"].notna()
+    if valid_mask.sum() > 0:
+        ranked = score_df.loc[valid_mask, "PE"].rank(pct=True, ascending=True, method="average")
+        score_df["PE_score"] = np.nan
+        score_df.loc[valid_mask, "PE_score"] = 1.0 - ranked
+    else:
+        score_df["PE_score"] = np.nan
+
     # ── Composite health score (mean of available metric scores) ──
-    score_cols = ["Growth_score", "NetMargin_score", "FCFMargin_score", "DebtEquity_score"]
+    score_cols = ["Growth_score", "NetMargin_score", "FCFMargin_score", "DebtEquity_score", "PE_score"]
     score_df["HealthScore"] = score_df[score_cols].mean(axis=1, skipna=True)
 
     # ── Insight strings ───────────────────────────────────────────
@@ -498,7 +589,7 @@ async def get_custom_health_scores(
                         else:
                             val = None
                     elif m == "P/E Ratio":
-                        val = None # Not available in simple fundamental data
+                        val = _get_pe_ratio(t_upper)
                     else:
                         # Fallback for generic raw columns
                         val = _get_metric_value(wide, m)
@@ -594,6 +685,7 @@ async def generate_health_report(payload: Dict[str, Any]):
         nm = t_data.get("netMargin")
         fm = t_data.get("fcfMargin")
         de = t_data.get("debtEquity")
+        pe = t_data.get("peRatio") or t_data.get("PE") or t_data.get("P/E Ratio")
         ins = t_data.get("insight", "")
         
         data_str += f"""
@@ -604,29 +696,37 @@ async def generate_health_report(payload: Dict[str, Any]):
 - Net Margin: {_fmt(nm)}
 - FCF Margin: {_fmt(fm)}
 - Debt/Equity: {_fmt(de, pct=False)}
+- P/E Ratio: {_fmt(pe, pct=False) if pe is not None else 'N/A'}
 - AI Insight: {ins}
 """
     
     is_multi = len(tickers_data) > 1
-    report_title = "Comparative Financial Health Report" if is_multi else f"{tickers_data[0]['ticker'] if isinstance(tickers_data[0], dict) else 'Unknown'} Financial Health Report"
+    custom_weights = payload.get("customWeights")
+    
+    report_type = "Custom Weighted " if custom_weights else ""
+    report_title = f"{report_type}Comparative Financial Health Report" if is_multi else f"{report_type}{tickers_data[0]['ticker'] if isinstance(tickers_data[0], dict) else 'Unknown'} Financial Health Report"
     
     import datetime
     current_date = datetime.datetime.now().strftime("%B %d, %Y")
     
+    weight_context = ""
+    if custom_weights:
+        weight_context = f"\nNOTE: This is a CUSTOM WEIGHTED report. The analyst (user) has assigned specific importance to metrics: {custom_weights}. Please weight your analysis accordingly.\n"
+
     prompt = f"""You are FinQ, an expert financial analyst. Write a professional, standalone HTML financial health report based purely on the metrics below.
     
 {data_str}
-
-REQUIREMENTS:
+{weight_context}
+REQUIRMENTS:
 1. Output MUST be ONLY valid, self-contained HTML (no markdown wrappers like ```html).
 2. Include inline CSS for a clean, professional PDF-ready styling (fonts, colors, tables).
 3. Structure the report as follows:
-   - Header (Report Title, and MUST include exactly: "Date of Generation: {current_date}" right-aligned or clearly visible at the top)
+   - Header (Report Title: {report_title}, and MUST include exactly: "Date of Generation: {current_date}" right-aligned or clearly visible at the top)
    - Executive Summary
-   - Key Financial Ratios (A clean, styled HTML table comparing the provided metrics for all companies)
+   - Key Financial Ratios (A clean, styled HTML table comparing the provided metrics for all companies. Include P/E Ratio if available)
    - Strengths & Vulnerabilities (Bullet points for each company)
-   - Investment Consideration & Conclusion
-   - Sources & Citations (A dedicated section at the bottom listing the sources of this data, i.e., "Data provided by FinQ Financial Insights Engine", and mentioning SEC filings or standard market data as the origin)
+   - Investment Consideration & Conclusion (Analyze valuation vs quality. Is the company "expensive" or "attractive" based on the P/E and growth/profitability?)
+   - Sources & Citations (A dedicated section at the bottom listing the sources of this data, i.e., "Data provided by FinQ Financial Insights Engine", and mentioning SEC filings or market data as the origin)
    - Standard Disclaimer ("This report is for informational purposes only...")
 4. Make the design pop by using FinQ brand colors (Green and Purple motifs) or a sleek modern palette.
 

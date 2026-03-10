@@ -60,6 +60,7 @@ async def generate_price_chart(
         # Get history data - try history_df first (records format), then history (dict format)
         import pandas as pd
         
+        price_df = pd.DataFrame()
         if 'history_df' in yahoo_data and yahoo_data['history_df']:
             # Use records format (easier to convert)
             price_df = pd.DataFrame(yahoo_data['history_df'])
@@ -73,15 +74,13 @@ async def generate_price_chart(
                 # History dict has dates as keys, OHLCV as nested dicts
                 price_df = pd.DataFrame(history_dict).T
                 price_df.index = pd.to_datetime(price_df.index)
-            else:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No historical data available for {ticker}"
-                )
-        else:
+        
+        if price_df.empty:
+            # Return a JSON error but NOT a 404, or return a placeholder?
+            # Front-end seems to expect a response. Let's raise with clear detail but consider defaults later.
             raise HTTPException(
                 status_code=404,
-                detail=f"No historical data available for {ticker}"
+                detail=f"No historical price data available for {ticker}"
             )
         
         # Generate chart
@@ -138,19 +137,17 @@ async def generate_summary_image(
         # Get ticker data
         yahoo_data = await data_manager.get_yahoo_finance_data(ticker.upper(), "1y")
         
-        if not yahoo_data or 'info' not in yahoo_data:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No data found for {ticker}"
-            )
+        info = yahoo_data.get('info', {}) if yahoo_data else {}
         
-        info = yahoo_data['info']
-        
-        # Extract key metrics
+        # Extract key metrics with safe defaults
+        current_price = info.get('currentPrice') or info.get('regularMarketPrice') or 'N/A'
+        if current_price != 'N/A':
+            current_price = f"${current_price}"
+            
         metrics = {
-            "Current Price": f"${info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))}",
+            "Current Price": current_price,
             "Market Cap": f"${format_number(info.get('marketCap', 0))}",
-            "P/E Ratio": info.get('trailingPE', 'N/A'),
+            "P/E Ratio": info.get('trailingPE') or info.get('forwardPE') or 'N/A',
             "52 Week High": f"${info.get('fiftyTwoWeekHigh', 'N/A')}",
             "52 Week Low": f"${info.get('fiftyTwoWeekLow', 'N/A')}"
         }

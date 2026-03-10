@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/health_providers.dart';
 import '../../../services/html_export_service.dart';
@@ -33,6 +32,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
     'Net Margin': 'Represents the percentage of revenue remaining after all operating expenses, taxes, and interest are paid. A robust net margin signals efficient cost management and strong profitability.',
     'FCF Margin': 'Free Cash Flow Margin indicates the proportion of revenue converted into discretionary cash. High FCF margins demonstrate strong earnings quality and the ability to fund dividends or debt reduction.',
     'Debt/Equity': 'Evaluates financial leverage by comparing total liabilities to shareholder equity. A lower ratio (higher percentile rank) indicates a conservative capital structure and lower insolvency risk.',
+    'P/E Ratio': 'Price-to-Earnings Ratio measures the current share price relative to its per-share earnings. A lower P/E (higher percentile rank) may indicate the stock is undervalued or has reached a stable growth phase.',
   };
 
   @override
@@ -160,6 +160,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                       DataColumn(label: _buildTooltipHeader('NET\nMARGIN')),
                       DataColumn(label: _buildTooltipHeader('FCF\nMARGIN')),
                       DataColumn(label: _buildTooltipHeader('DEBT/EQUITY')),
+                      DataColumn(label: _buildTooltipHeader('P/E\nRATIO')),
                       const DataColumn(label: Text('INSIGHT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
                       const DataColumn(label: Text('REPORT', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.grey))),
                     ],
@@ -173,6 +174,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                       final nmStr = score.netMargin != null ? '${(score.netMargin! * 100).toStringAsFixed(2)}%' : 'N/A';
                       final fcfStr = score.fcfMargin != null ? '${(score.fcfMargin! * 100).toStringAsFixed(2)}%' : 'N/A';
                       final deStr = score.debtEquity != null ? score.debtEquity!.toStringAsFixed(2) : 'N/A';
+                      final peStr = score.peRatio != null ? '${score.peRatio!.toStringAsFixed(1)}x' : 'N/A';
 
                       return DataRow(
                         cells: [
@@ -224,6 +226,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                           DataCell(Text(nmStr, style: const TextStyle(fontSize: 13, color: Colors.grey))),
                           DataCell(Text(fcfStr, style: const TextStyle(fontSize: 13, color: Colors.grey))),
                           DataCell(Text(deStr, style: const TextStyle(fontSize: 13, color: Colors.grey))),
+                          DataCell(Text(peStr, style: const TextStyle(fontSize: 13, color: Colors.grey))),
                           DataCell(
                             SizedBox(
                               width: 300,
@@ -297,6 +300,7 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
         'netMargin': score.netMargin,
         'fcfMargin': score.fcfMargin,
         'debtEquity': score.debtEquity,
+        'peRatio': score.peRatio,
         'growthScore': score.growthScore,
         'netMarginScore': score.netMarginScore,
         'fcfMarginScore': score.fcfMarginScore,
