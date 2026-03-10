@@ -165,7 +165,7 @@ def _generate_text_insight(ticker: str, metrics: Dict[str, Any]) -> str:
         parts.append("elevated leverage")
 
     if not parts:
-        hs = metrics.get("healthScore") or 0
+        hs = metrics.get("HealthScore") or metrics.get("healthScore") or 0
         if hs >= 0.6:
             return f"{ticker} shows solid overall financial health."
         elif hs >= 0.4:
@@ -435,6 +435,7 @@ async def get_custom_health_scores(
         # ── Compute custom composite metrics ──────────────────────────
         # We must rank across the entire universe, so we pivot ALL data first.
         try:
+            filtered = all_fundamentals.copy()
             filtered["_Ticker_UPPER"] = filtered[ticker_col].str.upper()
             agg_fund = filtered.groupby(["_Ticker_UPPER", period_col, metric_col], as_index=False)[value_col].first()
             wide_all = agg_fund.pivot(
@@ -467,6 +468,9 @@ async def get_custom_health_scores(
                 total_debt = _get_metric_value(wide, "Total Debt", "Long Term Debt And Capital Lease Obligation", "Current Debt And Capital Lease Obligation")
                 equity     = _get_metric_value(wide, "Stockholders Equity", "Common Stock Equity", "Total Equity Gross Minority Interest")
                 assets     = _get_metric_value(wide, "Total Assets")
+                ca         = _get_metric_value(wide, "Current Assets")
+                cl         = _get_metric_value(wide, "Current Liabilities")
+                inv        = _get_metric_value(wide, "Inventory")
 
                 row: Dict[str, Any] = {"Ticker": t_upper, "Category": t_category}
                 any_valid = False
@@ -486,6 +490,13 @@ async def get_custom_health_scores(
                         val = _safe_div(net_income, assets)
                     elif m == "ROE":
                         val = _safe_div(net_income, equity) if equity and equity > 0 else None
+                    elif m == "Current Ratio":
+                        val = _safe_div(ca, cl)
+                    elif m == "Quick Ratio":
+                        if ca is not None and inv is not None and cl is not None:
+                            val = _safe_div(ca - inv, cl)
+                        else:
+                            val = None
                     elif m == "P/E Ratio":
                         val = None # Not available in simple fundamental data
                     else:
