@@ -118,7 +118,7 @@ class _PriceChartTabState extends State<PriceChartTab> {
             final tickersData = data['data'] as Map<String, dynamic>;
             
             final colors = [
-                Colors.black,
+                Colors.amber,
                 Colors.blue.shade700,
                 Colors.orange.shade700,
                 Colors.purple.shade700,
@@ -170,7 +170,7 @@ class _PriceChartTabState extends State<PriceChartTab> {
                 seriesList.add(PriceSeries(
                     name: ticker,
                     points: points,
-                    color: Colors.black,
+                    color: Theme.of(context).colorScheme.primary,
                 ));
             }
         }

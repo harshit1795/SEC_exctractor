@@ -163,6 +163,7 @@ final logoUrlProvider = FutureProvider.family<String?, String>((ref, ticker) asy
   return 'https://financialmodelingprep.com/image-stock/${ticker.toUpperCase()}.png';
 });
 
+
 final dashboardHealthScoresProvider = FutureProvider<List<dynamic>>((ref) async {
   final repository = ref.read(dashboardRepositoryProvider);
   final tickers = ref.watch(selectedTickersProvider);
@@ -172,5 +173,20 @@ final dashboardHealthScoresProvider = FutureProvider<List<dynamic>>((ref) async 
   final data = await repository.fetchDashboardHealthScores(tickers);
   return data['scores'] as List<dynamic>? ?? [];
 });
+
+final dataStatusProvider = FutureProvider.family<Map<String, dynamic>, String>(
+  (ref, ticker) async {
+    final apiClient = ref.read(apiClientProvider);
+    try {
+      final response = await apiClient.get(
+        '/data-pipeline/status',
+        queryParameters: {'ticker': ticker},
+      );
+      return response.data as Map<String, dynamic>;
+    } catch (e) {
+      return {};
+    }
+  },
+);
 
 

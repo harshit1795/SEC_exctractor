@@ -187,11 +187,17 @@ class _PriceChartState extends State<PriceChart> {
     // Use the primary series for x-axis labels
     final primaryPoints = widget.seriesList.first.points;
 
+    final colorScheme = Theme.of(context).colorScheme;
+
     return LineChart(
       LineChartData(
         minY: minY - padding,
         maxY: maxY + padding,
-        gridData: const FlGridData(show: true),
+        gridData: FlGridData(
+          show: true,
+          getDrawingHorizontalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+          getDrawingVerticalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+        ),
         titlesData: FlTitlesData(
             leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 50)),
             rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
@@ -230,14 +236,14 @@ class _PriceChartState extends State<PriceChart> {
                   
                   return Text(
                     label,
-                    style: const TextStyle(fontSize: 10),
+                    style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant),
                     textAlign: TextAlign.center,
                   );
                 },
               ),
             ),
         ),
-        borderData: FlBorderData(show: true),
+        borderData: FlBorderData(show: true, border: Border.all(color: colorScheme.outlineVariant)),
         lineTouchData: LineTouchData(
           enabled: true,
           touchTooltipData: LineTouchTooltipData(
@@ -321,9 +327,15 @@ class _PriceChartState extends State<PriceChart> {
       final macdSpots = _toSpots(_macd.macd);
       final signalSpots = _toSpots(_macd.signal);
       
+      final colorScheme = Theme.of(context).colorScheme;
       return LineChart(
           LineChartData(
-             gridData: const FlGridData(show: true),
+             gridData: FlGridData(
+               show: true,
+               getDrawingHorizontalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+               getDrawingVerticalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+             ),
+             borderData: FlBorderData(show: true, border: Border.all(color: colorScheme.outlineVariant)),
              titlesData: const FlTitlesData(show: false),
              lineBarsData: [
                  LineChartBarData(spots: macdSpots, color: Colors.blue, barWidth: 1.5, dotData: const FlDotData(show: false)),
@@ -336,11 +348,17 @@ class _PriceChartState extends State<PriceChart> {
 
   Widget _buildRsiChart() {
       final rsiSpots = _toSpots(_rsi.values);
+      final colorScheme = Theme.of(context).colorScheme;
       return LineChart(
           LineChartData(
               minY: 0,
               maxY: 100,
-              gridData: const FlGridData(show: true),
+              gridData: FlGridData(
+               show: true,
+               getDrawingHorizontalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+               getDrawingVerticalLine: (value) => FlLine(color: colorScheme.outlineVariant.withOpacity(0.5), strokeWidth: 1),
+              ),
+              borderData: FlBorderData(show: true, border: Border.all(color: colorScheme.outlineVariant)),
               titlesData: const FlTitlesData(show: false),
               extraLinesData: ExtraLinesData(
                   horizontalLines: [
@@ -378,21 +396,21 @@ class _KpiCard extends StatelessWidget {
     final String? subtitle;
     final Color? color;
 
-    @override
     Widget build(BuildContext context) {
+        final colorScheme = Theme.of(context).colorScheme;
         return Column(
             children: [
-                Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                Text(label, style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant)),
                 Text(
                     value, 
                     style: TextStyle(
                         fontSize: 16, 
                         fontWeight: FontWeight.bold,
-                        color: color ?? Colors.black
+                        color: color ?? colorScheme.onSurface
                     )
                 ),
                 if (subtitle != null)
-                   Text(subtitle!, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                   Text(subtitle!, style: TextStyle(fontSize: 10, color: colorScheme.onSurfaceVariant)),
             ],
         );
     }

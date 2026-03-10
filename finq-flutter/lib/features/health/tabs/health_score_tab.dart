@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/health_providers.dart';
 import '../../../services/html_export_service.dart';
 import '../../../core/widgets/shimmer_loading.dart';
+import '../../../services/report_cache_service.dart';
 
 class HealthScoreTab extends ConsumerStatefulWidget {
   const HealthScoreTab({super.key});
@@ -237,14 +238,27 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
                           DataCell(
                             _isGeneratingReport && _reportTicker == score.ticker
                               ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                              : ElevatedButton.icon(
-                                  icon: const Icon(Icons.open_in_new, size: 14),
-                                  label: const Text('Open Report', style: TextStyle(fontSize: 12)),
-                                  style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
-                                    minimumSize: const Size(60, 32),
-                                  ),
-                                  onPressed: () => _generateReport(score),
+                              : Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ElevatedButton.icon(
+                                      icon: const Icon(Icons.open_in_new, size: 14),
+                                      label: const Text('Open Report', style: TextStyle(fontSize: 12)),
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 0),
+                                        minimumSize: const Size(60, 32),
+                                      ),
+                                      onPressed: () => _generateReport(score),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.refresh, size: 18, color: Colors.amber),
+                                      tooltip: 'Refresh & Regen Report',
+                                      onPressed: () => _refreshAndGenerateReport(score),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                  ],
                                 ),
                           ),
                         ],
@@ -309,6 +323,13 @@ class _HealthScoreTabState extends ConsumerState<HealthScoreTab> {
         setState(() { _isGeneratingReport = false; });
       }
     }
+  }
+
+  Future<void> _refreshAndGenerateReport(HealthScoreModel score) async {
+    // Clear local cache first
+    await ReportCacheService.deleteReport([score.ticker]);
+    // Then generate as usual (which will now fetch from backend)
+    return _generateReport(score);
   }
 
   Widget _buildTooltipHeader(String title) {

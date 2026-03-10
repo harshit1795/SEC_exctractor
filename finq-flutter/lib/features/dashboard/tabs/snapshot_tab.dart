@@ -510,7 +510,11 @@ class _SnapshotTabState extends ConsumerState<SnapshotTab> {
     final filtered = dataArray.where((item) {
       if (item is! Map) return false;
       final itemCategory = item['Category'] ?? item['category'] ?? '';
-      return itemCategory == widget.category; // Removed strict ticker check
+      
+      final normalizedItemCategory = itemCategory.toString().toLowerCase().replaceAll(' ', '');
+      final normalizedTargetCategory = widget.category.toLowerCase().replaceAll(' ', '');
+      
+      return normalizedItemCategory == normalizedTargetCategory;
     }).toList();
 
     final metrics = <String>{};

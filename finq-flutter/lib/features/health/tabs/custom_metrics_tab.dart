@@ -5,6 +5,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../providers/health_providers.dart';
 import '../widgets/single_ticker_search_autocomplete.dart';
+import '../../../services/report_cache_service.dart';
 
 class CustomMetricsTab extends ConsumerStatefulWidget {
   const CustomMetricsTab({super.key});
@@ -195,6 +196,8 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                                   onPressed: () {
                                     setState(() {
                                       _selectedMetrics.remove(entry.key);
+                                      _shouldCalculate = false;
+                                      _reportText = null;
                                     });
                                   },
                                 ),
@@ -210,6 +213,8 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                             onChanged: (value) {
                               setState(() {
                                 _selectedMetrics[entry.key] = value;
+                                _shouldCalculate = false;
+                                _reportText = null;
                               });
                             },
                           ),
@@ -231,6 +236,8 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                       if (value != null) {
                         setState(() {
                           _selectedMetrics[value] = 0.1;
+                          _shouldCalculate = false;
+                          _reportText = null;
                         });
                       }
                     },
@@ -367,20 +374,29 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                             }),
                             const SizedBox(height: 20),
                             // Generate Report Button
-                            SizedBox(
-                              width: double.infinity,
-                              child: OutlinedButton.icon(
-                                onPressed: _isGeneratingReport ? null : () => _generateReport(score),
-                                icon: _isGeneratingReport
-                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                    : const Icon(Icons.description_outlined),
-                                label: Text(_isGeneratingReport ? 'Generating...' : 'Generate Health Report'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.blue.shade700,
-                                  side: BorderSide(color: Colors.blue.shade700),
-                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: _isGeneratingReport ? null : () => _generateReport(score),
+                                    icon: _isGeneratingReport
+                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                        : const Icon(Icons.description_outlined),
+                                    label: Text(_isGeneratingReport ? 'Generating...' : 'Generate Health Report'),
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.blue.shade700,
+                                      side: BorderSide(color: Colors.blue.shade700),
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(width: 12),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh, color: Colors.amber),
+                                  tooltip: 'Refresh & Regen',
+                                  onPressed: _isGeneratingReport ? null : () => _refreshAndGenerateReport(score),
+                                ),
+                              ],
                             ),
                           ],
                         ),
@@ -449,6 +465,11 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
         _isGeneratingReport = false;
       });
     }
+  }
+
+  Future<void> _refreshAndGenerateReport(dynamic score) async {
+    await ReportCacheService.deleteReport([score.ticker]);
+    return _generateReport(score);
   }
 
   Widget _buildReportCard(String reportText) {

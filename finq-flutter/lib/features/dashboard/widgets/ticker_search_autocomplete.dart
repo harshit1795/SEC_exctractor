@@ -82,16 +82,9 @@ class _TickerSearchAutocompleteState extends ConsumerState<TickerSearchAutocompl
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
+            border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.4)),
           ),
           child: Column(
             children: [

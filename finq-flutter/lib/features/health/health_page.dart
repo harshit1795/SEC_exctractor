@@ -31,11 +31,11 @@ class HealthPage extends ConsumerWidget {
                 ],
               ),
             ),
-            const TabBar(
-              labelColor: Colors.indigo,
-              unselectedLabelColor: Colors.black54,
-              indicatorColor: Colors.indigo,
-              tabs: [
+            TabBar(
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              tabs: const [
                 Tab(text: 'FinQ Suggestions', icon: Icon(Icons.recommend)),
                 Tab(text: 'Custom Health Score', icon: Icon(Icons.settings_suggest)),
               ],

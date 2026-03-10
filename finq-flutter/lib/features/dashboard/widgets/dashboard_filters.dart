@@ -43,12 +43,13 @@ class DashboardFilters extends ConsumerWidget {
             children: selectedTickers.map((ticker) {
               return Chip(
                 label: Text(ticker, style: const TextStyle(fontWeight: FontWeight.bold)),
-                backgroundColor: Colors.green.shade50,
-                deleteIcon: const Icon(Icons.close, size: 18),
+                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onPrimaryContainer),
+                deleteIcon: Icon(Icons.close, size: 18, color: Theme.of(context).colorScheme.onPrimaryContainer),
                 onDeleted: () {
                   ref.read(selectedTickersProvider.notifier).removeTicker(ticker);
                 },
-                side: BorderSide(color: Colors.green.shade200),
+                side: BorderSide(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
               );
             }).toList(),
           ),
@@ -63,15 +64,16 @@ class DashboardFilters extends ConsumerWidget {
                     Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: Theme.of(context).colorScheme.surfaceContainerLow,
                             borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.grey.shade300),
+                            border: Border.all(color: Theme.of(context).colorScheme.outline.withOpacity(0.4)),
                         ),
                         child: DropdownButtonHideUnderline(
                             child: DropdownButton<String>(
                                 value: category,
-                                icon: const Icon(Icons.keyboard_arrow_down, color: Colors.grey),
-                                style: const TextStyle(color: Colors.black87, fontWeight: FontWeight.w500),
+                                icon: Icon(Icons.keyboard_arrow_down, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                                dropdownColor: Theme.of(context).colorScheme.surfaceContainerHigh,
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w500),
                                 items: definitions.map((def) {
                                     return DropdownMenuItem(
                                         value: def.$1,

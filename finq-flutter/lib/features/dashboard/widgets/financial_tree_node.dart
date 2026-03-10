@@ -88,24 +88,27 @@ class _FinancialTreeNodeState extends State<FinancialTreeNode>
     }
   }
 
-  Color _getBackgroundColor() {
+  Color _getBackgroundColor(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final opacity = isDark ? 0.15 : 0.05;
+    
     switch (widget.node.category) {
       case NodeCategory.asset:
       case NodeCategory.currentAsset:
       case NodeCategory.nonCurrentAsset:
-        return Colors.green.shade50;
+        return Colors.green.withOpacity(opacity);
       case NodeCategory.liability:
       case NodeCategory.currentLiability:
       case NodeCategory.longTermLiability:
-        return Colors.red.shade50;
+        return Colors.red.withOpacity(opacity);
       case NodeCategory.equity:
-        return Colors.blue.shade50;
+        return Colors.blue.withOpacity(opacity);
       case NodeCategory.revenue:
-        return Colors.green.shade50;
+        return Colors.green.withOpacity(opacity);
       case NodeCategory.expense:
-        return Colors.red.shade50;
+        return Colors.red.withOpacity(opacity);
       case NodeCategory.profit:
-        return Colors.amber.shade50;
+        return Colors.amber.withOpacity(opacity);
     }
   }
 
@@ -148,7 +151,7 @@ class _FinancialTreeNodeState extends State<FinancialTreeNode>
               bottom: 8,
             ),
             decoration: BoxDecoration(
-              color: _getBackgroundColor(),
+              color: _getBackgroundColor(context),
               border: Border(
                 left: BorderSide(
                   color: _getCategoryColor(),
@@ -185,7 +188,7 @@ class _FinancialTreeNodeState extends State<FinancialTreeNode>
                           fontWeight: widget.depth == 0
                               ? FontWeight.bold
                               : FontWeight.w500,
-                          color: Colors.black87,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       const SizedBox(width: 4),
@@ -232,10 +235,10 @@ class _FinancialTreeNodeState extends State<FinancialTreeNode>
                       // Value
                       Text(
                         metricData.formatValue(compact: true),
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: Colors.black87,
+                          color: Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                       

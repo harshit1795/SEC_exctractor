@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
+import '../../../services/report_cache_service.dart';
+import '../dashboard_providers.dart';
 
 class DataPipelineButton extends ConsumerStatefulWidget {
   const DataPipelineButton({
@@ -24,8 +26,8 @@ class _DataPipelineButtonState extends ConsumerState<DataPipelineButton> {
     try {
       final apiClient = ref.read(apiClientProvider);
       final endpoint = updateAll
-          ? '/financial/pipeline/update-all'
-          : '/financial/pipeline/update/${widget.ticker}';
+          ? '/data-pipeline/update-batch'
+          : '/data-pipeline/update/${widget.ticker}';
 
       await apiClient.post(endpoint);
 
@@ -40,6 +42,14 @@ class _DataPipelineButtonState extends ConsumerState<DataPipelineButton> {
             backgroundColor: Colors.green,
           ),
         );
+        
+        // Invalidate providers to force refresh
+        ref.invalidate(fundamentalsProvider);
+        ref.invalidate(tickerDataProvider);
+        ref.invalidate(dataStatusProvider(widget.ticker));
+        
+        // Clear health report cache for this ticker
+        await ReportCacheService.deleteReport([widget.ticker]);
       }
     } catch (e) {
       if (mounted) {

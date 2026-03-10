@@ -38,7 +38,7 @@ class SummaryBar extends StatelessWidget {
 
     return Card(
       elevation: 2,
-      color: Colors.blue.shade50,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -46,14 +46,14 @@ class SummaryBar extends StatelessWidget {
           children: [
             Row(
               children: [
-                Icon(Icons.dashboard, color: Colors.blue.shade700, size: 24),
+                Icon(Icons.dashboard, color: Theme.of(context).colorScheme.primary, size: 24),
                 const SizedBox(width: 8),
                 Text(
                   'Key Financial Metrics',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
-                    color: Colors.blue.shade700,
+                    color: Theme.of(context).colorScheme.primary,
                   ),
                 ),
                 if (latestPeriod != null) ...[
@@ -61,16 +61,16 @@ class SummaryBar extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
+                      color: Theme.of(context).colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.blue.shade300),
+                      border: Border.all(color: Theme.of(context).colorScheme.outline),
                     ),
                     child: Text(
                       'Latest Period: $latestPeriod',
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
-                        color: Colors.blue.shade800,
+                        color: Theme.of(context).colorScheme.onPrimaryContainer,
                       ),
                     ),
                   ),
@@ -141,7 +141,7 @@ class _SummaryMetricCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: color.withOpacity(0.3),
@@ -192,10 +192,10 @@ class _SummaryMetricCard extends StatelessWidget {
                     isRatio 
                         ? data!.currentValue.toStringAsFixed(2)
                         : data!.formatValue(compact: true),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Colors.black87,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

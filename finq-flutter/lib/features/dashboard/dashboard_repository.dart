@@ -31,6 +31,7 @@ class DashboardRepository {
   Future<Map<String, dynamic>> fetchFundamentals(String ticker) async {
     final response = await _apiClient.get<Map<String, dynamic>>(
       '/financial/fundamentals/$ticker',
+      queryParameters: null,
     );
     return _asMap(response.data, 'fundamentals');
   }

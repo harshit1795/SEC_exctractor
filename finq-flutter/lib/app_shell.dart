@@ -22,10 +22,7 @@ class AppShell extends StatelessWidget {
           return Scaffold(
             appBar: AppBar(
               title: const Text('FinQ', style: TextStyle(fontWeight: FontWeight.bold)),
-              backgroundColor: Colors.white,
               elevation: 0,
-              iconTheme: const IconThemeData(color: Colors.black),
-              titleTextStyle: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
             ),
             drawer: const Drawer(
               child: GlobalSidebar(),

@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/di/providers.dart';
+import '../../services/report_cache_service.dart';
+import '../dashboard_providers.dart';
 
 class DataPipelineBanner extends ConsumerStatefulWidget {
   const DataPipelineBanner({
@@ -25,8 +27,8 @@ class _DataPipelineBannerState extends ConsumerState<DataPipelineBanner> {
     try {
       final apiClient = ref.read(apiClientProvider);
       final endpoint = updateAll
-          ? '/financial/pipeline/update-all'
-          : '/financial/pipeline/update/${widget.ticker}';
+          ? '/data-pipeline/update-batch'
+          : '/data-pipeline/update/${widget.ticker}';
 
       await apiClient.post(endpoint);
 
@@ -41,6 +43,14 @@ class _DataPipelineBannerState extends ConsumerState<DataPipelineBanner> {
             backgroundColor: Colors.green,
           ),
         );
+        
+        // Invalidate providers to force refresh
+        ref.invalidate(fundamentalsProvider);
+        ref.invalidate(tickerDataProvider);
+        ref.invalidate(dataStatusProvider(widget.ticker));
+
+        // Clear health report cache for this ticker
+        await ReportCacheService.deleteReport([widget.ticker]);
       }
     } catch (e) {
       if (mounted) {
@@ -60,7 +70,7 @@ class _DataPipelineBannerState extends ConsumerState<DataPipelineBanner> {
 
   @override
   Widget build(BuildContext context) {
-    final dataStatus = ref.watch(_dataStatusProvider(widget.ticker));
+    final dataStatus = ref.watch(dataStatusProvider(widget.ticker));
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -183,15 +193,4 @@ class _DataPipelineBannerState extends ConsumerState<DataPipelineBanner> {
   }
 }
 
-// Provider for data status
-final _dataStatusProvider = FutureProvider.family<Map<String, dynamic>, String>(
-  (ref, ticker) async {
-    final apiClient = ref.watch(apiClientProvider);
-    try {
-      final response = await apiClient.get('/financial/pipeline/status/$ticker');
-      return response.data as Map<String, dynamic>;
-    } catch (e) {
-      return {};
-    }
-  },
-);
+// Local provider removed, now uses global dataStatusProvider from dashboard_providers.dart

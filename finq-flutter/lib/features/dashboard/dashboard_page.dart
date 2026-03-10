@@ -208,12 +208,12 @@ class _DashboardContentState extends State<_DashboardContent> with SingleTickerP
         TabBar(
           controller: _tabController,
           isScrollable: true,
-          labelColor: Colors.green.shade700,
-          unselectedLabelColor: Colors.grey.shade600,
-          indicatorColor: Colors.green.shade500,
+          labelColor: Theme.of(context).colorScheme.primary,
+          unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+          indicatorColor: Theme.of(context).colorScheme.primary,
           labelStyle: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
           ),
           unselectedLabelStyle: const TextStyle(
             fontSize: 14,

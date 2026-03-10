@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/html_export_service.dart';
 import '../../core/widgets/shimmer_loading.dart';
+import '../../services/report_cache_service.dart';
 
 import 'dashboard_providers.dart';
 
@@ -28,16 +29,8 @@ class CompanyHeader extends ConsumerWidget {
               margin: const EdgeInsets.only(bottom: 16),
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.grey.withOpacity(0.1),
-                    spreadRadius: 1,
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
               ),
               child: Row(
                 children: [
@@ -45,10 +38,10 @@ class CompanyHeader extends ConsumerWidget {
                         width: 60,
                         height: 60,
                         decoration: BoxDecoration(
-                            color: Colors.purple.shade50,
+                            color: Theme.of(context).colorScheme.secondaryContainer,
                             borderRadius: BorderRadius.circular(12),
                         ),
-                        child: Icon(Icons.compare_arrows, size: 32, color: Colors.purple.shade700),
+                        child: Icon(Icons.compare_arrows, size: 32, color: Theme.of(context).colorScheme.onSecondaryContainer),
                     ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -63,15 +56,28 @@ class CompanyHeader extends ConsumerWidget {
                                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                                   ),
                                   if (healthScores.isNotEmpty)
-                                    ElevatedButton.icon(
-                                      onPressed: () => _downloadReport(context, ref, healthScores),
-                                      icon: const Icon(Icons.picture_as_pdf, size: 16),
-                                      label: const Text('Comparison Report'),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.purple.shade50,
-                                        foregroundColor: Colors.purple.shade700,
-                                        elevation: 0,
-                                      ),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        ElevatedButton.icon(
+                                          onPressed: () => _downloadReport(context, ref, healthScores),
+                                          icon: const Icon(Icons.picture_as_pdf, size: 16),
+                                          label: const Text('Comparison Report'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Theme.of(context).colorScheme.secondaryContainer,
+                                            foregroundColor: Theme.of(context).colorScheme.onSecondaryContainer,
+                                            elevation: 0,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: const Icon(Icons.refresh, size: 18, color: Colors.amber),
+                                          tooltip: 'Refresh Report',
+                                          onPressed: () => _refreshAndGenerateReport(context, ref, healthScores),
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                      ],
                                     ),
                                 ],
                               ),
@@ -89,11 +95,11 @@ class CompanyHeader extends ConsumerWidget {
                                     children: [
                                       Text(
                                           t,
-                                          style: TextStyle(fontSize: 16, color: Colors.grey.shade800, fontWeight: FontWeight.bold),
+                                          style: TextStyle(fontSize: 16, color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.bold),
                                       ),
                                       if (tScoreData != null) ...[
                                         const SizedBox(width: 6),
-                                        _buildHealthBadge(tScoreData),
+                                        _buildHealthBadge(context, tScoreData),
                                       ]
                                     ],
                                   );
@@ -124,16 +130,8 @@ class CompanyHeader extends ConsumerWidget {
         return Container(
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(12),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
-                spreadRadius: 1,
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
           ),
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -184,10 +182,10 @@ class CompanyHeader extends ConsumerWidget {
                           Expanded(
                             child: Text(
                               '$ticker – $companyName',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 20,
                                 fontWeight: FontWeight.bold,
-                                color: Colors.black87,
+                                color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -195,17 +193,25 @@ class CompanyHeader extends ConsumerWidget {
                             Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                _buildHealthBadge(healthScoresAsync.valueOrNull!.first),
+                                _buildHealthBadge(context, healthScoresAsync.valueOrNull!.first),
                                 const SizedBox(width: 12),
                                 ElevatedButton.icon(
                                   onPressed: () => _downloadReport(context, ref, healthScoresAsync.valueOrNull!),
                                   icon: const Icon(Icons.open_in_new, size: 16),
                                   label: const Text('Open Report'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.green.shade50,
-                                    foregroundColor: Colors.green.shade700,
+                                    backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                                    foregroundColor: Theme.of(context).colorScheme.onPrimaryContainer,
                                     elevation: 0,
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                IconButton(
+                                  icon: const Icon(Icons.refresh, size: 18, color: Colors.amber),
+                                  tooltip: 'Refresh Report',
+                                  onPressed: () => _refreshAndGenerateReport(context, ref, healthScoresAsync.valueOrNull!),
+                                  padding: EdgeInsets.zero,
+                                  constraints: const BoxConstraints(),
                                 ),
                               ],
                             ),
@@ -217,9 +223,13 @@ class CompanyHeader extends ConsumerWidget {
                         runSpacing: 4,
                         children: [
                           if (sector != 'N/A')
-                            _buildChip(sector, Colors.blue.shade50, Colors.blue.shade700),
+                            _buildChip(context, sector,
+                                Theme.of(context).colorScheme.primaryContainer,
+                                Theme.of(context).colorScheme.onPrimaryContainer),
                           if (industry != 'N/A')
-                            _buildChip(industry, Colors.green.shade50, Colors.green.shade700),
+                            _buildChip(context, industry,
+                                Theme.of(context).colorScheme.secondaryContainer,
+                                Theme.of(context).colorScheme.onSecondaryContainer),
                         ],
                       ),
                     ],
@@ -230,7 +240,7 @@ class CompanyHeader extends ConsumerWidget {
           ),
         );
       },
-      loading: () => _buildLoadingCard(),
+      loading: () => _buildLoadingCard(context),
       error: (error, _) => _buildErrorCard(error.toString()),
     );
   }
@@ -262,7 +272,7 @@ class CompanyHeader extends ConsumerWidget {
     );
   }
 
-  Widget _buildChip(String label, Color bg, Color text) {
+  Widget _buildChip(BuildContext context, String label, Color bg, Color text) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
@@ -280,20 +290,12 @@ class CompanyHeader extends ConsumerWidget {
     );
   }
 
-  Widget _buildLoadingCard() {
+  Widget _buildLoadingCard(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
       ),
       child: const Padding(
         padding: EdgeInsets.all(16),
@@ -353,18 +355,22 @@ class CompanyHeader extends ConsumerWidget {
     );
   }
 
-  Widget _buildHealthBadge(Map<dynamic, dynamic> scoreData) {
+  Widget _buildHealthBadge(BuildContext context, Map<dynamic, dynamic> scoreData) {
     final score = scoreData['healthScore'] as double?;
     if (score == null) return const SizedBox.shrink();
     final pct = (score * 100).toStringAsFixed(1) + '%';
-    Color color = Colors.green.shade700;
-    Color bg = Colors.green.shade50;
+    
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
+    Color color = isDark ? Colors.green.shade400 : Colors.green.shade700;
+    Color bg = isDark ? Colors.green.shade400.withOpacity(0.15) : Colors.green.shade50;
+    
     if (score < 0.4) {
-      color = Colors.red.shade700;
-      bg = Colors.red.shade50;
+      color = isDark ? Colors.red.shade400 : Colors.red.shade700;
+      bg = isDark ? Colors.red.shade400.withOpacity(0.15) : Colors.red.shade50;
     } else if (score < 0.7) {
-      color = Colors.orange.shade800;
-      bg = Colors.orange.shade50;
+      color = isDark ? Colors.orange.shade400 : Colors.orange.shade800;
+      bg = isDark ? Colors.orange.shade400.withOpacity(0.15) : Colors.orange.shade50;
     }
 
     return Container(
@@ -410,6 +416,34 @@ class CompanyHeader extends ConsumerWidget {
           SnackBar(content: Text('Error generating report: $e'), backgroundColor: Colors.red),
         );
       }
+    }
+  }
+
+  Future<void> _refreshAndGenerateReport(BuildContext context, WidgetRef ref, List<dynamic> healthScores) async {
+    // 1. Invalidate cached health scores to fetch fresh metrics from backend 
+    ref.invalidate(dashboardHealthScoresProvider);
+
+    // 2. Also clear HTML cache universally for these tickers
+    final tickersList = healthScores.map((e) {
+      final map = Map<String, dynamic>.from(e as Map);
+      return (map['ticker'] ?? map['Ticker']).toString();
+    }).toList();
+    await ReportCacheService.deleteReport(tickersList);
+
+    // 3. Inform the user and potentially generate (though scores are now loading)
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Refreshing health scores and generating report...'),
+          backgroundColor: Colors.blue,
+        ),
+      );
+    }
+    
+    // We delay slightly to allow provider invalidation to kick in
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (context.mounted) {
+       _downloadReport(context, ref, healthScores);
     }
   }
 }

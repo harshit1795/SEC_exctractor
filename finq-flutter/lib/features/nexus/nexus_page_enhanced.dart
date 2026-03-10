@@ -38,11 +38,11 @@ class _NexusPageEnhancedState extends ConsumerState<NexusPageEnhanced> {
                 ],
               ),
             ),
-            const TabBar(
-              labelColor: Colors.indigo,
-              unselectedLabelColor: Colors.black54,
-              indicatorColor: Colors.indigo,
-              tabs: [
+            TabBar(
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              tabs: const [
                 Tab(text: 'Feed', icon: Icon(Icons.dynamic_feed)),
                 Tab(text: 'Profile', icon: Icon(Icons.person)),
                 Tab(text: 'Friends', icon: Icon(Icons.group)),

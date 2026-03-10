@@ -31,4 +31,12 @@ class ReportCacheService {
     // but for now we'll just store the raw HTML string
     await prefs.setString(key, htmlContent);
   }
+
+  /// Delete a cached report for a list of tickers
+  static Future<void> deleteReport(List<String> tickers) async {
+    if (tickers.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final key = '$_prefix${_generateKey(tickers)}';
+    await prefs.remove(key);
+  }
 }

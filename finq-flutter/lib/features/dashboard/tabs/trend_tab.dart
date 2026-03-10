@@ -39,7 +39,7 @@ class _TrendTabState extends ConsumerState<TrendTab> {
   String _lastTickerCategory = '';
 
   final List<Color> _tickerColors = [
-    Colors.black,
+    Colors.amber,
     Colors.blue.shade700,
     Colors.orange.shade700,
     Colors.purple.shade700,

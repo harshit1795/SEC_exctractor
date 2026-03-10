@@ -256,7 +256,7 @@ class _FinQ360TabState extends ConsumerState<FinQ360Tab> {
                             ? 'Select metrics...'
                             : '${selected.length} metric${selected.length != 1 ? 's' : ''} selected',
                         style: TextStyle(
-                          color: selected.isEmpty ? Colors.grey : Colors.black,
+                          color: selected.isEmpty ? Colors.grey : Theme.of(context).colorScheme.onSurface,
                         ),
                       ),
                     ),
@@ -325,7 +325,7 @@ class _FinQ360TabState extends ConsumerState<FinQ360Tab> {
                         : '${_selectedEarnings.length} metric${_selectedEarnings.length != 1 ? 's' : ''} selected',
                     style: TextStyle(
                       color:
-                          _selectedEarnings.isEmpty ? Colors.grey : Colors.black,
+                          _selectedEarnings.isEmpty ? Colors.grey : Theme.of(context).colorScheme.onSurface,
                     ),
                   ),
                 ),

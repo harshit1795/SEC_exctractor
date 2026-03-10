@@ -87,7 +87,7 @@ class DataSourceManager:
         """
         if key_pattern:
             # diskcache doesn't have a direct 'matching' delete, so we iterate
-            keys_to_remove = [k for k in self.cache.iter_keys() if isinstance(k, str) and key_pattern in k]
+            keys_to_remove = [k for k in self.cache.iterkeys() if isinstance(k, str) and key_pattern in k]
             for key in keys_to_remove:
                 self.cache.delete(key)
             logger.info(f"Cleared {len(keys_to_remove)} cache entries matching '{key_pattern}'")
