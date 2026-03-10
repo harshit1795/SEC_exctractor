@@ -50,6 +50,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   bool _shouldCalculate = false;
   bool _isGeneratingReport = false;
   String? _reportText;
+  Key _dropdownKey = UniqueKey();
 
   @override
   Widget build(BuildContext context) {
@@ -224,6 +225,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                   }),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
+                    key: _dropdownKey,
                     decoration: const InputDecoration(
                       labelText: 'Add Metric',
                       border: OutlineInputBorder(),
@@ -235,6 +237,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                     onChanged: (value) {
                       if (value != null) {
                         setState(() {
+                          _dropdownKey = UniqueKey();
                           _selectedMetrics[value] = 0.1;
                           _shouldCalculate = false;
                           _reportText = null;
@@ -251,17 +254,26 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                         backgroundColor: Colors.blue.shade700,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                        disabledBackgroundColor: Colors.grey.shade300,
                       ),
-                      onPressed: isValidWeights && _selectedTicker.isNotEmpty
-                          ? () {
-                              setState(() {
-                                ref.invalidate(customHealthScoreProvider(queryParams));
-                                _shouldCalculate = true;
-                                _reportText = null;
-                              });
-                            }
-                          : null,
+                      onPressed: () {
+                        if (_selectedTicker.isEmpty) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Please select a ticker first')),
+                          );
+                          return;
+                        }
+                        if (!isValidWeights) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Metric weights must add up to exactly 100%')),
+                          );
+                          return;
+                        }
+                        setState(() {
+                          ref.invalidate(customHealthScoreProvider(queryParams));
+                          _shouldCalculate = true;
+                          _reportText = null;
+                        });
+                      },
                       child: const Text('Calculate Custom Score', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                     ),
                   ),
