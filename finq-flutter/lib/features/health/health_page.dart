@@ -36,15 +36,15 @@ class HealthPage extends ConsumerWidget {
               unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
               indicatorColor: Theme.of(context).colorScheme.primary,
               tabs: const [
-                Tab(text: 'FinQ Suggestions', icon: Icon(Icons.recommend)),
                 Tab(text: 'Custom Health Score', icon: Icon(Icons.settings_suggest)),
+                Tab(text: 'FinQ Suggestions', icon: Icon(Icons.recommend)),
               ],
             ),
             const Expanded(
               child: TabBarView(
                 children: [
-                  HealthScoreTab(),
                   CustomMetricsTab(),
+                  HealthScoreTab(),
                 ],
               ),
             ),

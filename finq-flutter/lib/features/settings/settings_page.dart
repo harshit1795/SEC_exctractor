@@ -65,7 +65,9 @@ class _PreferencesSection extends ConsumerWidget {
     return Card(
       child: Column(
         children: [
-          _ConnectionSettingsTile(),
+          const _ConnectionSettingsTile(),
+          const Divider(height: 1),
+          const _GeminiKeySettingsTile(),
           const Divider(height: 1),
           // --- Dark Mode Toggle ---
           Padding(
@@ -477,6 +479,102 @@ class _ConnectionSettingsTile extends ConsumerWidget {
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('API URL updated')),
+                  );
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GeminiKeySettingsTile extends ConsumerWidget {
+  const _GeminiKeySettingsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final apiKey = ref.watch(geminiApiKeyProvider);
+    final isSet = apiKey != null && apiKey.isNotEmpty;
+    
+    return ListTile(
+      leading: const Icon(Icons.key),
+      title: const Text('Gemini API Key (BYOK)'),
+      subtitle: Text(
+        isSet ? 'Key configured (••••${apiKey.substring(apiKey.length >= 4 ? apiKey.length - 4 : 0)})' : 'Not configured. Using default backend key.',
+        style: TextStyle(color: isSet ? Colors.green.shade700 : Colors.grey),
+      ),
+      trailing: const Icon(Icons.edit),
+      onTap: () => _showEditDialog(context, ref, apiKey ?? ''),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, WidgetRef ref, String currentKey) {
+    final controller = TextEditingController(text: currentKey);
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Gemini API Key'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'API Key',
+                hintText: 'AIzaSy...',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Your key is securely stored on this device. It will be injected into FinQChat and Health Reports.',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              // Reset to default (clear preference)
+              final prefs = ref.read(sharedPreferencesProvider);
+              await prefs.remove('gemini_api_key');
+              ref.invalidate(geminiApiKeyProvider);
+              
+              if (context.mounted) {
+                Navigator.of(context).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Removed custom Gemini API key')),
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newKey = controller.text.trim();
+              if (newKey.isNotEmpty) {
+                // Update provider state
+                ref.read(geminiApiKeyProvider.notifier).state = newKey;
+                
+                // Persist to SharedPreferences
+                final prefs = ref.read(sharedPreferencesProvider);
+                await prefs.setString('gemini_api_key', newKey);
+                
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Gemini API Key saved')),
                   );
                 }
               }

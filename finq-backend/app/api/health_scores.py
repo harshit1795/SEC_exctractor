@@ -13,7 +13,7 @@ For Debt/Equity the score is inverted (lower D/E = healthier).
 HealthScore = mean(GrowthScore, NetMarginScore, FCFMarginScore, DebtEquityScore)
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Header
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pathlib import Path
@@ -657,7 +657,10 @@ async def get_custom_health_scores(
 # ─────────────────────────────────────────────
 
 @router.post("/report")
-async def generate_health_report(payload: Dict[str, Any]):
+async def generate_health_report(
+    payload: Dict[str, Any],
+    x_gemini_api_key: Optional[str] = Header(default=None, alias="X-Gemini-API-Key"),
+):
     """
     Generate an AI-powered HTML health report for one or multiple tickers.
     Accepts either a single ticker dict, or a dict with `tickers` list.
@@ -735,7 +738,8 @@ Generate the HTML now:
 
     try:
         from app.services.financial_analyzer import FinancialAnalyzer
-        analyzer = FinancialAnalyzer()
+        # Use BYOK key if provided, else fall back to backend default (env)
+        analyzer = FinancialAnalyzer(api_key=x_gemini_api_key or None)
         report = await analyzer.generate_text(prompt)
         # Strip potential markdown tick wrappers
         if report.startswith("```html"):

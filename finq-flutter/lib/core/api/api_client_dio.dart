@@ -9,6 +9,7 @@ class ApiClientDio implements ApiClient {
   ApiClientDio({
     required String baseUrl,
     required AuthService authService,
+    String? geminiApiKey,
     Dio? dio,
     CacheStore? cacheStore,
   })  : _authService = authService,
@@ -27,6 +28,9 @@ class ApiClientDio implements ApiClient {
           final token = await _authService.getIdToken();
           if (token != null && token.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer $token';
+          }
+          if (geminiApiKey != null && geminiApiKey.isNotEmpty) {
+            options.headers['X-Gemini-API-Key'] = geminiApiKey;
           }
           handler.next(options);
         },

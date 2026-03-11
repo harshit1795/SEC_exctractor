@@ -1,7 +1,7 @@
 """
 Chat and AI analysis API endpoints
 """
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Header
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.database import get_db
@@ -17,13 +17,27 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
-# Global instances
+# Global instances (used when no BYOK key is supplied)
 _analyzer: Optional[FinancialAnalyzer] = None
 _data_manager: Optional[DataSourceManager] = None
 
 
-def get_analyzer() -> FinancialAnalyzer:
-    """Get or create FinancialAnalyzer instance"""
+def get_analyzer(byok_key: Optional[str] = None) -> FinancialAnalyzer:
+    """Get or create FinancialAnalyzer instance.
+
+    If a BYOK key is provided (from the X-Gemini-API-Key header),
+    a fresh instance is created with that key for this request.
+    Otherwise, the global singleton backed by the backend's .env key is used.
+    """
+    if byok_key:
+        try:
+            return FinancialAnalyzer(api_key=byok_key)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Provided Gemini API key is invalid: {str(e)}"
+            )
+
     global _analyzer
     if _analyzer is None:
         try:
@@ -455,7 +469,8 @@ async def _gather_context_data(context_data: dict, data_manager: DataSourceManag
 @router.post("/analyze", response_model=ChatResponse)
 async def analyze_financial_data(
     request: ChatRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    x_gemini_api_key: Optional[str] = Header(default=None, alias="X-Gemini-API-Key"),
 ):
     """
     Analyze financial data using AI
@@ -470,7 +485,7 @@ async def analyze_financial_data(
     try:
         # Check if analyzer is available
         try:
-            analyzer = get_analyzer()
+            analyzer = get_analyzer(byok_key=x_gemini_api_key)
         except HTTPException as e:
             # Re-raise HTTP exceptions (like 500 for missing API key)
             raise
