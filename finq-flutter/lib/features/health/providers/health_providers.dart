@@ -127,6 +127,31 @@ final finqHealthScoreProvider = FutureProvider.family<List<HealthScoreModel>?, S
   return null;
 });
 
+final singleFinqHealthScoreProvider = FutureProvider.family<HealthScoreModel?, String>((ref, ticker) async {
+  if (ticker.isEmpty) return null;
+  final apiClient = ref.watch(apiClientProvider);
+  try {
+    final queryParams = <String, dynamic>{
+      'ticker': ticker,
+      'limit': 1,
+    };
+    final response = await apiClient.get<Map<String, dynamic>>(
+      '/health-scores/finq',
+      queryParameters: queryParams,
+      forceRefresh: true,
+    );
+    if (response.statusCode == 200 && response.data['scores'] != null) {
+      final scores = response.data['scores'] as List;
+      if (scores.isNotEmpty) {
+        return HealthScoreModel.fromJson(scores.first as Map<String, dynamic>);
+      }
+    }
+  } catch (e, st) {
+    print('Error fetching single finq health score for $ticker: $e\n$st');
+  }
+  return null;
+});
+
 final customHealthScoreProvider = FutureProvider.family<List<HealthScoreModel>?, CustomHealthScoreParams>((ref, params) async {
   if (params.metrics.isEmpty) return null;
   if (params.ticker == null && params.category == null) return null;

@@ -24,13 +24,22 @@ final baseUrlProvider = StateProvider<String>((ref) {
   return prefs.getString('api_base_url') ?? AppConfig.apiBaseUrl;
 });
 
+/// Provider for User's BYOK Gemini API Key
+final geminiApiKeyProvider = StateProvider<String?>((ref) {
+  final prefs = ref.watch(sharedPreferencesProvider);
+  return prefs.getString('gemini_api_key');
+});
+
 /// API client with caching enabled
 final apiClientProvider = Provider<ApiClient>((ref) {
   final baseUrl = ref.watch(baseUrlProvider);
+  final geminiApiKey = ref.watch(geminiApiKeyProvider);
+
   return ApiClientDio(
     baseUrl: baseUrl,
     authService: ref.read(authServiceProvider),
     cacheStore: ref.read(cacheStoreProvider),
+    geminiApiKey: geminiApiKey,
   );
 });
 

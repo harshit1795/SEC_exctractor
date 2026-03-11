@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -28,15 +29,15 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   ];
 
   static const _metricExplanations = {
-    'Revenue Growth': 'Measures year-over-year top-line revenue expansion.',
-    'Net Margin': 'Represents the percentage of revenue remaining after all operating expenses.',
-    'FCF Margin': 'Free Cash Flow Margin indicates the proportion of revenue converted into discretionary cash.',
-    'Debt to Equity': 'Evaluates financial leverage by comparing total liabilities to shareholder equity.',
-    'P/E Ratio': 'Price-to-Earnings ratio, a measure of company valuation.',
-    'ROE': "Return on Equity shows how effectively management uses equity to grow the business.",
-    'ROA': "Return on Assets indicates how profitable a company is relative to its total assets.",
-    'Current Ratio': "Measures a company's ability to pay short-term obligations.",
-    'Quick Ratio': "An indicator of a company's short-term liquidity position.",
+    'Revenue Growth': 'Calculation: (Current Revenue - Prev Revenue) / Prev Revenue.\nInterpretation: Ranked against universe. A score > 0.7 makes it a Leader indicating strong top-line momentum.',
+    'Net Margin': 'Calculation: Net Income / Total Revenue.\nInterpretation: Ranked against universe. A score > 0.7 makes it a Leader, showing excellent profitability.',
+    'FCF Margin': 'Calculation: Free Cash Flow / Total Revenue.\nInterpretation: Assesses discretionary cash generation. A score > 0.7 makes it a Leader.',
+    'Debt to Equity': 'Calculation: Total Debt / Shareholder Equity.\nInterpretation: Assesses financial leverage. Ranked inversely. A score > 0.7 means conservative leverage (Leader).',
+    'P/E Ratio': 'Calculation: Price / Earnings.\nInterpretation: Measures valuation. Ranked inversely. A score > 0.7 means attractive valuation (Leader).',
+    'ROE': "Calculation: Net Income / Shareholder Equity.\nInterpretation: Effectiveness of equity use. A score > 0.7 is a Leader.",
+    'ROA': "Calculation: Net Income / Total Assets.\nInterpretation: Return on assets. A score > 0.7 is a Leader.",
+    'Current Ratio': "Calculation: Current Assets / Current Liabilities.\nInterpretation: Short-term liquidity. A score > 0.7 is a Leader.",
+    'Quick Ratio': "Calculation: (Current Assets - Inventory) / Current Liabilities.\nInterpretation: Immediate liquidity. A score > 0.7 is a Leader.",
   };
 
   final _selectedMetrics = <String, double>{
@@ -49,6 +50,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
   String _selectedTicker = '';
   bool _shouldCalculate = false;
   bool _isGeneratingReport = false;
+  bool _isGeneratingCustomReport = false;
   Key _dropdownKey = UniqueKey();
 
   @override
@@ -62,7 +64,11 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
       weights: _selectedMetrics.values.toList(),
     );
 
-    final healthScoreAsync = _shouldCalculate && _selectedTicker.isNotEmpty
+    final defaultScoreAsync = _selectedTicker.isNotEmpty
+        ? ref.watch(singleFinqHealthScoreProvider(_selectedTicker))
+        : null;
+
+    final customScoreAsync = _shouldCalculate && _selectedTicker.isNotEmpty
         ? ref.watch(customHealthScoreProvider(queryParams))
         : null;
 
@@ -71,7 +77,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header Card
+          // 1. Header Card
           Card(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
@@ -90,7 +96,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'Select a ticker, choose metrics, assign weights and calculate a custom score.',
+                          'Select a ticker, review its default health, assign custom metric weights, and calculate a tailored score.',
                           style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                         ),
                       ],
@@ -102,7 +108,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
           ),
           const SizedBox(height: 16),
 
-          // Ticker + Weights Config Card
+          // 2. Ticker Search Card
           Card(
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             child: Padding(
@@ -110,7 +116,6 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Ticker Search
                   const Text('Select Ticker', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   SingleTickerSearchAutocomplete(
@@ -122,141 +127,177 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
                       });
                     },
                   ),
-                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
 
-                  // Weights Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Metric Weights', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isValidWeights ? Colors.green.shade50 : Colors.red.shade50,
-                          border: Border.all(color: isValidWeights ? Colors.green : Colors.red),
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Text(
-                          'Total: ${(totalWeight * 100).toStringAsFixed(0)}%',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: isValidWeights ? Colors.green.shade700 : Colors.red.shade700,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (!isValidWeights) ...[
-                    const SizedBox(height: 8),
-                    Text('Weights must add up to 100%', style: TextStyle(fontSize: 12, color: Colors.red.shade700)),
-                  ],
-                  const SizedBox(height: 16),
+          // 3. Default Score (Shown immediately on ticker selection)
+          if (defaultScoreAsync != null) ...[
+            defaultScoreAsync.when(
+              data: (score) {
+                if (score == null) return const SizedBox.shrink();
+                return _buildScoreCard(score, isCustom: false);
+              },
+              loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
+              error: (err, st) => Text('Error loading dashboard score: $err'),
+            ),
+            const SizedBox(height: 24),
+          ],
 
-                  // Sliders
-                  ..._selectedMetrics.entries.map((entry) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+          // 4. Weights Config Card
+          Card(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Theme(
+                    data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      initiallyExpanded: true,
+                      tilePadding: EdgeInsets.zero,
+                      title: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Tooltip(
-                                message: _metricExplanations[entry.key] ?? '',
-                                padding: const EdgeInsets.all(12),
-                                margin: const EdgeInsets.symmetric(horizontal: 24),
-                                showDuration: const Duration(seconds: 3),
-                                textStyle: const TextStyle(color: Colors.white, fontSize: 13),
-                                decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(8)),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  children: [
-                                    Text(
-                                      entry.key,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w500,
-                                        decoration: TextDecoration.underline,
-                                        decorationStyle: TextDecorationStyle.dotted,
-                                      ),
-                                    ),
-                                    const SizedBox(width: 4),
-                                    Icon(Icons.info_outline, size: 14, color: Colors.grey.shade600),
-                                  ],
-                                ),
+                          const Text('Adjust Metric Weights', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: isValidWeights ? Colors.green.shade50 : Colors.red.shade50,
+                              border: Border.all(color: isValidWeights ? Colors.green : Colors.red),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Text(
+                              'Total: ${(totalWeight * 100).toStringAsFixed(0)}%',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                color: isValidWeights ? Colors.green.shade700 : Colors.red.shade700,
                               ),
-                              Row(children: [
-                                Text('${(entry.value * 100).toStringAsFixed(0)}%',
-                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                                IconButton(
-                                  icon: const Icon(Icons.close, size: 20),
-                                  onPressed: () {
-                                    setState(() {
-                                      _selectedMetrics.remove(entry.key);
-                                      _shouldCalculate = false;
-    
-                                    });
-                                  },
-                                ),
-                              ]),
-                            ],
-                          ),
-                          Slider(
-                            value: entry.value,
-                            min: 0,
-                            max: 1,
-                            divisions: 20,
-                            label: '${(entry.value * 100).toStringAsFixed(0)}%',
-                            onChanged: (value) {
-                              setState(() {
-                                _selectedMetrics[entry.key] = value;
-                              });
-                            },
-                            onChangeEnd: (value) {
-                              final totalW = _selectedMetrics.values.fold(0.0, (s, v) => s + v);
-                              final isValid = (totalW - 1.0).abs() < 0.01;
-                              if (isValid && _selectedTicker.isNotEmpty) {
-                                setState(() {
-                                  ref.invalidate(customHealthScoreProvider(queryParams));
-                                  _shouldCalculate = true;
-
-                                });
-                              } else {
-                                setState(() {
-                                  _shouldCalculate = false;
-
-                                });
-                              }
-                            },
+                            ),
                           ),
                         ],
                       ),
-                    );
-                  }),
-                  const SizedBox(height: 8),
-                  DropdownButtonFormField<String>(
-                    key: _dropdownKey,
-                    decoration: const InputDecoration(
-                      labelText: 'Add Metric',
-                      border: OutlineInputBorder(),
+                      children: [
+                        if (!isValidWeights) ...[
+                          const SizedBox(height: 8),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text('Weights must add up to 100%', style: TextStyle(fontSize: 12, color: Colors.red.shade700))
+                          ),
+                        ],
+                        const SizedBox(height: 16),
+      
+                        // Sliders
+                        ..._selectedMetrics.entries.map((entry) {
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Tooltip(
+                                      message: _metricExplanations[entry.key] ?? '',
+                                      padding: const EdgeInsets.all(12),
+                                      margin: const EdgeInsets.symmetric(horizontal: 24),
+                                      showDuration: const Duration(seconds: 3),
+                                      textStyle: const TextStyle(color: Colors.white, fontSize: 13),
+                                      decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(8)),
+                                      child: Row(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        children: [
+                                          Text(
+                                            entry.key,
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                              decoration: TextDecoration.underline,
+                                              decorationStyle: TextDecorationStyle.dotted,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Icon(Icons.info_outline, size: 14, color: Colors.grey.shade600),
+                                        ],
+                                      ),
+                                    ),
+                                    Row(children: [
+                                      Text('${(entry.value * 100).toStringAsFixed(0)}%',
+                                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                      IconButton(
+                                        icon: const Icon(Icons.close, size: 20),
+                                        onPressed: () {
+                                          setState(() {
+                                            _selectedMetrics.remove(entry.key);
+                                            _shouldCalculate = false;
+                                          });
+                                        },
+                                      ),
+                                    ]),
+                                  ],
+                                ),
+                                Slider(
+                                  value: entry.value,
+                                  min: 0,
+                                  max: 1,
+                                  divisions: 20,
+                                  label: '${(entry.value * 100).toStringAsFixed(0)}%',
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _selectedMetrics[entry.key] = value;
+                                    });
+                                  },
+                                  onChangeEnd: (value) {
+                                    final totalW = _selectedMetrics.values.fold(0.0, (s, v) => s + v);
+                                    final isValid = (totalW - 1.0).abs() < 0.01;
+                                    if (isValid && _selectedTicker.isNotEmpty) {
+                                      setState(() {
+                                        ref.invalidate(customHealthScoreProvider(queryParams));
+                                        _shouldCalculate = true;
+                                      });
+                                    } else {
+                                      setState(() {
+                                        _shouldCalculate = false;
+                                      });
+                                    }
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 8),
+                        DropdownButtonFormField<String>(
+                          key: _dropdownKey,
+                          decoration: const InputDecoration(
+                            labelText: 'Add Metric',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _availableMetrics
+                              .where((m) => !_selectedMetrics.containsKey(m))
+                              .map((metric) => DropdownMenuItem(value: metric, child: Text(metric)))
+                              .toList(),
+                          onChanged: (value) {
+                            if (value != null) {
+                              setState(() {
+                                _dropdownKey = UniqueKey();
+                                _selectedMetrics[value] = 0.1;
+                                _shouldCalculate = false;
+                              });
+                            }
+                          },
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     ),
-                    items: _availableMetrics
-                        .where((m) => !_selectedMetrics.containsKey(m))
-                        .map((metric) => DropdownMenuItem(value: metric, child: Text(metric)))
-                        .toList(),
-                    onChanged: (value) {
-                      if (value != null) {
-                        setState(() {
-                          _dropdownKey = UniqueKey();
-                          _selectedMetrics[value] = 0.1;
-                          _shouldCalculate = false;
-                        });
-                      }
-                    },
                   ),
-                  const SizedBox(height: 24),
+
+                  // Calculate Button
+                  const SizedBox(height: 8),
                   SizedBox(
                     width: double.infinity,
                     height: 52,
@@ -292,238 +333,298 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
             ),
           ),
 
-          const SizedBox(height: 16),
-
-          // Results
-          if (_shouldCalculate && _selectedTicker.isNotEmpty && healthScoreAsync != null)
-            healthScoreAsync.when(
+          // 5. Custom Score (if computed)
+          if (customScoreAsync != null && _shouldCalculate) ...[
+            customScoreAsync.when(
               data: (scores) {
                 if (scores == null || scores.isEmpty) {
                   return const Padding(
                     padding: EdgeInsets.all(32),
-                    child: Center(child: Text('No data available for this ticker / metric combination.')),
+                    child: Center(child: Text('No custom data available for this ticker/metrics.')),
                   );
                 }
-                final score = scores.first;
-                final hScore = score.healthScore ?? 0.0;
-                final hScorePct = (hScore * 100).toStringAsFixed(1);
-                final hColor = _getScoreColor(hScore);
-                final hLabel = _getScoreLabel(hScore);
-
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Score Card
-                    Card(
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          children: [
-                            Text(
-                              'Custom Health Score – ${score.ticker}',
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 16),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  width: 80,
-                                  height: 80,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: hColor, width: 5),
-                                  ),
-                                  child: Center(
-                                    child: Text(
-                                      '$hScorePct%',
-                                      style: TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                        color: hColor,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 16),
-                                Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(hLabel, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: hColor)),
-                                    if (score.insight != null && score.insight!.isNotEmpty)
-                                      SizedBox(
-                                        width: 300,
-                                        child: Text(
-                                          score.insight!,
-                                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
-                                          maxLines: 3,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 24),
-                            // Metric Highlights Grid
-                            GridView.count(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              crossAxisCount: 2,
-                              mainAxisSpacing: 12,
-                              crossAxisSpacing: 12,
-                              childAspectRatio: 2.2,
-                              children: _selectedMetrics.keys.map((metric) {
-                                final val = score.rawMetrics[metric];
-                                return Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Text(
-                                        metric,
-                                        style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.bold),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        val != null ? _formatRawMetric(metric, val) : 'N/A',
-                                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                            const SizedBox(height: 24),
-                            const Divider(),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Detailed Rankings',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.grey),
-                            ),
-                            const SizedBox(height: 12),
-                            // Metric Bars
-                            ..._selectedMetrics.keys.map((metric) {
-                              final metricScore = score.metricScores[metric] ?? 0.0;
-                              return Padding(
-                                padding: const EdgeInsets.only(bottom: 12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Text(metric, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-                                        Row(
-                                          children: [
-                                            if (score.rawMetrics.containsKey(metric) && score.rawMetrics[metric] != null)
-                                              Text(
-                                                _formatRawMetric(metric, score.rawMetrics[metric]!),
-                                                style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant),
-                                              ),
-                                            const SizedBox(width: 8),
-                                            Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              decoration: BoxDecoration(
-                                                color: _getScoreColor(metricScore).withOpacity(0.1),
-                                                borderRadius: BorderRadius.circular(4),
-                                              ),
-                                              child: Text('Rank: ${(metricScore * 100).toStringAsFixed(0)}%',
-                                                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: _getScoreColor(metricScore))),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    LinearProgressIndicator(
-                                      value: metricScore.clamp(0.0, 1.0),
-                                      backgroundColor: Colors.grey.shade200,
-                                      valueColor: AlwaysStoppedAnimation<Color>(_getScoreColor(metricScore)),
-                                      minHeight: 8,
-                                    ),
-                                  ],
-                                ),
-                              );
-                            }),
-                            const SizedBox(height: 20),
-                            // Generate Report Button
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _isGeneratingReport ? null : () => _generateReport(score),
-                                    icon: _isGeneratingReport
-                                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                        : const Icon(Icons.description_outlined),
-                                    label: Text(_isGeneratingReport ? 'Generating...' : 'Generate Health Report'),
-                                    style: OutlinedButton.styleFrom(
-                                      foregroundColor: Colors.blue.shade700,
-                                      side: BorderSide(color: Colors.blue.shade700),
-                                      padding: const EdgeInsets.symmetric(vertical: 14),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                IconButton(
-                                  icon: const Icon(Icons.refresh, color: Colors.amber),
-                                  tooltip: 'Refresh & Regen',
-                                  onPressed: _isGeneratingReport ? null : () => _refreshAndGenerateReport(score),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    // Report display removed — report opens in a new browser tab via HtmlExportService
-                  ],
-                );
+                return _buildScoreCard(scores.first, isCustom: true);
               },
-              loading: () => const Padding(
-                padding: EdgeInsets.all(48),
-                child: Center(child: CircularProgressIndicator()),
-              ),
+              loading: () => const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator())),
               error: (err, st) => Padding(
                 padding: const EdgeInsets.all(32),
                 child: Center(child: Text('Error: $err', style: const TextStyle(color: Colors.red))),
               ),
             ),
+          ],
+          
+          if (_selectedTicker.isNotEmpty) const SizedBox(height: 60),
         ],
       ),
     );
   }
 
-  Future<void> _generateReport(dynamic score) async {
-    setState(() => _isGeneratingReport = true);
+  Widget _buildScoreCard(HealthScoreModel score, {required bool isCustom}) {
+    final hScore = score.healthScore ?? 0.0;
+    final hScorePct = (hScore * 100).toStringAsFixed(1);
+    final hColor = _getScoreColor(hScore, isInverse: false);
+    final hLabel = _getScoreLabel(hScore);
+
+    final title = isCustom ? 'Custom Health Score – ${score.ticker}' : 'Default FinQ Health Score – ${score.ticker}';
+    final cardColor = isCustom ? Theme.of(context).colorScheme.surface : Theme.of(context).colorScheme.surfaceContainerLow;
+
+    final metricsToShow = isCustom
+        ? _selectedMetrics.keys.toList()
+        : ['Revenue Growth', 'Net Margin', 'FCF Margin', 'Debt to Equity', 'P/E Ratio'];
+
+    final isGenerating = _isGeneratingReport && _isGeneratingCustomReport == isCustom;
+    
+    // Responsive grid counting
+    final screenWidth = MediaQuery.of(context).size.width;
+    int crossAxisCount = 2; // Mobile
+    if (screenWidth > 1200) {
+      crossAxisCount = 5; // Large Desktop
+    } else if (screenWidth > 900) {
+      crossAxisCount = 4; // Desktop
+    } else if (screenWidth > 600) {
+      crossAxisCount = 3; // Tablet
+    }
+
+    return Card(
+      color: cardColor,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: isCustom ? BorderSide(color: Colors.blue.shade200, width: 2) : BorderSide.none,
+      ),
+      elevation: isCustom ? 4 : 1,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          children: [
+            Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: hColor, width: 5),
+                    color: Theme.of(context).colorScheme.surface,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '$hScorePct%',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: hColor,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(hLabel, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: hColor)),
+                      if (score.insight != null && score.insight!.isNotEmpty)
+                        Text(
+                          score.insight!,
+                          style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontStyle: FontStyle.italic),
+                          maxLines: 4,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            // Metric Highlights Grid (KPI Cards with Gauges)
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 2.8, // Ultra-wide to match reference image
+              ),
+              itemCount: metricsToShow.length,
+              itemBuilder: (context, index) {
+                final metric = metricsToShow[index];
+                final val = _getRawMetricValue(score, metric);
+                final metricScore = _getMetricRankValue(score, metric) ?? 0.0;
+                
+                final isInverse = metric == 'Debt to Equity' || metric == 'P/E Ratio';
+                final interp = _getInterpretation(metricScore, isInverse: isInverse);
+                final interpColor = _getScoreColor(metricScore, isInverse: false); // Percentile is ALREADY inverted in backend
+
+                return Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Theme.of(context).colorScheme.outlineVariant.withOpacity(0.5)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Header Row
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                metric,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                              ),
+                            ),
+                          ),
+                          Tooltip(
+                            message: _metricExplanations[metric] ?? '',
+                            padding: const EdgeInsets.all(12),
+                            margin: const EdgeInsets.symmetric(horizontal: 24),
+                            showDuration: const Duration(seconds: 4),
+                            textStyle: const TextStyle(color: Colors.white, fontSize: 13),
+                            decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(8)),
+                            child: Icon(Icons.info_outline, size: 14, color: Theme.of(context).colorScheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                      
+                      // Progress Bar + Value + Interpretation Row
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(4),
+                                  child: LinearProgressIndicator(
+                                    value: metricScore.clamp(0.0, 1.0),
+                                    backgroundColor: Colors.grey.withOpacity(0.2),
+                                    valueColor: AlwaysStoppedAnimation<Color>(interpColor),
+                                    minHeight: 6,
+                                  ),
+                                ),
+                              ),
+                              const Spacer(flex: 1), // Only take up partial width for the bar
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Text(
+                                val != null ? _formatRawMetric(metric, val) : 'N/A',
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, height: 1.0),
+                              ),
+                              const Spacer(),
+                              Text(
+                                interp,
+                                style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: interpColor, height: 1.0),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 24),
+
+            // Generate Report Button
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isGeneratingReport ? null : () => _generateReport(score, isCustom: isCustom),
+                    icon: isGenerating
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.description_outlined),
+                    label: Text(isGenerating ? 'Generating...' : 'Generate ${isCustom ? "Custom " : "Default "}Report'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.blue.shade700,
+                      side: BorderSide(color: Colors.blue.shade700),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  icon: const Icon(Icons.refresh, color: Colors.amber),
+                  tooltip: 'Refresh & Regen',
+                  onPressed: _isGeneratingReport ? null : () => _refreshAndGenerateReport(score, isCustom: isCustom),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double? _getRawMetricValue(HealthScoreModel score, String metric) {
+    if (score.rawMetrics.containsKey(metric)) return score.rawMetrics[metric];
+    switch (metric) {
+      case 'Revenue Growth': return score.rawMetrics['Growth'];
+      case 'Net Margin': return score.rawMetrics['NetMargin'];
+      case 'FCF Margin': return score.rawMetrics['FCFMargin'];
+      case 'Debt to Equity': return score.rawMetrics['DebtEquity'];
+      case 'P/E Ratio': return score.rawMetrics['PE'];
+    }
+    return null;
+  }
+
+  double? _getMetricRankValue(HealthScoreModel score, String metric) {
+    if (score.metricScores.containsKey(metric)) return score.metricScores[metric];
+    switch (metric) {
+      case 'Revenue Growth': return score.metricScores['Growth'];
+      case 'Net Margin': return score.metricScores['NetMargin'];
+      case 'FCF Margin': return score.metricScores['FCFMargin'];
+      case 'Debt to Equity': return score.metricScores['DebtEquity'];
+      case 'P/E Ratio': return score.metricScores['PE'];
+    }
+    return null;
+  }
+
+  Future<void> _generateReport(HealthScoreModel score, {required bool isCustom}) async {
+    setState(() {
+      _isGeneratingReport = true;
+      _isGeneratingCustomReport = isCustom;
+    });
 
     try {
       final payload = <String, dynamic>{
         'ticker': score.ticker,
         'healthScore': score.healthScore,
-        'growth': score.growth,
-        'netMargin': score.netMargin,
-        'fcfMargin': score.fcfMargin,
-        'debtEquity': score.debtEquity,
-        'growthScore': score.growthScore,
-        'netMarginScore': score.netMarginScore,
-        'fcfMarginScore': score.fcfMarginScore,
-        'debtEquityScore': score.debtEquityScore,
+        'growth': score.growth ?? _getRawMetricValue(score, 'Revenue Growth'),
+        'netMargin': score.netMargin ?? _getRawMetricValue(score, 'Net Margin'),
+        'fcfMargin': score.fcfMargin ?? _getRawMetricValue(score, 'FCF Margin'),
+        'debtEquity': score.debtEquity ?? _getRawMetricValue(score, 'Debt to Equity'),
+        'peRatio': score.peRatio ?? _getRawMetricValue(score, 'P/E Ratio'),
         'insight': score.insight,
-        ...score.rawMetrics, // Include all raw metrics (P/E, ROA, etc.)
-        'customWeights': Map<String, double>.from(
-          Map.fromIterables(_selectedMetrics.keys, _selectedMetrics.values),
-        ),
+        ...score.rawMetrics,
+        'customWeights': isCustom 
+           ? Map<String, double>.from(Map.fromIterables(_selectedMetrics.keys, _selectedMetrics.values)) 
+           : null,
       };
       await HtmlExportService.generateAndOpenReport(
         htmlGenerator: () async {
@@ -531,7 +632,7 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
           if (result == null) throw Exception('Failed to generate report');
           return result;
         },
-        filenamePrefix: score.ticker,
+        filenamePrefix: '${score.ticker}_${isCustom ? "custom_" : ""}health_report',
       );
     } catch (e) {
       if (mounted) {
@@ -540,17 +641,22 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
         );
       }
     } finally {
-      if (mounted) setState(() => _isGeneratingReport = false);
+      if (mounted) setState(() {
+         _isGeneratingReport = false;
+      });
     }
   }
 
-  Future<void> _refreshAndGenerateReport(dynamic score) async {
+  Future<void> _refreshAndGenerateReport(HealthScoreModel score, {required bool isCustom}) async {
     await ReportCacheService.deleteReport([score.ticker]);
-    return _generateReport(score);
+    return _generateReport(score, isCustom: isCustom);
   }
 
-
-  Color _getScoreColor(double score) {
+  Color _getScoreColor(double score, {bool isInverse = false}) {
+    // Note: The backend already inverts the percentile rank for DebtEquity and PE. 
+    // So a higher `score` (percentile rank) is ALWAYS better, even for inverted metrics.
+    // E.g., a low Debt/Equity becomes a 0.9 rank (Green). 
+    // We do not need to flip colors.
     if (score >= 0.7) return Colors.green;
     if (score >= 0.4) return Colors.amber.shade600;
     return Colors.red;
@@ -562,20 +668,31 @@ class _CustomMetricsTabState extends ConsumerState<CustomMetricsTab> {
     return 'Weak';
   }
 
+  String _getInterpretation(double score, {bool isInverse = false}) {
+    // The backend already converted low Debt/Equity into a HIGH percentile score (0.9 rank).
+    // Therefore, a score >= 0.7 is always a "Leader", regardless of if it's inverse.
+    if (score >= 0.7) {
+      if (isInverse) return "Leader (Low is Good)";
+      return 'Leader';
+    }
+    if (score >= 0.4) return 'Neutral';
+    
+    if (isInverse) return "Lagger (High is Bad)";
+    return 'Lagger';
+  }
+
   String _formatRawMetric(String metricName, double value) {
     final lowerName = metricName.toLowerCase();
-    // P/E Ratio is a multiplier (e.g. 28.5x), not a percentage
     if (lowerName.contains('p/e') || lowerName.contains('pe ratio')) {
       return '${value.toStringAsFixed(1)}x';
     }
-    // Percentage-type metrics
     if (lowerName.contains('margin') ||
         lowerName.contains('growth') ||
         lowerName.contains('roe') ||
         lowerName.contains('roa')) {
       return '${(value * 100).toStringAsFixed(2)}%';
     }
-    // E.g., Debt/Equity, Current Ratio, Quick Ratio
     return value.toStringAsFixed(2);
   }
 }
+// Custom Painters removed in favor of LinearProgressIndicator
