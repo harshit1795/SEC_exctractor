@@ -145,7 +145,7 @@ class FinancialAnalyzer:
             logger.info(f"Generating AI response for prompt length: {len(user_prompt)}")
             logger.debug(f"Full prompt length: {len(full_prompt)}")
             
-            # Retry logic for rate limit errors
+            # Retry logic for rate limit errors (per-minute only — daily quota errors propagate immediately)
             max_retries = 3
             retry_delay = 2  # Start with 2 seconds
             response = None
@@ -156,18 +156,25 @@ class FinancialAnalyzer:
                     break  # Success, exit retry loop
                 except Exception as e:
                     error_str = str(e).lower()
-                    is_rate_limit = '429' in error_str or 'rate limit' in error_str or 'quota' in error_str or 'quota exceeded' in error_str
+                    is_daily_quota = '429' in error_str and (
+                        'per day' in error_str or 'daily' in error_str or
+                        'generate_content_free_tier_requests' in error_str or
+                        'generate_content_free_tier_input_token_count' in error_str
+                    )
+                    is_per_minute_limit = ('429' in error_str or 'rate limit' in error_str) and not is_daily_quota
                     
-                    if is_rate_limit and attempt < max_retries - 1:
-                        # Exponential backoff: 2s, 4s, 8s
+                    if is_daily_quota:
+                        # Don't retry — daily quota is exhausted, propagate immediately
+                        # so the frontend can prompt for BYOK
+                        raise
+                    elif is_per_minute_limit and attempt < max_retries - 1:
+                        # Exponential backoff for per-minute limits: 2s, 4s
                         wait_time = retry_delay * (2 ** attempt)
-                        logger.warning(f"Rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s before retry...")
+                        logger.warning(f"Per-minute rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
                         await asyncio.sleep(wait_time)
-                        # Also wait for rate limiter window
                         await self.rate_limiter.acquire()
                         continue
                     else:
-                        # Not a rate limit error, or out of retries - re-raise
                         raise
             
             if not response:

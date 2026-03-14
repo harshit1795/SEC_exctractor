@@ -6,6 +6,7 @@ import '../../../core/di/providers.dart';
 import '../../../models/chat.dart' as model;
 import '../widgets/tab_description_tooltip.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/services.dart';
 
 class FinQChatTab extends ConsumerStatefulWidget {
   const FinQChatTab({
@@ -28,6 +29,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
   List<model.ChatSession> _sessionHistory = [];
   
   Map<String, dynamic> _contextData = {};
+  String? _pendingPromptAfterKey; // stores prompt to retry after BYOK save
   
   var _isLoading = false;
   var _isFetchingHistory = false;
@@ -177,19 +179,25 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
         _fetchSessions();
       }
     } catch (e) {
-      // Extract a clean error message from Dio responses
-      String errorMsg;
       final eStr = e.toString();
-      if (eStr.contains('503') || eStr.contains('Service Unavailable')) {
-        errorMsg = '⚠️ FinQ AI is temporarily unavailable. The Gemini API may be at capacity or the backend API key may need to be refreshed. Please wait a moment and try again.';
-      } else if (eStr.contains('429') || eStr.contains('quota')) {
-        errorMsg = '⏱️ Rate limit reached. The AI API has hit its request quota. Please wait 1-2 minutes before sending another message.';
+      final isQuotaError = eStr.contains('503') || eStr.contains('quota') ||
+          eStr.contains('429') || eStr.contains('Service Unavailable');
+
+      if (isQuotaError && mounted) {
+        // Remove the "thinking..." state first
+        setState(() { _isLoading = false; });
+        // Show BYOK dialog with retry
+        await _showApiKeyQuotaDialog(pendingPrompt: messageText);
+        return;
+      }
+
+      String errorMsg;
+      if (eStr.contains('timeout') || eStr.contains('SocketException')) {
+        errorMsg = '🌐 Connection timeout. The backend server may be starting up. Please try again in a moment.';
       } else if (eStr.contains('401') || eStr.contains('403')) {
-        errorMsg = '🔑 Authentication failed. Please check your Gemini API key in Settings or contact support.';
-      } else if (eStr.contains('timeout') || eStr.contains('SocketException')) {
-        errorMsg = '🌐 Connection timeout. The backend server may be starting up or unavailable. Please try again in a moment.';
+        errorMsg = '🔑 Authentication failed. Please check your Gemini API key in Settings.';
       } else {
-        errorMsg = '❌ Something went wrong. Please try again. If the issue persists, check the Settings for your API key.';
+        errorMsg = '❌ Something went wrong. Please try again.';
       }
       setState(() {
         _messages.add(model.ChatMessage(
@@ -217,6 +225,215 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
         );
       }
     });
+  }
+
+  /// Shows a dialog prompting the user to enter their Gemini API key (BYOK)
+  /// when the backend quota is exhausted. Saves the key and optionally retries
+  /// the [pendingPrompt] after saving.
+  Future<void> _showApiKeyQuotaDialog({String? pendingPrompt}) async {
+    final keyController = TextEditingController();
+    bool _obscure = true;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            width: 480,
+            constraints: const BoxConstraints(maxWidth: 480),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A2E),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Colors.blue.shade900, width: 1),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.15),
+                  blurRadius: 40,
+                  spreadRadius: 5,
+                )
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Header
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade900.withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(Icons.key_rounded, color: Colors.orange.shade300, size: 22),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'API Quota Exceeded',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Provide your own Gemini key to continue',
+                              style: TextStyle(color: Colors.white54, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: Colors.white38, size: 18),
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Explanation
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withOpacity(0.07),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: Colors.orange.withOpacity(0.2)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.orange.shade300, size: 16),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'The default Gemini API key has hit its free-tier daily request limit. Enter your own key from Google AI Studio to keep using FinQ AI without interruption — all at the same quality.',
+                            style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // API Key field
+                  TextField(
+                    controller: keyController,
+                    obscureText: _obscure,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: InputDecoration(
+                      labelText: 'Gemini API Key',
+                      labelStyle: TextStyle(color: Colors.blue.shade300),
+                      hintText: 'AIzaSy...',
+                      hintStyle: const TextStyle(color: Colors.white24),
+                      filled: true,
+                      fillColor: Colors.white.withOpacity(0.05),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue.shade800),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue.shade900),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(color: Colors.blue.shade400),
+                      ),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscure ? Icons.visibility_off : Icons.visibility,
+                          color: Colors.white38,
+                          size: 18,
+                        ),
+                        onPressed: () => setDialogState(() => _obscure = !_obscure),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => Clipboard.setData(const ClipboardData(text: 'https://aistudio.google.com/apikey')),
+                    child: Text(
+                      '🔗 Get a free key at aistudio.google.com/apikey',
+                      style: TextStyle(
+                        color: Colors.blue.shade400,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Action buttons
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(false),
+                        style: TextButton.styleFrom(foregroundColor: Colors.white38),
+                        child: const Text('Cancel'),
+                      ),
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final key = keyController.text.trim();
+                          if (key.isNotEmpty) {
+                            Navigator.of(ctx).pop(true);
+                          }
+                        },
+                        icon: const Icon(Icons.check_circle_outline, size: 16),
+                        label: const Text('Save & Retry'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.blue.shade700,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    if (saved == true && keyController.text.trim().isNotEmpty) {
+      final newKey = keyController.text.trim();
+      // Save to Riverpod + SharedPreferences (same as Settings page)
+      ref.read(geminiApiKeyProvider.notifier).state = newKey;
+      final prefs = ref.read(sharedPreferencesProvider);
+      await prefs.setString('gemini_api_key', newKey);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('✅ API key saved — retrying your request...'),
+            backgroundColor: Colors.green.shade800,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+        // Auto-retry the prompt that failed
+        if (pendingPrompt != null && pendingPrompt.isNotEmpty) {
+          _messageController.text = pendingPrompt;
+          await Future.delayed(const Duration(milliseconds: 500));
+          _sendMessage();
+        }
+      }
+    }
   }
   
   void _showContextAttachmentSheet() {

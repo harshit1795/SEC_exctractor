@@ -211,8 +211,18 @@ final healthReportProvider = FutureProvider.family<String?, Map<String, dynamic>
       }
       return html;
     }
+    // Non-200 response — extract the detail message
+    final detail = response.data?['detail'] as String? ?? 'Unknown server error (${response.statusCode})';
+    throw Exception(detail);
   } catch (e, st) {
-    print('Error generating health report: $e\n$st');
+    final eStr = e.toString();
+    print('Error generating health report: $eStr\n$st');
+    // Detect quota errors and surface a clean message
+    if (eStr.contains('quota') || eStr.contains('429') || eStr.contains('503') || eStr.contains('rate limit')) {
+      throw Exception('⏱️ Gemini API quota exceeded. Please add your own API key in Settings → Gemini API Key (BYOK) to generate reports without limits.');
+    }
+    // Re-throw so callers can display a meaningful SnackBar
+    rethrow;
   }
-  return null;
 });
+
