@@ -37,8 +37,12 @@ class FinancialAnalyzer:
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not configured")
         
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('gemini-2.0-flash')
+        # Use per-instance client to avoid global genai.configure() race conditions
+        # when concurrent requests use different API keys (BYOK vs default).
+        import google.generativeai as _genai
+        _genai.configure(api_key=self.api_key)  # still needed for some SDK internals
+        self._client_key = self.api_key  # store for use in individual model creations
+        self.model = _genai.GenerativeModel('gemini-2.0-flash')
         # Initialize rate limiter (15 requests per minute - conservative limit)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
         self.cache = cache
@@ -238,8 +242,12 @@ class FinancialAnalyzer:
             # In gemini, system instructions are set on model init or pass as system_instruction
             
             # Build the model with tools and system instruction
+            # IMPORTANT: Re-configure genai with THIS instance's API key
+            # to avoid the global genai.configure() race condition where
+            # concurrent BYOK and default-key requests overwrite each other.
+            genai.configure(api_key=self.api_key)
             model_with_tools = genai.GenerativeModel(
-                model_name='gemini-2.0-flash', # Use latest stable flash model
+                model_name='gemini-2.0-flash',
                 tools=FINANCIAL_TOOLS,
                 system_instruction=system_msg
             )
