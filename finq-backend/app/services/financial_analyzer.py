@@ -9,7 +9,10 @@ import asyncio
 import time
 import json
 from typing import Dict, Any, Optional, List
-import google.generativeai as genai
+# New google-genai SDK: per-instance Client (no global configure)
+from google import genai as google_genai
+# Legacy SDK still used for FINANCIAL_TOOLS type declarations
+import google.generativeai as genai_legacy
 from google.generativeai.types import content_types
 from app.config import settings
 from app.services.rate_limiter import get_rate_limiter
@@ -27,23 +30,29 @@ class FinancialAnalyzer:
     
     def __init__(self, api_key: Optional[str] = None, cache: Any = None):
         """
-        Initialize FinancialAnalyzer with API key
-        
-        Args:
-            api_key: Google Generative AI API key (uses settings if not provided)
+        Initialize FinancialAnalyzer with API key.
+        Uses the new google-genai SDK (Client-per-instance) for BYOK isolation.
         """
         self.api_key = api_key or settings.gemini_api_key
         
         if not self.api_key:
             raise ValueError("GEMINI_API_KEY not configured")
         
-        # Use per-instance client to avoid global genai.configure() race conditions
-        # when concurrent requests use different API keys (BYOK vs default).
-        import google.generativeai as _genai
-        _genai.configure(api_key=self.api_key)  # still needed for some SDK internals
-        self._client_key = self.api_key  # store for use in individual model creations
-        self.model = _genai.GenerativeModel('gemini-2.0-flash')
-        # Initialize rate limiter (15 requests per minute - conservative limit)
+        key_preview = self.api_key[:8] + '...' if len(self.api_key) > 8 else '???'
+        logger.info(f"FinancialAnalyzer init: api_key={key_preview}")
+
+        # ── New per-instance Client (google-genai SDK) ──────────────────────
+        # This is FULLY isolated — no global configure() calls, no race conditions.
+        # Every BYOK request gets its own Client pointing to its own quota.
+        self._genai_client = google_genai.Client(api_key=self.api_key)
+
+        # ── Legacy SDK model (still used by summarize/analyze methods) ──────
+        # These methods don't have concurrent BYOK pressure, so we keep them
+        # on the legacy SDK for now.
+        genai_legacy.configure(api_key=self.api_key)
+        self.model = genai_legacy.GenerativeModel('gemini-2.0-flash')
+
+        # Initialize rate limiter (15 requests per minute)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
         self.cache = cache
     
@@ -225,86 +234,145 @@ class FinancialAnalyzer:
         data_manager: Any
     ) -> str:
         """
-        Agentic loop that uses Gemini function calling to autonomously fetch
-        financial data via the DataSourceManager before responding.
-        
-        Args:
-            prompt: the user's latest message (which may include injected widget context)
-            chat_history: list of dicts with 'role' ('user' or 'model') and 'parts'
-            data_manager: instance of DataSourceManager
+        Agentic loop using the new google-genai SDK with a per-instance Client.
+        This eliminates the global genai.configure() race condition entirely.
+        BYOK key is bound to self._genai_client — cannot be overwritten by
+        concurrent requests that use a different key.
         """
         try:
-            # Format history into genai primitives
-            formatted_history = []
-            
-            # Start with the system prompt as a model message or combine it with the first user message
             system_msg = self._build_system_prompt()
-            # In gemini, system instructions are set on model init or pass as system_instruction
-            
-            # Build the model with tools and system instruction
-            # IMPORTANT: Re-configure genai with THIS instance's API key
-            # to avoid the global genai.configure() race condition where
-            # concurrent BYOK and default-key requests overwrite each other.
-            genai.configure(api_key=self.api_key)
-            model_with_tools = genai.GenerativeModel(
-                model_name='gemini-2.0-flash',
-                tools=FINANCIAL_TOOLS,
-                system_instruction=system_msg
-            )
-            
-            for msg in chat_history:
-                # msg format: {"role": "user"|"model", "content": "..."}
-                role = "user" if msg["role"] == "user" else "model"
-                formatted_history.append(
-                    content_types.ContentDict.from_dict({
-                        "role": role,
-                        "parts": [msg["content"]]
+
+            # Convert FINANCIAL_TOOLS to new SDK format
+            # The new SDK accepts tool dicts directly
+            tools_config = None
+            if FINANCIAL_TOOLS:
+                declarations = []
+                for fn in FINANCIAL_TOOLS[0].function_declarations:
+                    # Manually construct the parameter schema since legacy objects lack simple dict conversion
+                    params = {"type": "OBJECT", "properties": {}, "required": []}
+                    if hasattr(fn, 'parameters') and fn.parameters:
+                        # Convert legacy Schema to dict
+                        p = fn.parameters
+                        params["type"] = p.type.name if hasattr(p.type, 'name') else "OBJECT"
+                        
+                        if hasattr(p, 'properties'):
+                            for k, v in p.properties.items():
+                                prop_dict = {"type": v.type.name if hasattr(v.type, 'name') else "STRING"}
+                                if hasattr(v, 'description') and v.description:
+                                    prop_dict["description"] = v.description
+                                if hasattr(v, 'items') and v.items:
+                                    item_type = v.items.type.name if hasattr(v.items.type, 'name') else "STRING"
+                                    prop_dict["items"] = {"type": item_type}
+                                params["properties"][k] = prop_dict
+                        
+                        if hasattr(p, 'required'):
+                            params["required"] = list(p.required)
+                    
+                    declarations.append({
+                        "name": fn.name,
+                        "description": fn.description,
+                        "parameters": params
                     })
+                tools_config = [{"function_declarations": declarations}]
+
+            # Format chat history for new SDK
+            history_for_sdk = []
+            for msg in chat_history:
+                role = "user" if msg["role"] == "user" else "model"
+                history_for_sdk.append(
+                    google_genai.types.Content(
+                        role=role,
+                        parts=[google_genai.types.Part(text=msg["content"])]
+                    )
                 )
-                
-            # Start chat session
-            chat = model_with_tools.start_chat(history=formatted_history)
-            
+
             await self.rate_limiter.acquire()
-            logger.info(f"Starting agent tool loop for prompt length: {len(prompt)}")
+            logger.info(f"Starting agent tool loop. API key: {self.api_key[:8]}...")
+
+            # Create chat session via per-instance client — BYOK-safe
+            chat = self._genai_client.chats.create(
+                model='gemini-2.0-flash',
+                config=google_genai.types.GenerateContentConfig(
+                    system_instruction=system_msg,
+                    tools=tools_config,
+                ),
+                history=history_for_sdk,
+            )
+
+            # Retry logic for rate limit errors in the first turn
+            max_retries = 3
+            retry_delay = 2
+            response = None
             
-            # First turn: send the prompt
-            response = chat.send_message(prompt)
+            for attempt in range(max_retries):
+                try:
+                    response = chat.send_message(prompt)
+                    break
+                except google_genai.errors.ClientError as e:
+                    error_str = str(e.message).lower() if hasattr(e, 'message') else str(e).lower()
+                    is_daily_quota = getattr(e, 'code', 0) == 429 and (
+                        'per day' in error_str or 'daily' in error_str or
+                        'generate_content_free_tier_requests' in error_str or
+                        'free_tier_input_token_count' in error_str
+                    )
+                    is_per_minute = getattr(e, 'code', 0) == 429 and not is_daily_quota
+                    
+                    if is_daily_quota:
+                        # Don't retry — daily quota is exhausted, propagate immediately
+                        # so the frontend can prompt for BYOK
+                        # Raise a standard ValueError with status_code so chat.py catches it
+                        err = ValueError(f"Gemini API quota exceeded: {error_str}")
+                        err.status_code = 429
+                        raise err
+                    elif is_per_minute and attempt < max_retries - 1:
+                        wait_time = retry_delay * (2 ** attempt)
+                        logger.warning(f"Per-minute rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                        await self.rate_limiter.acquire()
+                        continue
+                    else:
+                        raise
             
-            # Loop for function calling (max 5 iterations to prevent infinite loops)
+            if not response:
+                raise ValueError("No response received from agent after retries.")
+
+            # Agentic tool-call loop (max 5 iterations)
             iterations = 0
             while iterations < 5:
-                # Check if the model wants to call a function
-                if response.function_call:
-                    fc = response.function_call
+                # Check for function calls in new SDK response
+                fc = None
+                if response.candidates:
+                    for part in response.candidates[0].content.parts:
+                        if part.function_call:
+                            fc = part.function_call
+                            break
+
+                if fc:
                     logger.info(f"Agent requested tool call: {fc.name}")
-                    
-                    # Execute tool
                     tool_result = await execute_tool(data_manager, fc)
-                    
-                    # Send result back to model
+
                     await self.rate_limiter.acquire()
                     response = chat.send_message(
-                        content_types.ContentDict(
-                            role="function",
-                            parts=[
-                                genai.types.FunctionResponseDict(
-                                    name=fc.name,
-                                    response=tool_result
-                                )
-                            ]
+                        google_genai.types.Part(
+                            function_response=google_genai.types.FunctionResponse(
+                                name=fc.name,
+                                response=tool_result,
+                            )
                         )
                     )
                     iterations += 1
                 else:
-                    # No function call, model returned text
                     break
-                    
-            if not response.text:
+
+            final_text = response.text if hasattr(response, 'text') else ''
+            if not final_text and response.candidates:
+                final_text = response.candidates[0].content.parts[0].text or ''
+
+            if not final_text:
                 raise ValueError("Agent failed to return a final text response.")
-                
-            return response.text
-            
+
+            return final_text
+
         except Exception as e:
             logger.error(f"Error in agent workflow: {e}", exc_info=True)
             raise

@@ -452,13 +452,23 @@ async def analyze_financial_data(
     except Exception as e:
         logger.error(f"Error in chat analysis: {e}", exc_info=True)
         db.rollback()
-        # Provide more helpful error messages
+        
+        # Parse error for specific frontend triggers
         error_str = str(e).lower()
+        
+        # Identify Quota / Rate Limit explicitly to trigger BYOK dialog on frontend
+        if '429' in error_str or getattr(e, 'status_code', 0) == 429:
+            raise HTTPException(
+                status_code=429,
+                detail="Gemini API quota exceeded. Please provide your own API key."
+            )
+            
         if 'api key' in error_str or 'gemini' in error_str or 'authentication' in error_str or 'invalid' in error_str:
             raise HTTPException(
                 status_code=503,
                 detail=f"FinQ AI service is temporarily unavailable. The backend Gemini API key may need to be refreshed. Error: {str(e)}"
             )
+            
         raise HTTPException(
             status_code=500,
             detail=f"Error analyzing financial data: {str(e)}"
