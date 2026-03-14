@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 
 import '../../../core/api/api_client.dart';
 import '../../../core/di/providers.dart';
 import '../../../models/chat.dart' as model;
 import '../widgets/tab_description_tooltip.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
-import 'package:flutter/services.dart';
 
 class FinQChatTab extends ConsumerStatefulWidget {
   const FinQChatTab({
@@ -361,7 +362,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
                   ),
                   const SizedBox(height: 8),
                   GestureDetector(
-                    onTap: () => Clipboard.setData(const ClipboardData(text: 'https://aistudio.google.com/apikey')),
+                    onTap: () => html.window.open('https://aistudio.google.com/apikey', '_blank'),
                     child: Text(
                       '🔗 Get a free key at aistudio.google.com/apikey',
                       style: TextStyle(
@@ -387,7 +388,12 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
                         onPressed: () async {
                           final key = keyController.text.trim();
                           if (key.isNotEmpty) {
-                            Navigator.of(ctx).pop(true);
+                            // Save INSIDE the dialog before closing so
+                            // Riverpod rebuilds apiClientProvider before retry
+                            ref.read(geminiApiKeyProvider.notifier).state = key;
+                            final prefs = ref.read(sharedPreferencesProvider);
+                            await prefs.setString('gemini_api_key', key);
+                            if (ctx.mounted) Navigator.of(ctx).pop(true);
                           }
                         },
                         icon: const Icon(Icons.check_circle_outline, size: 16),
@@ -412,12 +418,6 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
     );
 
     if (saved == true && keyController.text.trim().isNotEmpty) {
-      final newKey = keyController.text.trim();
-      // Save to Riverpod + SharedPreferences (same as Settings page)
-      ref.read(geminiApiKeyProvider.notifier).state = newKey;
-      final prefs = ref.read(sharedPreferencesProvider);
-      await prefs.setString('gemini_api_key', newKey);
-
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -426,10 +426,11 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
             duration: const Duration(seconds: 2),
           ),
         );
-        // Auto-retry the prompt that failed
-        if (pendingPrompt != null && pendingPrompt.isNotEmpty) {
+        // Wait two frames for Riverpod to propagate the new key
+        // through apiClientProvider before retrying
+        await Future.delayed(const Duration(milliseconds: 800));
+        if (mounted && pendingPrompt != null && pendingPrompt.isNotEmpty) {
           _messageController.text = pendingPrompt;
-          await Future.delayed(const Duration(milliseconds: 500));
           _sendMessage();
         }
       }
