@@ -16,6 +16,30 @@ class ChatRequest(BaseModel):
     session_id: Optional[str] = Field(None, description="Chat session ID for history")
 
 
+class ChatMessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+    metadata_json: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    context_data: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class ChatSessionDetailResponse(ChatSessionResponse):
+    messages: List[ChatMessageResponse] = []
+
+
 class ChatResponse(BaseModel):
     """Response schema for chat analysis"""
     response: str
@@ -30,4 +54,3 @@ class ChatHistoryResponse(BaseModel):
     insights: List[Dict[str, Any]]
     count: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-

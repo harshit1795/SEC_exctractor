@@ -7,10 +7,13 @@ AI-powered financial analysis using Google Gemini
 import logging
 import asyncio
 import time
-from typing import Dict, Any, Optional
+import json
+from typing import Dict, Any, Optional, List
 import google.generativeai as genai
+from google.generativeai.types import content_types
 from app.config import settings
 from app.services.rate_limiter import get_rate_limiter
+from app.services.agent_tools import FINANCIAL_TOOLS, execute_tool
 import hashlib
 
 logger = logging.getLogger(__name__)
@@ -35,7 +38,7 @@ class FinancialAnalyzer:
             raise ValueError("GEMINI_API_KEY not configured")
         
         genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel('models/gemini-flash-latest')
+        self.model = genai.GenerativeModel('gemini-2.0-flash')
         # Initialize rate limiter (15 requests per minute - conservative limit)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
         self.cache = cache
@@ -202,6 +205,93 @@ class FinancialAnalyzer:
         except Exception as e:
             logger.error(f"Error generating AI response: {e}", exc_info=True)
             # Re-raise to let the API handle it properly
+            raise
+
+    async def analyze_with_agent(
+        self,
+        prompt: str,
+        chat_history: List[Dict[str, Any]],
+        data_manager: Any
+    ) -> str:
+        """
+        Agentic loop that uses Gemini function calling to autonomously fetch
+        financial data via the DataSourceManager before responding.
+        
+        Args:
+            prompt: the user's latest message (which may include injected widget context)
+            chat_history: list of dicts with 'role' ('user' or 'model') and 'parts'
+            data_manager: instance of DataSourceManager
+        """
+        try:
+            # Format history into genai primitives
+            formatted_history = []
+            
+            # Start with the system prompt as a model message or combine it with the first user message
+            system_msg = self._build_system_prompt()
+            # In gemini, system instructions are set on model init or pass as system_instruction
+            
+            # Build the model with tools and system instruction
+            model_with_tools = genai.GenerativeModel(
+                model_name='gemini-2.0-flash', # Use latest stable flash model
+                tools=FINANCIAL_TOOLS,
+                system_instruction=system_msg
+            )
+            
+            for msg in chat_history:
+                # msg format: {"role": "user"|"model", "content": "..."}
+                role = "user" if msg["role"] == "user" else "model"
+                formatted_history.append(
+                    content_types.ContentDict.from_dict({
+                        "role": role,
+                        "parts": [msg["content"]]
+                    })
+                )
+                
+            # Start chat session
+            chat = model_with_tools.start_chat(history=formatted_history)
+            
+            await self.rate_limiter.acquire()
+            logger.info(f"Starting agent tool loop for prompt length: {len(prompt)}")
+            
+            # First turn: send the prompt
+            response = chat.send_message(prompt)
+            
+            # Loop for function calling (max 5 iterations to prevent infinite loops)
+            iterations = 0
+            while iterations < 5:
+                # Check if the model wants to call a function
+                if response.function_call:
+                    fc = response.function_call
+                    logger.info(f"Agent requested tool call: {fc.name}")
+                    
+                    # Execute tool
+                    tool_result = await execute_tool(data_manager, fc)
+                    
+                    # Send result back to model
+                    await self.rate_limiter.acquire()
+                    response = chat.send_message(
+                        content_types.ContentDict(
+                            role="function",
+                            parts=[
+                                genai.types.FunctionResponseDict(
+                                    name=fc.name,
+                                    response=tool_result
+                                )
+                            ]
+                        )
+                    )
+                    iterations += 1
+                else:
+                    # No function call, model returned text
+                    break
+                    
+            if not response.text:
+                raise ValueError("Agent failed to return a final text response.")
+                
+            return response.text
+            
+        except Exception as e:
+            logger.error(f"Error in agent workflow: {e}", exc_info=True)
             raise
 
     async def generate_text(self, prompt: str) -> str:

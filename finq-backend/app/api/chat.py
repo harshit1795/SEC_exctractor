@@ -7,11 +7,18 @@ from sqlalchemy import func
 from app.database import get_db
 from app.services.financial_analyzer import FinancialAnalyzer
 from app.services.data_source_manager import DataSourceManager
-from app.models.insight import Insight
-from app.schemas.chat import ChatRequest, ChatResponse, ChatHistoryResponse
+from app.models.chat import ChatSession, ChatMessage
+from app.schemas.chat import (
+    ChatRequest, ChatResponse, ChatHistoryResponse,
+    ChatSessionResponse, ChatSessionDetailResponse, ChatMessageResponse
+)
+import json
 from typing import Optional
 import uuid
 import logging
+import hashlib
+import diskcache as dc
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -347,125 +354,6 @@ def _truncate_large_data(data: dict, max_size_mb: float = 2.0) -> dict:
     return truncated
 
 
-async def _gather_context_data(context_data: dict, data_manager: DataSourceManager) -> dict:
-    """
-    Gather all available context data for analysis
-    Similar to Streamlit version's _gather_context_data
-    Optimized to reduce memory usage by limiting data size
-    """
-    import pandas as pd
-    
-    context = {}
-    
-    # Selected tickers
-    if 'selected_tickers' in context_data:
-        context['selected_tickers'] = context_data['selected_tickers']
-        
-        # Fetch Yahoo Finance data for selected tickers
-        yahoo_data = {}
-        for ticker in context_data['selected_tickers']:
-            try:
-                ticker_data = await data_manager.get_yahoo_finance_data(ticker)
-                if ticker_data:
-                    # Limit history data size - only keep last 252 trading days (1 year)
-                    if 'history_df' in ticker_data and isinstance(ticker_data['history_df'], list):
-                        if len(ticker_data['history_df']) > 252:
-                            ticker_data['history_df'] = ticker_data['history_df'][-252:]
-                            logger.info(f"Limited history data for {ticker} to 252 records")
-                    
-                    # Limit history dict size
-                    if 'history' in ticker_data and isinstance(ticker_data['history'], dict):
-                        if len(ticker_data['history']) > 252:
-                            # Keep only last 252 items
-                            ticker_data['history'] = dict(list(ticker_data['history'].items())[-252:])
-                    
-                    # Clean ticker data to remove Timestamps - use helper function
-                    yahoo_data[ticker] = _clean_dict_for_storage(ticker_data)
-            except Exception as e:
-                logger.warning(f"Could not fetch Yahoo Finance data for {ticker}: {e}")
-        
-        if yahoo_data:
-            context['yahoo_data'] = yahoo_data
-        
-        # Fetch fundamentals data - limit size
-        all_fundamentals = []
-        for ticker in context_data['selected_tickers']:
-            try:
-                fundamentals = await data_manager.get_fundamentals_data(ticker)
-                if not fundamentals.empty:
-                    # Reset index if it contains Timestamps
-                    if isinstance(fundamentals.index, pd.DatetimeIndex):
-                        fundamentals = fundamentals.reset_index()
-                    # Limit to last 20 periods to reduce size
-                    if len(fundamentals) > 20:
-                        fundamentals = fundamentals.tail(20)
-                        logger.info(f"Limited fundamentals for {ticker} to 20 periods")
-                    # Convert to dict format immediately to avoid Timestamp issues
-                    all_fundamentals.append(fundamentals.to_dict(orient='records'))
-            except Exception as e:
-                logger.warning(f"Could not fetch fundamentals for {ticker}: {e}")
-        
-        if all_fundamentals:
-            # Flatten list of records
-            context['fundamentals_data'] = [item for sublist in all_fundamentals for item in sublist]
-    
-    # Economic data - limit size
-    if 'economic_data' in context_data:
-        economic_data = context_data['economic_data']
-        # If it's a DataFrame, convert it and limit size
-        if isinstance(economic_data, pd.DataFrame):
-            # Reset index if it contains Timestamps
-            if isinstance(economic_data.index, pd.DatetimeIndex):
-                economic_data = economic_data.reset_index()
-            # Limit to last 500 rows
-            if len(economic_data) > 500:
-                economic_data = economic_data.tail(500)
-                logger.info(f"Limited economic data to 500 records")
-            context['economic_data'] = economic_data.to_dict(orient='records')
-        elif isinstance(economic_data, list) and len(economic_data) > 500:
-            context['economic_data'] = economic_data[-500:]
-        else:
-            context['economic_data'] = economic_data
-    
-    # Metric categories
-    if 'metric_categories' in context_data:
-        context['metric_categories'] = context_data['metric_categories']
-    
-    # 10-K data - limit size (keep only summary)
-    if '10k_data' in context_data:
-        sec_data = context_data['10k_data']
-        if isinstance(sec_data, dict):
-            # Only keep essential fields, truncate large text
-            context['10k_data'] = {
-                'ticker': sec_data.get('ticker'),
-                'filing_date': sec_data.get('filing_date'),
-                'summary': sec_data.get('summary', '')[:5000] if isinstance(sec_data.get('summary'), str) else sec_data.get('summary')
-            }
-        else:
-            context['10k_data'] = sec_data
-    
-    # 10-Q data - limit size (keep only summary)
-    if '10q_data' in context_data:
-        sec_data = context_data['10q_data']
-        if isinstance(sec_data, dict):
-            # Only keep essential fields, truncate large text
-            context['10q_data'] = {
-                'ticker': sec_data.get('ticker'),
-                'filing_date': sec_data.get('filing_date'),
-                'summary': sec_data.get('summary', '')[:5000] if isinstance(sec_data.get('summary'), str) else sec_data.get('summary')
-            }
-        else:
-            context['10q_data'] = sec_data
-    
-    # Available tickers - don't store full list, just count
-    available_tickers = data_manager.get_available_tickers()
-    context['available_tickers_count'] = len(available_tickers)
-    # Only store first 100 tickers as sample
-    context['available_tickers_sample'] = available_tickers[:100] if len(available_tickers) > 100 else available_tickers
-    
-    return context
-
-
 @router.post("/analyze", response_model=ChatResponse)
 async def analyze_financial_data(
     request: ChatRequest,
@@ -473,111 +361,92 @@ async def analyze_financial_data(
     x_gemini_api_key: Optional[str] = Header(default=None, alias="X-Gemini-API-Key"),
 ):
     """
-    Analyze financial data using AI
-    
-    Args:
-        request: Analysis request with prompt and context
-        db: Database session
-    
-    Returns:
-        AI-generated analysis and insight ID
+    Agentic Chat Endpoint: Analyzes financial data autonomously.
     """
     try:
-        # Check if analyzer is available
         try:
             analyzer = get_analyzer(byok_key=x_gemini_api_key)
-        except HTTPException as e:
-            # Re-raise HTTP exceptions (like 500 for missing API key)
+        except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error getting analyzer: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"AI service initialization failed: {str(e)}. Please check GEMINI_API_KEY configuration."
-            )
-        
+            raise HTTPException(status_code=500, detail="AI service initialization failed. Please check GEMINI_API_KEY.")
+            
         data_manager = get_data_manager()
         
-        # Gather context data
-        full_context = await _gather_context_data(request.context_data, data_manager)
-        
-        # Clear cache after gathering data to free memory
-        data_manager.clear_cache()
-        
-        # Generate analysis
-        logger.info(f"Generating analysis for prompt: {request.prompt[:100]}...")
-        try:
-            response_text = await analyzer.analyze_financial_data(
-                request.prompt,
-                full_context
+        # 1. Handle Session
+        if request.session_id:
+            session = db.query(ChatSession).filter(ChatSession.id == request.session_id).first()
+            if not session:
+                raise HTTPException(status_code=404, detail="Chat session not found")
+        else:
+            # Create a new session
+            session = ChatSession(
+                user_id=request.context_data.get('user_id', 'anonymous'),
+                title=request.prompt[:50] + "..." if len(request.prompt) > 50 else request.prompt,
+                context_data=request.context_data
             )
+            db.add(session)
+            db.commit()
+            db.refresh(session)
             
-            if not response_text or len(response_text.strip()) == 0:
-                logger.warning("Received empty response from analyzer")
-                response_text = "I apologize, but I received an empty response. Please try rephrasing your question."
+        # 2. Fetch Chat History for the prompt
+        db_messages = db.query(ChatMessage).filter(
+            ChatMessage.session_id == session.id
+        ).order_by(ChatMessage.created_at.asc()).all()
+        
+        chat_history = []
+        for msg in db_messages:
+            if msg.role in ['user', 'model']:
+                chat_history.append({"role": msg.role, "content": msg.content})
+                
+        # 3. Formulate the current prompt with context attached
+        # Embed the user's manual context_data selections into the prompt
+        context_str = ""
+        context_data_clean = request.context_data
+        if context_data_clean:
+            context_str = f"SYSTEM INSTRUCTION (Context Data Attached by User):\n{json.dumps(context_data_clean, default=str)}\n\n"
             
-            logger.info(f"Successfully generated response of length: {len(response_text)}")
-        except Exception as e:
-            logger.error(f"Error generating AI response: {e}", exc_info=True)
-            # Check if it's a rate limit error
-            error_msg = str(e).lower()
-            is_rate_limit = '429' in error_msg or 'rate limit' in error_msg or 'quota' in error_msg or 'quota exceeded' in error_msg
-            
-            if is_rate_limit:
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Rate limit exceeded: Google Gemini API quota has been reached. Please wait a minute before trying again. If this persists, you may need to request a higher quota limit from Google Cloud Console."
-                )
-            # Check if it's an API key issue
-            elif 'api key' in error_msg or 'authentication' in error_msg or 'invalid' in error_msg or 'permission' in error_msg or '403' in error_msg or '401' in error_msg:
-                raise HTTPException(
-                    status_code=401,
-                    detail=f"Google API authentication failed: {str(e)}. Please check your GEMINI_API_KEY in the backend .env file."
-                )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error generating AI response: {str(e)}"
+        current_prompt = f"{context_str}USER PROMPT:\n{request.prompt}"
+        
+        # 4. Agentic Loop
+        cache = dc.Cache(settings.cache_dir)
+        cache_str = current_prompt + str(chat_history) + (x_gemini_api_key or "default")
+        cache_key = f"chat_{hashlib.md5(cache_str.encode()).hexdigest()}"
+        
+        if cache_key in cache:
+            logger.info(f"Returning cached chat response for session {session.id}")
+            response_text = cache[cache_key]
+        else:
+            logger.info(f"Triggering agentic loop for session {session.id}")
+            response_text = await analyzer.analyze_with_agent(
+                prompt=current_prompt,
+                chat_history=chat_history,
+                data_manager=data_manager
             )
+            cache.set(cache_key, response_text, expire=settings.cache_ttl_llm)
         
-        # Store insight in database
-        # Clean context data for JSON serialization (remove pandas Timestamps, etc.)
-        clean_context = _clean_context_for_storage(full_context)
-        
-        # Truncate context to reduce memory usage before storing
-        clean_context = _truncate_large_data(clean_context, max_size_mb=2.0)
-        
-        # Clear full_context from memory before database operations
-        del full_context
-        import gc
-        gc.collect()
-        
-        insight = Insight(
-            id=str(uuid.uuid4()),
-            user_id=request.context_data.get('user_id', 'anonymous'),
-            chat_session_id=request.session_id or str(uuid.uuid4()),
-            content={
-                "prompt": request.prompt,
-                "response": response_text,
-                "context": clean_context
-            },
-            tickers=request.context_data.get('selected_tickers', []),
-            summary=response_text[:500] if response_text else None  # First 500 chars as summary
+        # 5. Save the new messages to history
+        user_msg = ChatMessage(
+            session_id=session.id,
+            role="user",
+            content=request.prompt
         )
+        assistant_msg = ChatMessage(
+            session_id=session.id,
+            role="model",
+            content=response_text
+        )
+        db.add_all([user_msg, assistant_msg])
         
-        db.add(insight)
+        # Update session modify time
+        session.updated_at = func.now()
         db.commit()
-        db.refresh(insight)
-        
-        # Clear clean_context after storing
-        del clean_context
-        gc.collect()
         
         return ChatResponse(
             response=response_text,
-            insight_id=str(insight.id),
-            session_id=insight.chat_session_id
+            session_id=session.id,
         )
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -587,8 +456,8 @@ async def analyze_financial_data(
         error_str = str(e).lower()
         if 'api key' in error_str or 'gemini' in error_str or 'authentication' in error_str or 'invalid' in error_str:
             raise HTTPException(
-                status_code=401,
-                detail=f"Google API authentication failed: {str(e)}. Please configure GEMINI_API_KEY in your backend .env file."
+                status_code=503,
+                detail=f"FinQ AI service is temporarily unavailable. The backend Gemini API key may need to be refreshed. Error: {str(e)}"
             )
         raise HTTPException(
             status_code=500,
@@ -596,188 +465,84 @@ async def analyze_financial_data(
         )
 
 
-@router.get("/history", response_model=ChatHistoryResponse)
-async def get_chat_history(
+@router.post("/sessions", response_model=ChatSessionResponse)
+def create_chat_session(
     user_id: str,
-    limit: int = 50,
-    session_id: Optional[str] = None,
+    title: Optional[str] = "New Chat",
+    context_data: Optional[dict] = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Get chat history for a user
-    
-    Args:
-        user_id: User ID
-        limit: Maximum number of results
-        session_id: Optional session ID to filter by
-    
-    Returns:
-        List of chat sessions/insights
-    """
+    """Create a new chat session."""
     try:
-        query = db.query(Insight).filter(Insight.user_id == user_id)
-        
-        # Filter by session if provided
-        if session_id:
-            query = query.filter(Insight.chat_session_id == session_id)
-        
-        insights = query.order_by(
-            Insight.created_at.desc()
-        ).limit(limit).all()
-        
-        insights_data = []
-        for insight in insights:
-            insights_data.append({
-                "id": str(insight.id),
-                "session_id": insight.chat_session_id,
-                "prompt": insight.content.get("prompt", "") if isinstance(insight.content, dict) else "",
-                "response": insight.content.get("response", "") if isinstance(insight.content, dict) else "",
-                "summary": insight.summary,
-                "tickers": insight.tickers,
-                "created_at": insight.created_at.isoformat(),
-                "shared": insight.shared
-            })
-        
-        return ChatHistoryResponse(
+        session = ChatSession(
             user_id=user_id,
-            insights=insights_data,
-            count=len(insights_data)
+            title=title,
+            context_data=context_data or {}
         )
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+        return session
     except Exception as e:
-        logger.error(f"Error getting chat history: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving chat history: {str(e)}"
-        )
+        logger.error(f"Error creating chat session: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create chat session")
 
 
-@router.get("/sessions")
-async def get_chat_sessions(
+@router.get("/sessions", response_model=list[ChatSessionResponse])
+def get_user_chat_sessions(
     user_id: str,
     limit: int = 50,
     db: Session = Depends(get_db)
 ):
-    """
-    Get list of chat sessions for a user
-    
-    Args:
-        user_id: User ID
-        limit: Maximum number of sessions
-    
-    Returns:
-        List of sessions with metadata
-    """
+    """Get list of chat sessions for a user."""
     try:
-        # Get distinct sessions with their latest message
-        sessions_query = db.query(
-            Insight.chat_session_id,
-            func.max(Insight.created_at).label('last_message_at'),
-            func.count(Insight.id).label('message_count')
-        ).filter(
-            Insight.user_id == user_id
-        ).group_by(
-            Insight.chat_session_id
-        ).order_by(
-            func.max(Insight.created_at).desc()
-        ).limit(limit).all()
-        
-        sessions_data = []
-        for session in sessions_query:
-            # Get all insights for this session to generate a theme summary
-            session_insights = db.query(Insight).filter(
-                Insight.user_id == user_id,
-                Insight.chat_session_id == session.chat_session_id
-            ).order_by(Insight.created_at.asc()).all()
-            
-            # Generate a theme summary from all prompts in the session
-            summary = None
-            if session_insights:
-                # Extract all prompts from the session
-                prompts = []
-                for insight in session_insights:
-                    if isinstance(insight.content, dict):
-                        prompt = insight.content.get("prompt", "")
-                        if prompt:
-                            prompts.append(prompt)
-                
-                if prompts:
-                    # Create a concise theme summary
-                    # Take first prompt and extract key topics
-                    first_prompt = prompts[0]
-                    
-                    # Common financial analysis themes
-                    theme_keywords = {
-                        'revenue': 'Revenue Analysis',
-                        'profit': 'Profitability',
-                        'cash flow': 'Cash Flow',
-                        'balance sheet': 'Balance Sheet',
-                        'valuation': 'Valuation',
-                        'risk': 'Risk Assessment',
-                        'market': 'Market Analysis',
-                        'overview': 'Company Overview',
-                        'trend': 'Trend Analysis',
-                        'growth': 'Growth Analysis',
-                        'debt': 'Debt Analysis',
-                        'earnings': 'Earnings',
-                        'margin': 'Margin Analysis',
-                    }
-                    
-                    # Find matching theme
-                    first_prompt_lower = first_prompt.lower()
-                    theme = None
-                    for keyword, theme_name in theme_keywords.items():
-                        if keyword in first_prompt_lower:
-                            theme = theme_name
-                            break
-                    
-                    # If multiple topics, create a combined theme
-                    if len(prompts) > 1:
-                        # Count occurrences of different themes
-                        theme_counts = {}
-                        for prompt in prompts[:3]:  # Check first 3 prompts
-                            prompt_lower = prompt.lower()
-                            for keyword, theme_name in theme_keywords.items():
-                                if keyword in prompt_lower:
-                                    theme_counts[theme_name] = theme_counts.get(theme_name, 0) + 1
-                        
-                        if theme_counts:
-                            # Get the most common theme
-                            theme = max(theme_counts.items(), key=lambda x: x[1])[0]
-                            if len(theme_counts) > 1:
-                                # Multiple themes - create a combined summary
-                                themes = list(theme_counts.keys())[:2]
-                                theme = f"{themes[0]} & {themes[1]}" if len(themes) == 2 else themes[0]
-                    
-                    # Create summary: Theme + first prompt snippet
-                    if theme:
-                        # Extract a short snippet from first prompt (max 50 chars)
-                        prompt_snippet = first_prompt[:50].strip()
-                        if len(first_prompt) > 50:
-                            prompt_snippet += "..."
-                        summary = f"{theme}: {prompt_snippet}"
-                    else:
-                        # Fallback: use first prompt snippet
-                        summary = first_prompt[:80].strip()
-                        if len(first_prompt) > 80:
-                            summary += "..."
-            
-            sessions_data.append({
-                "session_id": session.chat_session_id,
-                "last_message_at": session.last_message_at.isoformat(),
-                "message_count": session.message_count,
-                "summary": summary
-            })
-        
-        return {
-            "user_id": user_id,
-            "sessions": sessions_data,
-            "count": len(sessions_data)
-        }
+        sessions = db.query(ChatSession).filter(
+            ChatSession.user_id == user_id
+        ).order_by(ChatSession.updated_at.desc()).limit(limit).all()
+        return sessions
     except Exception as e:
-        logger.error(f"Error getting chat sessions: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error retrieving chat sessions: {str(e)}"
-        )
+        logger.error(f"Error getting user chat sessions: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve chat sessions")
+
+
+@router.get("/sessions/{session_id}", response_model=ChatSessionDetailResponse)
+def get_chat_session_detail(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get a specific chat session with all its messages."""
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        return session
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting chat session {session_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve chat session")
+
+
+@router.delete("/sessions/{session_id}")
+def delete_chat_session(
+    session_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete a chat session."""
+    try:
+        session = db.query(ChatSession).filter(ChatSession.id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="Chat session not found")
+        
+        db.delete(session)
+        db.commit()
+        return {"status": "success", "message": "Session deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting chat session {session_id}: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete chat session")
 
 
