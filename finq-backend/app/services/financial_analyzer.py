@@ -14,6 +14,7 @@ from google import genai as google_genai
 # Legacy SDK still used for FINANCIAL_TOOLS type declarations
 import google.generativeai as genai_legacy
 from google.generativeai.types import content_types
+from google.genai.types import HttpOptions, HttpRetryOptions
 from app.config import settings
 from app.services.rate_limiter import get_rate_limiter
 from app.services.agent_tools import FINANCIAL_TOOLS, execute_tool
@@ -44,7 +45,14 @@ class FinancialAnalyzer:
         # ── New per-instance Client (google-genai SDK) ──────────────────────
         # This is FULLY isolated — no global configure() calls, no race conditions.
         # Every BYOK request gets its own Client pointing to its own quota.
-        self._genai_client = google_genai.Client(api_key=self.api_key)
+        # We pass HttpOptions with attempts=1 to prevent the tenacity library from
+        # automatically sleeping the backend for 60 seconds on a 429 Quota limit.
+        self._genai_client = google_genai.Client(
+            api_key=self.api_key,
+            http_options=HttpOptions(
+                retry_options=HttpRetryOptions(attempts=1)
+            )
+        )
 
         # ── Legacy SDK model (still used by summarize/analyze methods) ──────
         # These methods don't have concurrent BYOK pressure, so we keep them
@@ -336,9 +344,9 @@ class FinancialAnalyzer:
             if not response:
                 raise ValueError("No response received from agent after retries.")
 
-            # Agentic tool-call loop (max 5 iterations)
+            # Agentic tool-call loop (max 3 iterations to save quota)
             iterations = 0
-            while iterations < 5:
+            while iterations < 3:
                 # Check for function calls in new SDK response
                 fc = None
                 if response.candidates:
@@ -350,6 +358,14 @@ class FinancialAnalyzer:
                 if fc:
                     logger.info(f"Agent requested tool call: {fc.name}")
                     tool_result = await execute_tool(data_manager, fc)
+                    
+                    # Truncate extremely large JSON responses (like SEC filings)
+                    # to prevent immediately blowing up the Input Token quota
+                    result_str = json.dumps(tool_result, default=str)
+                    if len(result_str) > 4000:
+                        logger.warning(f"Tool {fc.name} payload extremely large ({len(result_str)} chars). Truncating.")
+                        truncated_str = result_str[:4000] + "... [DATA TRUNCATED: THIS PAYLOAD WAS TOO LARGE FOR THE MODEL CONTEXT WINDOW. RELY ON WHAT IS PROVIDED.]"
+                        tool_result = {"truncated_response": truncated_str}
 
                     await self.rate_limiter.acquire()
                     response = chat.send_message(
