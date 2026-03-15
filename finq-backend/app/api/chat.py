@@ -463,10 +463,16 @@ async def analyze_financial_data(
                 detail="Gemini API quota exceeded. Please provide your own API key."
             )
             
-        if 'api key' in error_str or 'gemini' in error_str or 'authentication' in error_str or 'invalid' in error_str:
+        if 'api key' in error_str or 'authentication' in error_str or 'invalid' in error_str or '400' in error_str:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Invalid Gemini API Key provided. Please check your key. Error: {str(e)}"
+            )
+            
+        if 'gemini' in error_str:
             raise HTTPException(
                 status_code=503,
-                detail=f"FinQ AI service is temporarily unavailable. The backend Gemini API key may need to be refreshed. Error: {str(e)}"
+                detail=f"FinQ AI service is temporarily unavailable. Server error: {str(e)}"
             )
             
         raise HTTPException(
