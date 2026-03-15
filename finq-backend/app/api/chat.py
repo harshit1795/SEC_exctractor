@@ -364,7 +364,6 @@ async def analyze_financial_data(
     Agentic Chat Endpoint: Analyzes financial data autonomously.
     """
     try:
-    try:
         try:
             key_debug = f"{x_gemini_api_key[:8]}...{x_gemini_api_key[-4:]}" if x_gemini_api_key else "None (Using Default Env Key)"
             logger.error(f"====== CHAT REQUEST DEBUG ======")
