@@ -8,6 +8,7 @@ import logging
 import asyncio
 import time
 import json
+import re
 from typing import Dict, Any, Optional, List
 # New google-genai SDK: per-instance Client (no global configure)
 from google import genai as google_genai
@@ -43,10 +44,9 @@ class FinancialAnalyzer:
         logger.info(f"FinancialAnalyzer init: api_key={key_preview}")
 
         # ── New per-instance Client (google-genai SDK) ──────────────────────
-        # This is FULLY isolated — no global configure() calls, no race conditions.
+        # Fully isolated — no global configure() calls, no race conditions.
         # Every BYOK request gets its own Client pointing to its own quota.
-        # We pass HttpOptions with attempts=1 to prevent the tenacity library from
-        # automatically sleeping the backend for 60 seconds on a 429 Quota limit.
+        # attempts=1 prevents the SDK from auto-sleeping 60 s on 429.
         self._genai_client = google_genai.Client(
             api_key=self.api_key,
             http_options=HttpOptions(
@@ -54,16 +54,37 @@ class FinancialAnalyzer:
             )
         )
 
-        # ── Legacy SDK model (still used by summarize/analyze methods) ──────
-        # These methods don't have concurrent BYOK pressure, so we keep them
-        # on the legacy SDK for now.
-        genai_legacy.configure(api_key=self.api_key)
-        self.model = genai_legacy.GenerativeModel('gemini-2.0-flash')
+        # ── Legacy SDK model — created LAZILY, NOT here ─────────────────────
+        # Previously we called genai_legacy.configure(api_key=...) in __init__,
+        # which is a PROCESS-WIDE global.  Any code that creates a new
+        # FinancialAnalyzer (e.g. health_scores.py with a BYOK key, or
+        # data_source_manager.py) would immediately overwrite the global key for
+        # ALL other instances still mid-flight — causing spurious 429s on the
+        # chat endpoint.
+        #
+        # Solution: never call configure() in __init__.  Only call it inside the
+        # private _get_legacy_model() helper right before the legacy SDK is used,
+        # and only for the two methods that still rely on it.
+        self._legacy_model: Optional[genai_legacy.GenerativeModel] = None
 
-        # Initialize rate limiter (15 requests per minute)
+        # Initialize rate limiter (15 requests per minute, shared across processes)
         self.rate_limiter = get_rate_limiter(max_requests=15, window_seconds=60)
         self.cache = cache
-    
+
+    def _get_legacy_model(self) -> genai_legacy.GenerativeModel:
+        """
+        Lazily create the legacy generative model, configuring the SDK only
+        at the point of first use (not in __init__).  This eliminates the
+        risk of overwriting the global key for other concurrent instances.
+        Note: the legacy SDK is still inherently global — prefer the new
+        self._genai_client for new functionality whenever possible.
+        """
+        if self._legacy_model is None:
+            genai_legacy.configure(api_key=self.api_key)
+            # Used currently just for fallback counting where we absolutely need the legacy library
+            self._legacy_model = genai_legacy.GenerativeModel('gemini-2.5-flash')
+        return self._legacy_model
+
     
     async def summarize_sec_comparison(
         self,
@@ -118,7 +139,7 @@ class FinancialAnalyzer:
             await self.rate_limiter.acquire()
             logger.info(f"Generating comparative summary for section: {section_name}")
             
-            response = self.model.generate_content(full_prompt)
+            response = self._get_legacy_model().generate_content(full_prompt)
             if response and hasattr(response, 'text') and response.text:
                 summary = response.text.strip()
                 if self.cache and cache_key:
@@ -173,7 +194,7 @@ class FinancialAnalyzer:
             
             for attempt in range(max_retries):
                 try:
-                    response = self.model.generate_content(full_prompt)
+                    response = self._get_legacy_model().generate_content(full_prompt)
                     break  # Success, exit retry loop
                 except Exception as e:
                     error_str = str(e).lower()
@@ -299,7 +320,7 @@ class FinancialAnalyzer:
 
             # Create chat session via per-instance client — BYOK-safe
             chat = self._genai_client.chats.create(
-                model='gemini-2.0-flash',
+                model='gemini-2.5-flash',
                 config=google_genai.types.GenerateContentConfig(
                     system_instruction=system_msg,
                     tools=tools_config,
@@ -308,7 +329,7 @@ class FinancialAnalyzer:
             )
 
             # Retry logic for rate limit errors in the first turn
-            max_retries = 3
+            max_retries = 4
             retry_delay = 2
             response = None
             
@@ -320,20 +341,23 @@ class FinancialAnalyzer:
                     error_str = str(e.message).lower() if hasattr(e, 'message') else str(e).lower()
                     is_daily_quota = getattr(e, 'code', 0) == 429 and (
                         'per day' in error_str or 'daily' in error_str or
-                        'generate_content_free_tier_requests' in error_str or
-                        'free_tier_input_token_count' in error_str
+                        'limit: 0' in error_str
                     )
                     is_per_minute = getattr(e, 'code', 0) == 429 and not is_daily_quota
                     
                     if is_daily_quota:
                         # Don't retry — daily quota is exhausted, propagate immediately
                         # so the frontend can prompt for BYOK
-                        # Raise a standard ValueError with status_code so chat.py catches it
-                        err = ValueError(f"Gemini API quota exceeded: {error_str}")
-                        err.status_code = 429
+                        err = ValueError(f"Gemini API daily quota exceeded: {error_str}")
+                        err.status_code = 429  # type: ignore[attr-defined]
                         raise err
                     elif is_per_minute and attempt < max_retries - 1:
-                        wait_time = retry_delay * (2 ** attempt)
+                        # Attempt to parse Google's exact requested delay if it is larger
+                        retry_match = re.search(r'retry in\s+([0-9.]+)\s*s', error_str)
+                        if retry_match:
+                            wait_time = float(retry_match.group(1)) + 1.0
+                        else:
+                            wait_time = retry_delay * (2 ** attempt)
                         logger.warning(f"Per-minute rate limit hit (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
                         await asyncio.sleep(wait_time)
                         await self.rate_limiter.acquire()
@@ -368,14 +392,49 @@ class FinancialAnalyzer:
                         tool_result = {"truncated_response": truncated_str}
 
                     await self.rate_limiter.acquire()
-                    response = chat.send_message(
-                        google_genai.types.Part(
-                            function_response=google_genai.types.FunctionResponse(
-                                name=fc.name,
-                                response=tool_result,
+                    
+                    # Retry logic for tool response transmission
+                    max_tool_retries = 4
+                    tool_retry_delay = 2
+                    tool_response_success = False
+
+                    for attempt in range(max_tool_retries):
+                        try:
+                            response = chat.send_message(
+                                google_genai.types.Part(
+                                    function_response=google_genai.types.FunctionResponse(
+                                        name=fc.name,
+                                        response=tool_result,
+                                    )
+                                )
                             )
-                        )
-                    )
+                            tool_response_success = True
+                            break
+                        except google_genai.errors.ClientError as e:
+                            error_str = str(e.message).lower() if hasattr(e, 'message') else str(e).lower()
+                            is_daily_quota = getattr(e, 'code', 0) == 429 and (
+                                'per day' in error_str or 'daily' in error_str or 'limit: 0' in error_str
+                            )
+                            if is_daily_quota:
+                                err = ValueError(f"Gemini API daily quota exceeded: {error_str}")
+                                err.status_code = 429  # type: ignore[attr-defined]
+                                raise err
+                            elif getattr(e, 'code', 0) == 429 and attempt < max_tool_retries - 1:
+                                retry_match = re.search(r'retry in\s+([0-9.]+)\s*s', error_str)
+                                if retry_match:
+                                    wait_time = float(retry_match.group(1)) + 1.0
+                                else:
+                                    wait_time = tool_retry_delay * (2 ** attempt)
+                                logger.warning(f"Per-minute rate limit hit during tool execution {fc.name} (attempt {attempt + 1}/{max_tool_retries}). Waiting {wait_time}s...")
+                                await asyncio.sleep(wait_time)
+                                await self.rate_limiter.acquire()
+                                continue
+                            else:
+                                raise
+
+                    if not tool_response_success:
+                        raise ValueError(f"Failed to send tool response for {fc.name} after retries.")
+
                     iterations += 1
                 else:
                     break
@@ -403,7 +462,7 @@ class FinancialAnalyzer:
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    response = self.model.generate_content(prompt)
+                    response = self._get_legacy_model().generate_content(prompt)
                     break
                 except Exception as e:
                     error_str = str(e).lower()
@@ -422,6 +481,94 @@ class FinancialAnalyzer:
             logger.error(f"Error in generate_text: {e}", exc_info=True)
             raise
 
+    async def analyze_standard(self, prompt: str, chat_history: List[Dict[str, str]] = None) -> str:
+        """
+        Standard single-turn LLM generation for FinQ Chat.
+        Uses the per-instance self._genai_client (new google-genai SDK) — fully
+        isolated from concurrent BYOK requests that would otherwise overwrite the
+        global genai_legacy.configure() key and trigger quota errors here.
+        No tools are enabled to keep it fast and quota-friendly.
+        """
+        try:
+            await self.rate_limiter.acquire()
+
+            # Format chat history for the new SDK (Content/Part objects).
+            history_for_sdk: List[google_genai.types.Content] = []
+            if chat_history:
+                for msg in chat_history[-10:]:  # keep last 10 messages
+                    role = "user" if msg["role"] == "user" else "model"
+                    history_for_sdk.append(
+                        google_genai.types.Content(
+                            role=role,
+                            parts=[google_genai.types.Part(text=msg["content"])],
+                        )
+                    )
+
+            # Create a chat session WITHOUT tools — standard mode stays cheap.
+            chat = self._genai_client.chats.create(
+                model="gemini-2.5-flash",
+                config=google_genai.types.GenerateContentConfig(
+                    system_instruction=self._build_system_prompt(),
+                    # Explicitly no tools — keep this lean
+                ),
+                history=history_for_sdk,
+            )
+
+            # Retry on transient per-minute limits; bail immediately on daily quota.
+            max_retries = 4
+            retry_delay = 2
+            response = None
+
+            for attempt in range(max_retries):
+                try:
+                    response = chat.send_message(prompt)
+                    break
+                except google_genai.errors.ClientError as e:
+                    error_str = str(e.message).lower() if hasattr(e, "message") else str(e).lower()
+                    is_daily_quota = getattr(e, "code", 0) == 429 and (
+                        "per day" in error_str
+                        or "daily" in error_str
+                        or "limit: 0" in error_str
+                    )
+                    is_per_minute = getattr(e, "code", 0) == 429 and not is_daily_quota
+
+                    if is_daily_quota:
+                        err = ValueError(f"Gemini API daily quota exceeded: {error_str}")
+                        err.status_code = 429  # type: ignore[attr-defined]
+                        raise err
+                    elif is_per_minute and attempt < max_retries - 1:
+                        retry_match = re.search(r'retry in\s+([0-9.]+)\s*s', error_str)
+                        if retry_match:
+                            wait_time = float(retry_match.group(1)) + 1.0
+                        else:
+                            wait_time = retry_delay * (2 ** attempt)
+                        logger.warning(
+                            f"Standard mode: per-minute rate limit hit "
+                            f"(attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s..."
+                        )
+                        await asyncio.sleep(wait_time)
+                        await self.rate_limiter.acquire()
+                        continue
+                    else:
+                        logger.error("Standard mode max retries exceeded or unknown ClientError occurred.")
+                        raise ValueError("No response received from standard generation after retries.")
+
+            if not response:
+                raise ValueError("No response received from standard generation after retries.")
+
+            # Extract text safely.
+            final_text = response.text if hasattr(response, "text") else ""
+            if not final_text and response.candidates:
+                final_text = response.candidates[0].content.parts[0].text or ""
+
+            if not final_text:
+                raise ValueError("Standard generation returned an empty response.")
+
+            return final_text
+
+        except Exception as e:
+            logger.error(f"Error in standard chat workflow: {e}", exc_info=True)
+            raise
 
     def _generate_cache_key(self, prompt: str, prefix: str = "ai") -> str:
         """Generates a deterministic cache key for a prompt."""

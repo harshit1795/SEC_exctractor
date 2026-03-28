@@ -14,6 +14,7 @@ class ChatRequest(BaseModel):
         description="Context data including selected tickers, metrics, etc."
     )
     session_id: Optional[str] = Field(None, description="Chat session ID for history")
+    agentic_mode: bool = Field(False, description="Whether to use the autonomous tool-calling agent (True) or standard LLM (False)")
 
 
 class ChatMessageResponse(BaseModel):

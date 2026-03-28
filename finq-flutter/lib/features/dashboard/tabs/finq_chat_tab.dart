@@ -34,6 +34,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
   
   var _isLoading = false;
   var _isFetchingHistory = false;
+  var _isAgenticMode = false;
 
   @override
   void initState() {
@@ -156,6 +157,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
           'session_id': _currentSessionId,
           'prompt': messageText,
           'context_data': _contextData,
+          'agentic_mode': _isAgenticMode,
         },
       );
 
@@ -180,20 +182,28 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
         _fetchSessions();
       }
     } catch (e) {
-      final eStr = e.toString();
-      final isQuotaError = eStr.contains('503') || eStr.contains('quota') ||
-          eStr.contains('429') || eStr.contains('Service Unavailable');
-
-      if (isQuotaError && mounted) {
-        // Remove the "thinking..." state first
+      final eStr = e.toString().toLowerCase(); // Normalize string
+      final isDailyQuotaError = eStr.contains('daily quota');
+      final isRateLimitError = eStr.contains('rate limit') || eStr.contains('too many requests per minute');
+      final isGenericQuotaError = eStr.contains('503') || eStr.contains('quota') || 
+                                  eStr.contains('429') || eStr.contains('service unavailable');
+                                  
+      // Only pop up the API Key Dialog if:
+      // 1. It is explicitly a daily quota failure
+      // 2. OR it is a generic quota failure AND the user hasn't provided a key yet
+      final hasApiKey = ref.read(geminiApiKeyProvider) != null && ref.read(geminiApiKeyProvider)!.isNotEmpty;
+      
+      if ((isDailyQuotaError || (!hasApiKey && isGenericQuotaError)) && mounted) {
+        // Show BYOK dialog in both Standard and Agentic modes.
         setState(() { _isLoading = false; });
-        // Show BYOK dialog with retry
         await _showApiKeyQuotaDialog(pendingPrompt: messageText);
         return;
       }
 
       String errorMsg;
-      if (eStr.contains('timeout') || eStr.contains('SocketException')) {
+      if (isRateLimitError || (hasApiKey && isGenericQuotaError)) {
+        errorMsg = '⏳ Rate limit exceeded (too many requests). Please wait a moment and try again.';
+      } else if (eStr.contains('timeout') || eStr.contains('socketexception')) {
         errorMsg = '🌐 Connection timeout. The backend server may be starting up. Please try again in a moment.';
       } else if (eStr.contains('401') || eStr.contains('403')) {
         errorMsg = '🔑 Authentication failed. Please check your Gemini API key in Settings.';
@@ -582,6 +592,10 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch apiClientProvider so the tab rebuilds and keeps the provider 
+    // alive with the correct dependencies when the BYOK key changes.
+    ref.watch(apiClientProvider);
+    
     return Column(
       children: [
         // Tab Header
@@ -635,15 +649,25 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: [
-                  _buildSuggestionChip('Scan latest SEC filings'),
-                  const SizedBox(width: 8),
-                  _buildSuggestionChip('Summarize profitability'),
-                  const SizedBox(width: 8),
-                  _buildSuggestionChip('Are there macro risks?'),
-                  const SizedBox(width: 8),
-                  _buildSuggestionChip('What can FinQ do?'),
-                ],
+                children: _isAgenticMode
+                    ? [
+                        _buildSuggestionChip('Scan latest SEC filings'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('Are there macro risks?'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('Compare with industry peers'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('Deep dive earnings quality'),
+                      ]
+                    : [
+                        _buildSuggestionChip('Summarize ${widget.ticker} financials'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('Explain profitability trends'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('What does FinQ know about ${widget.ticker}?'),
+                        const SizedBox(width: 8),
+                        _buildSuggestionChip('What can FinQ do?'),
+                      ],
               ),
             ),
           ),
@@ -654,14 +678,19 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
             padding: const EdgeInsets.all(8),
             child: Row(
               children: [
-                const SizedBox(
+                SizedBox(
                   width: 20,
                   height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: _isAgenticMode ? Colors.purple.shade400 : Colors.blue.shade400,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'FinQ is analyzing databases...',
+                  _isAgenticMode
+                      ? 'FinQ Agent is researching databases...'
+                      : 'FinQ is thinking...',
                   style: TextStyle(
                     fontSize: 14,
                     color: Colors.grey.shade600,
@@ -677,7 +706,7 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
           final isDark = Theme.of(context).brightness == Brightness.dark;
           final colorScheme = Theme.of(context).colorScheme;
           return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF1E1E2E) : Colors.white,
             border: Border(top: BorderSide(
@@ -692,10 +721,48 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
               ),
             ],
           ),
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              // Context Attachment Button
-              Container(
+              // Agentic Mode Toggle Row
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8, left: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      _isAgenticMode ? Icons.auto_awesome : Icons.bolt,
+                      size: 16,
+                      color: _isAgenticMode ? Colors.purple.shade400 : Colors.amber.shade600,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      _isAgenticMode ? 'Agentic Mode: Deep Research' : 'Standard Mode: Fast & Quicker',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white70 : Colors.black87,
+                      ),
+                    ),
+                    const Spacer(),
+                    SizedBox(
+                      height: 24,
+                      child: Switch(
+                        value: _isAgenticMode,
+                        activeColor: Colors.purple.shade400,
+                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        onChanged: _isLoading ? null : (val) {
+                          setState(() => _isAgenticMode = val);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Context Attachment Button
+                  Container(
                 decoration: BoxDecoration(
                   color: isDark ? colorScheme.primary.withOpacity(0.15) : Colors.blue.shade50,
                   shape: BoxShape.circle,
@@ -747,6 +814,8 @@ class _FinQChatTabState extends ConsumerState<FinQChatTab> {
               ),
             ],
           ),
+          ],
+        ),
         );
         }),
       ],

@@ -354,6 +354,125 @@ def _truncate_large_data(data: dict, max_size_mb: float = 2.0) -> dict:
     return truncated
 
 
+async def _gather_context_data(context_data: dict, data_manager: DataSourceManager) -> dict:
+    """
+    Gather all available context data for analysis
+    Similar to Streamlit version's _gather_context_data
+    Optimized to reduce memory usage by limiting data size
+    """
+    import pandas as pd
+    
+    context = {}
+    
+    # Selected tickers
+    if 'selected_tickers' in context_data:
+        context['selected_tickers'] = context_data['selected_tickers']
+        
+        # Fetch Yahoo Finance data for selected tickers
+        yahoo_data = {}
+        for ticker in context_data['selected_tickers']:
+            try:
+                ticker_data = await data_manager.get_yahoo_finance_data(ticker)
+                if ticker_data:
+                    # Limit history data size - only keep last 252 trading days (1 year)
+                    if 'history_df' in ticker_data and isinstance(ticker_data['history_df'], list):
+                        if len(ticker_data['history_df']) > 252:
+                            ticker_data['history_df'] = ticker_data['history_df'][-252:]
+                            logger.info(f"Limited history data for {ticker} to 252 records")
+                    
+                    # Limit history dict size
+                    if 'history' in ticker_data and isinstance(ticker_data['history'], dict):
+                        if len(ticker_data['history']) > 252:
+                            # Keep only last 252 items
+                            ticker_data['history'] = dict(list(ticker_data['history'].items())[-252:])
+                    
+                    # Clean ticker data to remove Timestamps - use helper function
+                    yahoo_data[ticker] = _clean_dict_for_storage(ticker_data)
+            except Exception as e:
+                logger.warning(f"Could not fetch Yahoo Finance data for {ticker}: {e}")
+        
+        if yahoo_data:
+            context['yahoo_data'] = yahoo_data
+        
+        # Fetch fundamentals data - limit size
+        all_fundamentals = []
+        for ticker in context_data['selected_tickers']:
+            try:
+                fundamentals = await data_manager.get_fundamentals_data(ticker)
+                if not fundamentals.empty:
+                    # Reset index if it contains Timestamps
+                    if isinstance(fundamentals.index, pd.DatetimeIndex):
+                        fundamentals = fundamentals.reset_index()
+                    # Limit to last 20 periods to reduce size
+                    if len(fundamentals) > 20:
+                        fundamentals = fundamentals.tail(20)
+                        logger.info(f"Limited fundamentals for {ticker} to 20 periods")
+                    # Convert to dict format immediately to avoid Timestamp issues
+                    all_fundamentals.append(fundamentals.to_dict(orient='records'))
+            except Exception as e:
+                logger.warning(f"Could not fetch fundamentals for {ticker}: {e}")
+        
+        if all_fundamentals:
+            # Flatten list of records
+            context['fundamentals_data'] = [item for sublist in all_fundamentals for item in sublist]
+    
+    # Economic data - limit size
+    if 'economic_data' in context_data:
+        economic_data = context_data['economic_data']
+        # If it's a DataFrame, convert it and limit size
+        if isinstance(economic_data, pd.DataFrame):
+            # Reset index if it contains Timestamps
+            if isinstance(economic_data.index, pd.DatetimeIndex):
+                economic_data = economic_data.reset_index()
+            # Limit to last 500 rows
+            if len(economic_data) > 500:
+                economic_data = economic_data.tail(500)
+                logger.info(f"Limited economic data to 500 records")
+            context['economic_data'] = economic_data.to_dict(orient='records')
+        elif isinstance(economic_data, list) and len(economic_data) > 500:
+            context['economic_data'] = economic_data[-500:]
+        else:
+            context['economic_data'] = economic_data
+    
+    # Metric categories
+    if 'metric_categories' in context_data:
+        context['metric_categories'] = context_data['metric_categories']
+    
+    # 10-K data - limit size (keep only summary)
+    if '10k_data' in context_data:
+        sec_data = context_data['10k_data']
+        if isinstance(sec_data, dict):
+            # Only keep essential fields, truncate large text
+            context['10k_data'] = {
+                'ticker': sec_data.get('ticker'),
+                'filing_date': sec_data.get('filing_date'),
+                'summary': sec_data.get('summary', '')[:5000] if isinstance(sec_data.get('summary'), str) else sec_data.get('summary')
+            }
+        else:
+            context['10k_data'] = sec_data
+    
+    # 10-Q data - limit size (keep only summary)
+    if '10q_data' in context_data:
+        sec_data = context_data['10q_data']
+        if isinstance(sec_data, dict):
+            # Only keep essential fields, truncate large text
+            context['10q_data'] = {
+                'ticker': sec_data.get('ticker'),
+                'filing_date': sec_data.get('filing_date'),
+                'summary': sec_data.get('summary', '')[:5000] if isinstance(sec_data.get('summary'), str) else sec_data.get('summary')
+            }
+        else:
+            context['10q_data'] = sec_data
+    
+    # Available tickers - don't store full list, just count
+    available_tickers = data_manager.get_available_tickers()
+    context['available_tickers_count'] = len(available_tickers)
+    # Only store first 100 tickers as sample
+    context['available_tickers_sample'] = available_tickers[:100] if len(available_tickers) > 100 else available_tickers
+    
+    return context
+
+
 @router.post("/analyze", response_model=ChatResponse)
 async def analyze_financial_data(
     request: ChatRequest,
@@ -405,11 +524,18 @@ async def analyze_financial_data(
                 chat_history.append({"role": msg.role, "content": msg.content})
                 
         # 3. Formulate the current prompt with context attached
-        # Embed the user's manual context_data selections into the prompt
+        # Gather all the Yahoo finance data locally like flutter-rebuild did
+        full_context = await _gather_context_data(request.context_data, data_manager)
+        
+        # We STILL embed the user's manual context_data selections into the prompt
+        # but now we also pass the actual fetched data to the LLM.
         context_str = ""
-        context_data_clean = request.context_data
-        if context_data_clean:
-            context_str = f"SYSTEM INSTRUCTION (Context Data Attached by User):\n{json.dumps(context_data_clean, default=str)}\n\n"
+        # Clean the context data for the prompt to save tokens (use truncated data)
+        clean_context = _clean_context_for_storage(full_context)
+        clean_context = _truncate_large_data(clean_context, max_size_mb=1.0) # slightly stricter for input
+        
+        if clean_context:
+            context_str = f"SYSTEM INSTRUCTION (Context Data for Analysis):\n{json.dumps(clean_context, default=str)}\n\n"
             
         current_prompt = f"{context_str}USER PROMPT:\n{request.prompt}"
         
@@ -422,12 +548,19 @@ async def analyze_financial_data(
             logger.info(f"Returning cached chat response for session {session.id}")
             response_text = cache[cache_key]
         else:
-            logger.info(f"Triggering agentic loop for session {session.id}")
-            response_text = await analyzer.analyze_with_agent(
-                prompt=current_prompt,
-                chat_history=chat_history,
-                data_manager=data_manager
-            )
+            if request.agentic_mode:
+                logger.info(f"Triggering agentic loop for session {session.id}")
+                response_text = await analyzer.analyze_with_agent(
+                    prompt=current_prompt,
+                    chat_history=chat_history,
+                    data_manager=data_manager
+                )
+            else:
+                logger.info(f"Triggering standard generation for session {session.id}")
+                response_text = await analyzer.analyze_standard(
+                    prompt=current_prompt,
+                    chat_history=chat_history
+                )
             cache.set(cache_key, response_text, expire=settings.cache_ttl_llm)
         
         # 5. Save the new messages to history
@@ -460,11 +593,27 @@ async def analyze_financial_data(
         # Parse error for specific frontend triggers
         error_str = str(e).lower()
         
+        is_daily_quota = False
+        if getattr(e, 'status_code', 0) == 429 and (
+            'per day' in error_str or 'daily' in error_str or
+            'generate_content_free_tier_requests' in error_str or
+            'free_tier_input_token_count' in error_str
+        ):
+            is_daily_quota = True
+
         # Identify Quota / Rate Limit explicitly to trigger BYOK dialog on frontend
-        if '429' in error_str or getattr(e, 'status_code', 0) == 429:
+        # Only throw 429 back to user if it's the daily/hard limit, otherwise assume
+        # backend exponential backoff handled it or it's a completely different error.
+        if is_daily_quota:
             raise HTTPException(
                 status_code=429,
-                detail="Gemini API quota exceeded. Please provide your own API key."
+                detail="Gemini API daily quota exceeded. Please provide your own API key."
+            )
+        elif '429' in error_str or getattr(e, 'status_code', 0) == 429:
+            # For per-minute errors that exhausted all backend retries
+             raise HTTPException(
+                status_code=429,
+                detail="Gemini API rate limit exceeded (too many requests per minute). Please wait a moment and try again."
             )
             
         if 'api key' in error_str or 'authentication' in error_str or 'invalid' in error_str or '400' in error_str:
