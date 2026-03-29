@@ -402,7 +402,6 @@ class CompanyHeader extends ConsumerWidget {
           'netMargin': map['netMargin'] ?? map['NetMargin'],
           'fcfMargin': map['fcfMargin'] ?? map['FCFMargin'],
           'debtEquity': map['debtEquity'] ?? map['DebtEquity'],
-          'peRatio': map['PE'] ?? map['peRatio'] ?? map['pe'] ?? map['P/E Ratio'],
           'insight': map['insight'] ?? map['Insight'],
         };
       }).toList();

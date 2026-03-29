@@ -17,8 +17,8 @@ class ApiClientDio implements ApiClient {
             Dio(
               BaseOptions(
                 baseUrl: baseUrl.endsWith('/') ? baseUrl : '$baseUrl/',
-                connectTimeout: const Duration(seconds: 60),
-                receiveTimeout: const Duration(seconds: 120),
+                connectTimeout: const Duration(seconds: 15),
+                receiveTimeout: const Duration(seconds: 30),
               ),
             ) {
     // Add authentication interceptor
