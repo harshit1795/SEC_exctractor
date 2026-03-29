@@ -6,6 +6,7 @@ from app.models.insight import Insight
 from app.models.post import Post, PostLike, PostComment
 from app.models.friend import Friend, FriendStatus
 from app.models.user import User
+from app.models.chat import ChatSession, ChatMessage
 
 __all__ = [
     "Base",
@@ -16,4 +17,6 @@ __all__ = [
     "Friend",
     "FriendStatus",
     "User",
+    "ChatSession",
+    "ChatMessage",
 ]

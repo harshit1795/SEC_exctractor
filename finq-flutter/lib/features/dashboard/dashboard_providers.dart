@@ -6,7 +6,7 @@ import '../../core/di/providers.dart';
 import 'dashboard_repository.dart';
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
-  return DashboardRepository(ref.read(apiClientProvider));
+  return DashboardRepository(ref.watch(apiClientProvider));
 });
 
 final healthStatusProvider = FutureProvider<Map<String, dynamic>>((ref) async {

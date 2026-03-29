@@ -23,6 +23,8 @@ import json
 import pandas as pd
 import numpy as np
 import logging
+import hashlib
+import diskcache as dc
 from concurrent.futures import ThreadPoolExecutor
 from starlette.concurrency import run_in_threadpool
 
@@ -738,17 +740,29 @@ Generate the HTML now:
 
     try:
         from app.services.financial_analyzer import FinancialAnalyzer
-        # Use BYOK key if provided, else fall back to backend default (env)
-        analyzer = FinancialAnalyzer(api_key=x_gemini_api_key or None)
-        report = await analyzer.generate_text(prompt)
-        # Strip potential markdown tick wrappers
-        if report.startswith("```html"):
-            report = report[7:]
-        if report.endswith("```"):
-            report = report[:-3]
+        # Check cache
+        with dc.Cache(settings.cache_dir) as cache:
+            cache_str = prompt + (x_gemini_api_key or "default")
+            cache_key = f"report_{hashlib.md5(cache_str.encode()).hexdigest()}"
             
-        primary_ticker = tickers_data[0]['ticker'] if tickers_data and isinstance(tickers_data[0], dict) and 'ticker' in tickers_data[0] else 'Report'
-        return {"report": report.strip(), "ticker": primary_ticker}
+            if cache_key in cache:
+                logger.info(f"Returning cached health report for key {cache_key}")
+                return cache[cache_key]
+
+            # Use BYOK key if provided, else fall back to backend default (env)
+            analyzer = FinancialAnalyzer(api_key=x_gemini_api_key or None)
+            report = await analyzer.generate_text(prompt)
+            # Strip potential markdown tick wrappers
+            if report.startswith("```html"):
+                report = report[7:]
+            if report.endswith("```"):
+                report = report[:-3]
+                
+            primary_ticker = tickers_data[0]['ticker'] if tickers_data and isinstance(tickers_data[0], dict) and 'ticker' in tickers_data[0] else 'Report'
+            result = {"report": report.strip(), "ticker": primary_ticker}
+            
+            cache.set(cache_key, result, expire=settings.cache_ttl_llm)
+        return result
     except ValueError as e:
         # Gemini API key not configured
         raise HTTPException(status_code=500, detail=f"AI service not available: {str(e)}")

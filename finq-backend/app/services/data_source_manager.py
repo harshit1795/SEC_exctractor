@@ -73,9 +73,10 @@ class DataSourceManager:
         """
         return key in self.cache
     
-    def _cache_data(self, key: str, data: Any) -> None:
-        """Cache data with configured TTL"""
-        self.cache.set(key, data, expire=self.cache_ttl)
+    def _cache_data(self, key: str, data: Any, ttl: Optional[int] = None) -> None:
+        """Cache data with configured or specific TTL"""
+        expire_time = ttl if ttl is not None else self.cache_ttl
+        self.cache.set(key, data, expire=expire_time)
     
     def clear_cache(self, key_pattern: Optional[str] = None) -> None:
         """
@@ -193,7 +194,7 @@ class DataSourceManager:
                 'earnings_dates': earnings_data,
             }
             
-            self._cache_data(cache_key, data)
+            self._cache_data(cache_key, data, ttl=settings.cache_ttl_prices)
             return data
             
         except Exception as e:
@@ -233,7 +234,7 @@ class DataSourceManager:
                 # Don't cache empty data
                 return data
             
-            self._cache_data(cache_key, data)
+            self._cache_data(cache_key, data, ttl=settings.cache_ttl_macro)
             return data
         except ValueError as e:
             # FRED_API_KEY not configured or authentication error
@@ -291,7 +292,7 @@ class DataSourceManager:
                 logger.info(f"No 10-Q filings found for {ticker}")
             
             data = {'filings': filings_metadata, 'ticker': ticker}
-            self._cache_data(cache_key, data)
+            self._cache_data(cache_key, data, ttl=settings.cache_ttl_sec)
             return data
             
         except Exception as e:
@@ -434,7 +435,7 @@ class DataSourceManager:
             if "mda" in sections:
                 section_data["Management's Discussion & Analysis (Item 7)"] = mda_text
             
-            self._cache_data(cache_key, section_data)
+            self._cache_data(cache_key, section_data, ttl=settings.cache_ttl_sec)
             return section_data
 
         except Exception as e:
@@ -483,7 +484,7 @@ class DataSourceManager:
             if "mda" in sections:
                 section_data["Management's Discussion & Analysis (Part I, Item 2)"] = mda_text
             
-            self._cache_data(cache_key, section_data)
+            self._cache_data(cache_key, section_data, ttl=settings.cache_ttl_sec)
             return section_data
 
         except Exception as e:
@@ -585,7 +586,8 @@ class DataSourceManager:
                 logger.warning("No ticker column found in fundamentals data")
                 ticker_data = pd.DataFrame()
             
-            self._cache_data(cache_key, ticker_data)
+            self._cache_data(cache_key, ticker_data, ttl=settings.cache_ttl_financials)
+            
             return ticker_data
             
         except Exception as e:
