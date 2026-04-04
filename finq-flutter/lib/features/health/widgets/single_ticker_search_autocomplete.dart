@@ -21,6 +21,9 @@ class SingleTickerSearchAutocomplete extends ConsumerStatefulWidget {
 class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSearchAutocomplete> {
   late final TextEditingController _controller;
   final _focusNode = FocusNode();
+  final LayerLink _layerLink = LayerLink();
+  OverlayEntry? _overlayEntry;
+
   Timer? _debounce;
   List<Map<String, dynamic>> _options = [];
   bool _isLoading = false;
@@ -29,11 +32,21 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialValue);
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) {
+        Future.delayed(const Duration(milliseconds: 200), () {
+          if (mounted) _hideOverlay();
+        });
+      } else if (_options.isNotEmpty) {
+        _showOverlay();
+      }
+    });
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _hideOverlay();
     _controller.dispose();
     _focusNode.dispose();
     super.dispose();
@@ -46,6 +59,7 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
         _search(query);
       } else {
         setState(() => _options = []);
+        _hideOverlay();
       }
     });
   }
@@ -60,6 +74,11 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
           _options = results;
           _isLoading = false;
         });
+        if (_options.isNotEmpty && _focusNode.hasFocus) {
+          _showOverlay();
+        } else {
+          _hideOverlay();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -67,6 +86,7 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
           _options = [];
           _isLoading = false;
         });
+        _hideOverlay();
       }
     }
   }
@@ -75,100 +95,132 @@ class _SingleTickerSearchAutocompleteState extends ConsumerState<SingleTickerSea
     widget.onSelected(ticker);
     _controller.text = ticker;
     setState(() => _options = []);
+    _hideOverlay();
     _focusNode.unfocus();
+  }
+
+  void _showOverlay() {
+    if (_overlayEntry != null) {
+      _overlayEntry!.markNeedsBuild();
+      return;
+    }
+
+    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final size = renderBox.size;
+
+    _overlayEntry = OverlayEntry(
+      builder: (context) {
+        return Positioned(
+          width: size.width,
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            offset: Offset(0.0, size.height + 4.0),
+            child: Material(
+              elevation: 4.0,
+              borderRadius: BorderRadius.circular(8),
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: Container(
+                constraints: const BoxConstraints(maxHeight: 300),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+                ),
+                child: ListView.separated(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  itemCount: _options.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final option = _options[index];
+                    final ticker = option['ticker'] as String;
+                    final name = option['name'] as String;
+                    return AnimatedHoverItem(
+                      onTap: () {
+                        _selectTicker(ticker);
+                      },
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(ticker, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
+                          const SizedBox(height: 4),
+                          Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_overlayEntry!);
+  }
+
+  void _hideOverlay() {
+    _overlayEntry?.remove();
+    _overlayEntry = null;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-          ),
-          child: Column(
-            children: [
-              Row(
-                children: [
-                  const SizedBox(width: 16),
-                  const Icon(Icons.search, color: Colors.grey),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
-                      decoration: InputDecoration(
-                        border: InputBorder.none,
-                        hintText: 'Search Ticker or Company Name',
-                        hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
-                        contentPadding: const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      textCapitalization: TextCapitalization.characters,
-                      onChanged: _onSearchChanged,
-                      onSubmitted: (val) {
-                        if (val.trim().isEmpty) return;
-                        if (_options.isNotEmpty) {
-                          final firstOption = _options.first;
-                          _selectTicker(firstOption['ticker'] as String);
-                        } else {
-                          _selectTicker(val.trim().toUpperCase());
-                        }
-                      },
-                    ),
-                  ),
-                  if (_isLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 16),
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      ),
-                    ),
-                ],
-              ),
-              if (_options.isNotEmpty)
-                Container(
-                  constraints: const BoxConstraints(maxHeight: 200),
-                  decoration: BoxDecoration(
-                    border: Border(top: BorderSide(color: Theme.of(context).colorScheme.outlineVariant)),
-                  ),
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _options.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final option = _options[index];
-                      final ticker = option['ticker'] as String;
-                      final name = option['name'] as String;
-                      return AnimatedHoverItem(
-                        onTap: () => _selectTicker(ticker),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(ticker, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Theme.of(context).colorScheme.onSurface)),
-                            const SizedBox(height: 4),
-                            Text(
-                              name,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 13),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-            ],
-          ),
+    return CompositedTransformTarget(
+      link: _layerLink,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
         ),
-      ],
+        child: Row(
+          children: [
+            const SizedBox(width: 16),
+            const Icon(Icons.search, color: Colors.grey),
+            const SizedBox(width: 12),
+            Expanded(
+              child: TextField(
+                controller: _controller,
+                focusNode: _focusNode,
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  hintText: 'Search Ticker or Company Name',
+                  hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                textCapitalization: TextCapitalization.characters,
+                onChanged: _onSearchChanged,
+                onSubmitted: (val) {
+                  if (val.trim().isEmpty) return;
+                  if (_options.isNotEmpty) {
+                    final firstOption = _options.first;
+                    _selectTicker(firstOption['ticker'] as String);
+                  } else {
+                    _selectTicker(val.trim().toUpperCase());
+                  }
+                },
+              ),
+            ),
+            if (_isLoading)
+              const Padding(
+                padding: EdgeInsets.only(right: 16),
+                child: SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
