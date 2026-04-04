@@ -10,6 +10,7 @@ This service provides unified access to multiple financial data sources:
 """
 import logging
 import asyncio
+import json
 import diskcache as dc
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -207,12 +208,29 @@ class DataSourceManager:
                 if not company_info.empty:
                     company_name = company_info.iloc[0]['name']
 
+            sector = "Rate Limited"
+            industry = "Rate Limited"
+            
+            try:
+                # Try to load local ticker_sectors.json as fallback
+                sectors_path = Path(__file__).resolve().parent.parent.parent / "ticker_sectors.json"
+                if sectors_path.exists():
+                    sectors_map = json.loads(sectors_path.read_text())
+                    ticker_info = sectors_map.get(ticker.upper())
+                    if ticker_info:
+                        if ticker_info.get('sector'):
+                            sector = ticker_info['sector']
+                        if ticker_info.get('industry'):
+                            industry = ticker_info['industry']
+            except Exception as read_err:
+                logger.warning(f"Could not load ticker_sectors.json fallback for {ticker}: {read_err}")
+
             return {
                 'info': {
                     'longName': company_name,
                     'shortName': company_name,
-                    'sector': "Rate Limited",
-                    'industry': "Rate Limited"
+                    'sector': sector,
+                    'industry': industry
                 },
                 'financials': {},
                 'balance_sheet': {},
