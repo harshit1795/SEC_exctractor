@@ -493,103 +493,53 @@ class DataSourceManager:
 
     async def get_fundamentals_data(self, ticker: str) -> pd.DataFrame:
         """
-        Get fundamentals data from parquet file
-        
-        Args:
-            ticker: Stock ticker symbol
-        
-        Returns:
-            DataFrame with fundamentals data
+        Get fundamentals data for a ticker from the PostgreSQL `fundamentals` table.
+
+        The data is stored in long/tall format:
+          ticker | period_end | fiscal_period | metric | category | value
+
+        Falls back to an empty DataFrame when the table has no data for the ticker.
         """
         cache_key = f"fundamentals_{ticker}"
-        
+
         if self._is_cache_valid(cache_key):
-            return self.cache[cache_key]
-        
+            cached = self.cache[cache_key]
+            logger.debug(f"Cache hit for fundamentals_{ticker}")
+            return cached
+
         try:
-            # Try multiple possible paths
-            # Railway runs from finq-backend/, so check current directory first
-            possible_paths = [
-                Path("fundamentals_tall.parquet"),  # Current directory (finq-backend/)
-                Path(settings.fundamentals_path),
-                Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
-                Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
-                Path("../fundamentals_tall.parquet"),
-            ]
-            
-            fundamentals_path = None
-            for path in possible_paths:
-                if path.exists():
-                    fundamentals_path = path
-                    break
-            
-            if not fundamentals_path:
-                logger.warning(f"Fundamentals file not found. Tried: {possible_paths}")
+            from app.database import SessionLocal
+            import sqlalchemy as sa
+
+            ticker_upper = ticker.strip().upper()
+            logger.info(f"Fetching fundamentals from DB for {ticker_upper}")
+
+            with SessionLocal() as session:
+                rows = session.execute(
+                    sa.text(
+                        """
+                        SELECT ticker, period_end, fiscal_period, metric, category, value
+                        FROM   fundamentals
+                        WHERE  ticker = :ticker
+                        ORDER  BY fiscal_period DESC
+                        """
+                    ),
+                    {"ticker": ticker_upper},
+                ).fetchall()
+
+            if not rows:
+                logger.warning(f"No fundamentals rows found in DB for {ticker_upper}")
                 return pd.DataFrame()
-            
-            logger.info(f"Loading fundamentals from {fundamentals_path}")
-            df = pd.read_parquet(fundamentals_path)
-            
-            # Try different column name variations
-            ticker_col = None
-            for col in ['ticker', 'Ticker', 'TICKER']:
-                if col in df.columns:
-                    ticker_col = col
-                    break
-            
-            if ticker_col:
-                ticker_data = df[df[ticker_col].str.upper() == ticker.upper()].copy()
-                logger.info(f"Found {len(ticker_data)} rows for ticker {ticker}")
-                
-                # Sort by FiscalPeriod to ensure latest data is first
-                # Try different column name variations for period
-                period_col = None
-                for col in ['FiscalPeriod', 'fiscalPeriod', 'Period', 'period', 'Date', 'date']:
-                    if col in ticker_data.columns:
-                        period_col = col
-                        break
-                
-                if period_col:
-                    # Sort by period (descending - latest first)
-                    # Handle period formats like "2025 Q3", "2024 Q4", etc.
-                    def parse_period(period_str):
-                        """Parse period string to sortable tuple (year, quarter)"""
-                        try:
-                            if pd.isna(period_str):
-                                return (0, 0)
-                            period_str = str(period_str).strip()
-                            # Handle formats like "2025 Q3", "2025Q3", "2025-03", etc.
-                            if 'Q' in period_str.upper():
-                                parts = period_str.upper().split('Q')
-                                year = int(parts[0].strip())
-                                quarter = int(parts[1].strip()) if len(parts) > 1 else 0
-                                return (year, quarter)
-                            elif '-' in period_str:
-                                # Handle "2025-03" format
-                                parts = period_str.split('-')
-                                year = int(parts[0])
-                                quarter = int(parts[1]) // 3 if len(parts) > 1 else 0
-                                return (year, quarter)
-                            else:
-                                # Try to parse as year
-                                year = int(period_str[:4]) if len(period_str) >= 4 else 0
-                                return (year, 0)
-                        except:
-                            return (0, 0)
-                    
-                    # Add a temporary sort column
-                    ticker_data['_sort_period'] = ticker_data[period_col].apply(parse_period)
-                    ticker_data = ticker_data.sort_values('_sort_period', ascending=False)
-                    ticker_data = ticker_data.drop('_sort_period', axis=1)
-                    logger.info(f"Sorted fundamentals data by {period_col} (latest first)")
-            else:
-                logger.warning("No ticker column found in fundamentals data")
-                ticker_data = pd.DataFrame()
-            
+
+            ticker_data = pd.DataFrame(
+                rows,
+                columns=["Ticker", "PeriodEnd", "FiscalPeriod", "Metric", "Category", "Value"],
+            )
+            logger.info(f"Loaded {len(ticker_data)} fundamentals rows for {ticker_upper} from DB")
+
             self._cache_data(cache_key, ticker_data, ttl=settings.cache_ttl_financials)
-            
             return ticker_data
-            
+
         except Exception as e:
             logger.error(f"Error fetching fundamentals data for {ticker}: {e}")
             import traceback
@@ -598,62 +548,35 @@ class DataSourceManager:
     
     def get_available_tickers(self) -> List[str]:
         """
-        Get list of available tickers from fundamentals data or data directory
-        
-        Returns:
-            List of ticker symbols
+        Return the list of distinct tickers present in the `fundamentals` DB table.
+        Falls back to a hardcoded S&P-500 subset when the table is empty/unavailable.
         """
+        _FALLBACK = [
+            'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B', 'V', 'JNJ',
+            'WMT', 'JPM', 'MA', 'PG', 'UNH', 'HD', 'DIS', 'BAC', 'ADBE', 'NFLX',
+            'PYPL', 'CMCSA', 'XOM', 'VZ', 'CSCO', 'AVGO', 'COST', 'PFE', 'MRK', 'TMO',
+            'ABT', 'ACN', 'NKE', 'LIN', 'DHR', 'PM', 'TXN', 'NEE', 'HON', 'QCOM',
+        ]
         try:
-            # Try fundamentals file first (check multiple possible paths)
-            possible_paths = [
-                Path(settings.fundamentals_path),
-                Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
-                Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
-                Path("../fundamentals_tall.parquet"),
-            ]
-            
-            for fundamentals_path in possible_paths:
-                if fundamentals_path.exists():
-                    try:
-                        df = pd.read_parquet(fundamentals_path)
-                        # Try different column name variations
-                        for col in ['ticker', 'Ticker', 'TICKER']:
-                            if col in df.columns:
-                                tickers = sorted(df[col].str.upper().unique().tolist())
-                                if tickers:
-                                    logger.info(f"Found {len(tickers)} tickers from {fundamentals_path}")
-                                    return tickers
-                    except Exception as e:
-                        logger.warning(f"Error reading {fundamentals_path}: {e}")
-                        continue
-            
-            # Fallback to data directory
-            data_dir_paths = [
-                Path(settings.data_dir),
-                Path(__file__).parent.parent.parent.parent / settings.data_dir,
-            ]
-            
-            for data_dir in data_dir_paths:
-                if data_dir.exists():
-                    tickers = [d.name for d in data_dir.iterdir() if d.is_dir() and not d.name.startswith('.')]
-                    if tickers:
-                        return sorted(tickers)
-            
-            # Final fallback: return common S&P 500 tickers
-            logger.warning("No tickers found in data files, using fallback list")
-            return [
-                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B', 'V', 'JNJ',
-                'WMT', 'JPM', 'MA', 'PG', 'UNH', 'HD', 'DIS', 'BAC', 'ADBE', 'NFLX',
-                'PYPL', 'CMCSA', 'XOM', 'VZ', 'CSCO', 'AVGO', 'COST', 'PFE', 'MRK', 'TMO',
-                'ABT', 'ACN', 'NKE', 'LIN', 'DHR', 'PM', 'TXN', 'NEE', 'HON', 'QCOM'
-            ]
+            from app.database import SessionLocal
+            import sqlalchemy as sa
+
+            with SessionLocal() as session:
+                rows = session.execute(
+                    sa.text("SELECT DISTINCT ticker FROM fundamentals ORDER BY ticker")
+                ).fetchall()
+
+            tickers = [r[0] for r in rows]
+            if tickers:
+                logger.info(f"Found {len(tickers)} tickers in DB fundamentals table")
+                return tickers
+
+            logger.warning("fundamentals table is empty, using fallback ticker list")
+            return _FALLBACK
+
         except Exception as e:
-            logger.error(f"Error getting available tickers: {e}")
-            # Return fallback list on error
-            return [
-                'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA', 'BRK.B', 'V', 'JNJ',
-                'WMT', 'JPM', 'MA', 'PG', 'UNH', 'HD', 'DIS', 'BAC', 'ADBE', 'NFLX'
-            ]
+            logger.error(f"Error getting available tickers from DB: {e}")
+            return _FALLBACK
 
 
     def search_tickers(self, query: str, limit: int = 10) -> List[Dict[str, str]]:
