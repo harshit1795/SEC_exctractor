@@ -10,6 +10,7 @@ This service provides unified access to multiple financial data sources:
 """
 import logging
 import asyncio
+import json
 import diskcache as dc
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -199,7 +200,51 @@ class DataSourceManager:
             
         except Exception as e:
             logger.error(f"Error fetching Yahoo Finance data for {ticker}: {e}")
-            return {}
+            
+            # Fallback strategy so the app doesn't crash completely on a rate limit
+            company_name = ticker
+            if not getattr(self, 'cik_df', pd.DataFrame()).empty:
+                company_info = self.cik_df[self.cik_df['ticker'] == ticker.upper()]
+                if not company_info.empty:
+                    company_name = company_info.iloc[0]['name']
+
+            sector = "Rate Limited"
+            industry = "Rate Limited"
+            
+            try:
+                # Try to load local ticker_sectors.json as fallback
+                sectors_path = Path(__file__).resolve().parent.parent.parent / "ticker_sectors.json"
+                if sectors_path.exists():
+                    sectors_map = json.loads(sectors_path.read_text())
+                    ticker_info = sectors_map.get(ticker.upper())
+                    if ticker_info:
+                        if ticker_info.get('sector'):
+                            sector = ticker_info['sector']
+                        if ticker_info.get('industry'):
+                            industry = ticker_info['industry']
+            except Exception as read_err:
+                logger.warning(f"Could not load ticker_sectors.json fallback for {ticker}: {read_err}")
+
+            return {
+                'info': {
+                    'longName': company_name,
+                    'shortName': company_name,
+                    'sector': sector,
+                    'industry': industry
+                },
+                'financials': {},
+                'balance_sheet': {},
+                'cashflow': {},
+                'quarterly_financials': {},
+                'quarterly_balance_sheet': {},
+                'quarterly_cashflow': {},
+                'history': {},
+                'history_df': [],
+                'recommendations': {},
+                'earnings_dates': [],
+                'error': str(e),
+                'rate_limited': True
+            }
     
     async def get_fred_economic_data(
         self, 
@@ -595,26 +640,49 @@ class DataSourceManager:
             
         query = query.upper().strip()
         
-        # Search in ticker column (exact match first, then starts with)
-        # Using string constraints for better performance
+        # Common synonyms for intuitive search
+        synonyms = {
+            "GOOGLE": "ALPHABET",
+            "META": "FACEBOOK",
+            "FACEBOOK": "META",
+        }
+        search_query = synonyms.get(query, query)
+        
+        # 1. Ticker contains query
         mask_ticker = self.cik_df['ticker'].astype(str).str.contains(query, case=False, na=False)
-        mask_name = self.cik_df['name'].astype(str).str.contains(query, case=False, na=False)
+        
+        # 2. Name contains query (or synonym)
+        mask_name = self.cik_df['name'].astype(str).str.contains(search_query, case=False, na=False)
+        
+        # 3. Query starts with Ticker (e.g., query "GOOGLE" matches ticker "GOOG")
+        mask_query_starts_with_ticker = self.cik_df['ticker'].astype(str).apply(
+            lambda t: len(t) >= 3 and query.startswith(t.upper())
+        )
         
         # Combine masks
-        matches = self.cik_df[mask_ticker | mask_name]
+        matches = self.cik_df[mask_ticker | mask_name | mask_query_starts_with_ticker].copy()
         
         if matches.empty:
             return []
             
-        # Prioritize ticker matches that start with query
+        # Scoring logic for intuitive sorting
         matches['score'] = 0
         
-        # Exact ticker match gets highest score
-        matches.loc[matches['ticker'] == query, 'score'] = 3
-        # Ticker starts with query gets medium score
-        matches.loc[matches['ticker'].str.startswith(query), 'score'] = 2
-        # Name starts with query gets low score
-        matches.loc[matches['name'].str.upper().str.startswith(query), 'score'] = 1
+        # Score 100: Exact ticker match
+        matches.loc[matches['ticker'] == query, 'score'] = 100
+        
+        # Score 80: Exact name match
+        matches.loc[matches['name'].str.upper() == query, 'score'] = 80
+        
+        # Score 60: Ticker starts with query
+        matches.loc[matches['ticker'].str.startswith(query), 'score'] = 60
+        
+        # Score 50: Query starts with ticker (covers 'GOOGLE' -> 'GOOG')
+        idx_starts_with = self.cik_df[mask_query_starts_with_ticker].index
+        matches.loc[matches.index.isin(idx_starts_with), 'score'] = 50
+        
+        # Score 40: Name starts with query/synonym
+        matches.loc[matches['name'].str.upper().str.startswith(search_query), 'score'] = 40
         
         # Sort by score descending, then by ticker length (shorter tickers usually more popular)
         matches = matches.sort_values(by=['score', 'ticker'], ascending=[False, True])
