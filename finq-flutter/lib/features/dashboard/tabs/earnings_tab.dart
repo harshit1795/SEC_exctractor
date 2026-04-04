@@ -261,11 +261,11 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
                                                           children: [
                                                               _buildStatItem(
                                                                   'Reported',
-                                                                  '\$${lastEarnings.reportedEPS.toStringAsFixed(2)}',
+                                                                  lastEarnings.reportedEPS != null ? '\$${lastEarnings.reportedEPS!.toStringAsFixed(2)}' : 'N/A',
                                                               ),
                                                               _buildStatItem(
                                                                   'Estimated',
-                                                                  '\$${lastEarnings.estimatedEPS.toStringAsFixed(2)}',
+                                                                  lastEarnings.estimatedEPS != null ? '\$${lastEarnings.estimatedEPS!.toStringAsFixed(2)}' : 'N/A',
                                                               ),
                                                           ],
                                                       ),
@@ -330,7 +330,7 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
                                                       const SizedBox(height: 12),
                                                       _buildStatItem(
                                                           'Estimate',
-                                                          '\$${nextEarnings.estimatedEPS.toStringAsFixed(2)}',
+                                                          nextEarnings.estimatedEPS != null ? '\$${nextEarnings.estimatedEPS!.toStringAsFixed(2)}' : 'N/A',
                                                       ),
                                                   ],
                                               ),
@@ -473,8 +473,10 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
               final period = allPeriods[i];
               // Find data
               final point = data.where((d) => d.period == period).firstOrNull;
-              if (point != null) {
-                  spots.add(FlSpot(i.toDouble(), point.reportedEPS));
+              if (point != null && point.reportedEPS != null) {
+                  spots.add(FlSpot(i.toDouble(), point.reportedEPS!));
+              } else {
+                  spots.add(FlSpot.nullSpot);
               }
           }
             
@@ -503,8 +505,10 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
              for (int i = 0; i < allPeriods.length; i++) {
                 final period = allPeriods[i];
                 final point = data.where((d) => d.period == period).firstOrNull;
-                if (point != null) {
-                    estimatedSpots.add(FlSpot(i.toDouble(), point.estimatedEPS));
+                if (point != null && point.estimatedEPS != null) {
+                    estimatedSpots.add(FlSpot(i.toDouble(), point.estimatedEPS!));
+                } else {
+                    estimatedSpots.add(FlSpot.nullSpot);
                 }
              }
              
@@ -647,9 +651,9 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
              
              final point = data.where((d) => d.period == period).firstOrNull;
              
-             if (point != null) {
+             if (point != null && point.reportedEPS != null) {
                   rods.add(BarChartRodData(
-                     toY: point.reportedEPS,
+                     toY: point.reportedEPS!,
                      color: color,
                      width: 12,
                      borderRadius: BorderRadius.circular(4),
@@ -806,10 +810,50 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
 
       parsed.add(_EarningsDataPoint(
         date: date,
-        reportedEPS: reportedEPS ?? 0.0,
-        estimatedEPS: estimatedEPS ?? 0.0,
+        reportedEPS: reportedEPS,
+        estimatedEPS: estimatedEPS,
         surprise: surprise,
       ));
+    }
+
+    // Merge in recent quarterly_financials (if Pipeline updated them) to solve missing earnings dates
+    final qFin = data['quarterly_financials'];
+    if (qFin != null && qFin is Map) {
+      for (final dateKey in qFin.keys) {
+        final quarterValues = qFin[dateKey];
+        if (quarterValues is! Map) continue;
+        
+        final eps = _getDouble(quarterValues['Diluted EPS'] ?? quarterValues['Basic EPS']);
+        if (eps == null) continue;
+        
+        final date = DateTime.tryParse(dateKey.toString());
+        if (date == null) continue;
+        
+        // Find existing earnings date that correspond to this quarter (earnings are usually 0-90 days after quarter end)
+        final matchingIdx = parsed.indexWhere((p) {
+           final diff = p.date.difference(date).inDays;
+           return diff >= 0 && diff <= 90;
+        });
+        
+        if (matchingIdx >= 0) {
+           if (parsed[matchingIdx].reportedEPS == null) {
+               final old = parsed[matchingIdx];
+               parsed[matchingIdx] = _EarningsDataPoint(
+                   date: old.date,
+                   reportedEPS: eps,
+                   estimatedEPS: old.estimatedEPS,
+                   surprise: old.surprise,
+               );
+           }
+        } else {
+           parsed.add(_EarningsDataPoint(
+               date: date,
+               reportedEPS: eps,
+               estimatedEPS: null,
+               surprise: null,
+           ));
+        }
+      }
     }
 
     parsed.sort((a, b) => a.date.compareTo(b.date));
@@ -839,18 +883,18 @@ class _EarningsTabState extends ConsumerState<EarningsTab> {
       for (final item in data) {
         final year = item.date.year;
         yearlyMap.putIfAbsent(year, () => _YearlyData());
-        yearlyMap[year]!.reported.add(item.reportedEPS);
-        yearlyMap[year]!.estimated.add(item.estimatedEPS);
+        if (item.reportedEPS != null) yearlyMap[year]!.reported.add(item.reportedEPS!);
+        if (item.estimatedEPS != null) yearlyMap[year]!.estimated.add(item.estimatedEPS!);
       }
 
       final result = <_ChartDataPoint>[];
       final sortedYears = yearlyMap.keys.toList()..sort();
       for (final year in sortedYears) {
-        final data = yearlyMap[year]!;
+        final ydata = yearlyMap[year]!;
         result.add(_ChartDataPoint(
           period: year.toString(),
-          reportedEPS: data.reported.reduce((a, b) => a + b) / data.reported.length,
-          estimatedEPS: data.estimated.reduce((a, b) => a + b) / data.estimated.length,
+          reportedEPS: ydata.reported.isEmpty ? null : ydata.reported.reduce((a, b) => a + b) / ydata.reported.length,
+          estimatedEPS: ydata.estimated.isEmpty ? null : ydata.estimated.reduce((a, b) => a + b) / ydata.estimated.length,
         ));
       }
       return result;
@@ -886,27 +930,27 @@ class _EarningsData {
 class _EarningsDataPoint {
   const _EarningsDataPoint({
     required this.date,
-    required this.reportedEPS,
-    required this.estimatedEPS,
+    this.reportedEPS,
+    this.estimatedEPS,
     this.surprise,
   });
 
   final DateTime date;
-  final double reportedEPS;
-  final double estimatedEPS;
+  final double? reportedEPS;
+  final double? estimatedEPS;
   final double? surprise;
 }
 
 class _ChartDataPoint {
   const _ChartDataPoint({
     required this.period,
-    required this.reportedEPS,
-    required this.estimatedEPS,
+    this.reportedEPS,
+    this.estimatedEPS,
   });
 
   final String period;
-  final double reportedEPS;
-  final double estimatedEPS;
+  final double? reportedEPS;
+  final double? estimatedEPS;
 }
 
 class _YearlyData {
