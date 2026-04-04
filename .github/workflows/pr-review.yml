@@ -1,0 +1,66 @@
+name: FINQ Platform PR Pipeline
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  test-backend:
+    name: "Python API: Format & Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f finq-backend/requirements.txt ]; then pip install -r finq-backend/requirements.txt; fi
+          pip install flake8 pytest
+
+      - name: Linting with Flake8
+        working-directory: finq-backend
+        run: flake8 app/ --count --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Test with Pytest
+        working-directory: finq-backend
+        run: pytest tests/ -q
+
+  test-flutter:
+    name: "Flutter Web & Mobile: Analyze & Test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.24.x"
+          channel: "stable"
+          cache: true
+
+      - name: Get Dependencies
+        working-directory: finq-flutter
+        run: flutter pub get
+
+      - name: Static Analysis
+        working-directory: finq-flutter
+        run: flutter analyze
+
+      - name: Widget/Unit Testing
+        working-directory: finq-flutter
+        run: flutter test

@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+# .githooks/pre-commit
+# Validates both Python API and Flutter client code structurally before allowing a commit.
+
+echo "🔍 Starting pre-commit checks for FINQ Platform..."
+ROOT_DIR=$(git rev-parse --show-toplevel)
+
+FAIL=0
+
+# Step 1: Check Python Backend (Linter & Tests)
+cd "$ROOT_DIR/finq-backend" || exit
+echo "- Checking Backend Pipeline..."
+if [ -f "venv/bin/activate" ]; then
+    source venv/bin/activate
+    # Run flake8 if installed
+    if command -v flake8 >/dev/null 2>&1; then
+        flake8 app/
+        if [ $? -ne 0 ]; then
+            echo "❌ Python Backend Linting Failed (flake8)."
+            FAIL=1
+        fi
+    fi
+    # Quick sanity pytest
+    if command -v pytest >/dev/null 2>&1; then
+        pytest tests/ -m "not slow" -q --disable-warnings
+        if [ $? -ne 0 ]; then
+            echo "❌ Python Backend Tests Failed."
+            FAIL=1
+        fi
+    fi
+fi
+
+# Step 2: Check Flutter Frontend
+cd "$ROOT_DIR/finq-flutter" || exit
+echo "- Checking Flutter Mobile & Web Pipeline..."
+if command -v flutter >/dev/null 2>&1; then
+    flutter analyze
+    if [ $? -ne 0 ]; then
+         echo "❌ Flutter Static Analysis Failed."
+         FAIL=1
+    fi
+    # Quick sanity unit tests (excluding integration ones that take too long)
+    flutter test
+    if [ $? -ne 0 ]; then
+         echo "❌ Flutter Tests Failed."
+         FAIL=1
+    fi
+else
+    echo "⚠️ Flutter binary not found in PATH, skipping frontend checks."
+fi
+
+echo "==========================================="
+if [ $FAIL -eq 0 ]; then
+    echo "✅ All pre-commit checks passed! Committing..."
+    exit 0
+else
+    echo "🛑 Pre-commit checks failed. Please fix the errors listed above."
+    echo "To bypass (not recommended): git commit --no-verify"
+    exit 1
+fi
