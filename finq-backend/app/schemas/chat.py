@@ -14,6 +14,31 @@ class ChatRequest(BaseModel):
         description="Context data including selected tickers, metrics, etc."
     )
     session_id: Optional[str] = Field(None, description="Chat session ID for history")
+    agentic_mode: bool = Field(False, description="Whether to use the autonomous tool-calling agent (True) or standard LLM (False)")
+
+
+class ChatMessageResponse(BaseModel):
+    id: str
+    role: str
+    content: str
+    created_at: datetime
+    metadata_json: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class ChatSessionResponse(BaseModel):
+    id: str
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    context_data: Optional[Dict[str, Any]] = None
+
+    class Config:
+        from_attributes = True
+
+class ChatSessionDetailResponse(ChatSessionResponse):
+    messages: List[ChatMessageResponse] = []
 
 
 class ChatResponse(BaseModel):
@@ -30,4 +55,3 @@ class ChatHistoryResponse(BaseModel):
     insights: List[Dict[str, Any]]
     count: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
-
