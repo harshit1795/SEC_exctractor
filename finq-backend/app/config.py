@@ -50,7 +50,12 @@ class Settings(BaseSettings):
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
     
     # Cache
-    cache_ttl: int = Field(default=300, env="CACHE_TTL")  # 5 minutes
+    cache_ttl: int = Field(default=300, env="CACHE_TTL")  # 5 minutes general fallback
+    cache_ttl_prices: int = Field(default=300, env="CACHE_TTL_PRICES")  # 5 minutes
+    cache_ttl_financials: int = Field(default=86400, env="CACHE_TTL_FINANCIALS")  # 24 hours
+    cache_ttl_macro: int = Field(default=86400, env="CACHE_TTL_MACRO")  # 24 hours
+    cache_ttl_sec: int = Field(default=2592000, env="CACHE_TTL_SEC")  # 30 days
+    cache_ttl_llm: int = Field(default=86400, env="CACHE_TTL_LLM")  # 24 hours
     cache_dir: str = Field(default=".cache", env="CACHE_DIR")
     
     # Data Paths (relative to project root)

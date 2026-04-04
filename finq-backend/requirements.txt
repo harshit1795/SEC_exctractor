@@ -1,5 +1,5 @@
 # FastAPI and Server
-fastapi==0.104.1
+fastapi>=0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 
@@ -23,6 +23,7 @@ requests>=2.31.0
 
 # AI/ML
 google-generativeai==0.8.5
+google-genai==1.67.0
 
 # Authentication (PostgreSQL-based, no Firebase)
 passlib[bcrypt]==1.7.4

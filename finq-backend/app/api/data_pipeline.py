@@ -46,9 +46,10 @@ async def update_ticker(
         result = await pipeline.update_ticker_data(ticker.upper(), force_refresh)
         
         if result.get('success'):
-            # Clear cache for this ticker's fundamentals data
+            # Clear cache for this ticker's fundamentals data and Yahoo Finance data
             manager = get_data_source_manager()
             manager.clear_cache(f"fundamentals_{ticker.upper()}")
+            manager.clear_cache(f"yf_{ticker.upper()}_")
             logger.info(f"Cleared cache for {ticker.upper()} after data update")
         
         if not result['success']:

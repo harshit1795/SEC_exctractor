@@ -14,7 +14,6 @@ import 'tabs/trend_tab.dart';
 import 'tabs/snapshot_tab.dart';
 import 'tabs/disclosures_tab.dart';
 import 'tabs/macroeconomic_tab.dart';
-import 'tabs/finq360_tab.dart';
 import 'tabs/finq_chat_tab.dart';
 import 'tabs/price_chart_tab.dart';
 
@@ -168,14 +167,13 @@ class _DashboardContent extends StatefulWidget {
   final AsyncValue<Map<String, dynamic>> fundamentals;
 
   static const _tabs = [
+    ('bot', '🤖 FinQ Bot'),
     ('trend', '📈 Metrics Trend Analysis'),
     ('snapshot', '📷 Snapshot & Changes'),
     ('earnings', '💰 Earning Summary'),
     ('price', '📊 Price Chart'),
     ('disclosures', '📄 Disclosures'),
     ('macro', '🌐 Macroeconomic Data'),
-    ('finq360', '🔍 FinQ 360'),
-    ('bot', '🤖 FinQ Bot'),
   ];
 
   @override
@@ -256,6 +254,7 @@ class _DashboardContentState extends State<_DashboardContent> with SingleTickerP
                 controller: _tabController,
                 physics: const NeverScrollableScrollPhysics(), // Prevent horizontal swipe from eating taps
                 children: [
+                  FinQChatTab(ticker: primaryTicker),
                   TrendTab(
                     ticker: primaryTicker,
                     category: widget.category,
@@ -275,11 +274,6 @@ class _DashboardContentState extends State<_DashboardContent> with SingleTickerP
                   ),
                   DisclosuresTab(ticker: primaryTicker),
                   const MacroeconomicTab(),
-                  FinQ360Tab(
-                    ticker: primaryTicker,
-                    category: widget.category,
-                  ),
-                  FinQChatTab(ticker: primaryTicker),
                 ],
               ),
             );
