@@ -1,361 +1,337 @@
 """
-Data Pipeline Service for fetching and updating financial fundamentals data
+Data Pipeline Service — writes fundamentals to PostgreSQL instead of parquet.
+
+All data fetched via Yahoo Finance is upserted into the `fundamentals` table,
+making the parquet file completely optional for local dev and irrelevant in
+production (Render / Railway).
 """
-import pandas as pd
-import yfinance as yf
 import logging
-from pathlib import Path
-from typing import List, Dict, Optional
-from datetime import datetime, timedelta
 import time
+from typing import List, Dict, Optional
+
+import pandas as pd
+import sqlalchemy as sa
+import yfinance as yf
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Row-ID helper (must match seed_fundamentals.py and the model definition)
+# ---------------------------------------------------------------------------
+
+def _make_row_id(ticker: str, fiscal_period: str, metric: str, category: str) -> str:
+    return f"{ticker}|{fiscal_period}|{metric}|{category}"
+
+
+# ---------------------------------------------------------------------------
+# DataPipeline
+# ---------------------------------------------------------------------------
 
 class DataPipeline:
-    """Service for fetching and updating fundamentals data"""
-    
-    def __init__(self):
-        self.fundamentals_path = self._find_fundamentals_file()
-    
-    def _find_fundamentals_file(self) -> Optional[Path]:
-        """Find the fundamentals parquet file"""
-        # Railway runs from finq-backend/, so check current directory first
-        # Priority: Railway volume > env var > current directory > project root
-        possible_paths = [
-            Path("/data/fundamentals_tall.parquet"),  # Railway volume (persistent)
-            Path(settings.fundamentals_path),  # From environment variable
-            Path("fundamentals_tall.parquet"),  # Current directory (finq-backend/)
-            Path(__file__).parent.parent.parent.parent / settings.fundamentals_path,
-            Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
-            Path("../fundamentals_tall.parquet"),
-        ]
-        
-        for path in possible_paths:
-            if path.exists():
-                logger.info(f"Found fundamentals file at {path}")
-                return path
-        
-        logger.warning(f"Fundamentals file not found. Tried: {possible_paths}")
-        return None
-    
-    def _get_existing_data(self) -> pd.DataFrame:
-        """Load existing fundamentals data"""
-        if not self.fundamentals_path or not self.fundamentals_path.exists():
-            return pd.DataFrame()
-        
-        try:
-            df = pd.read_parquet(self.fundamentals_path)
-            logger.info(f"Loaded {len(df)} existing rows from {self.fundamentals_path}")
-            return df
-        except Exception as e:
-            logger.error(f"Error loading existing data: {e}")
-            return pd.DataFrame()
-    
-    def _melt_quarterly_data(self, df: pd.DataFrame, ticker: str, category: str) -> pd.DataFrame:
+    """Service for fetching and updating fundamentals data in PostgreSQL."""
+
+    # ------------------------------------------------------------------
+    # Internal: Yahoo Finance → long-format DataFrame
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _melt_quarterly_data(
+        df: pd.DataFrame, ticker: str, category: str
+    ) -> pd.DataFrame:
         """
-        Convert quarterly financial statements to long format
-        Based on build_fundamentals_tall.py logic
-        
-        Args:
-            df: DataFrame with quarterly data (columns are dates, rows are metrics)
-            ticker: Ticker symbol
-            category: Category name (IncomeStatement, BalanceSheet, CashFlow)
-        
-        Returns:
-            DataFrame in long format with columns: Ticker, FiscalPeriod, Metric, Value, Category, PeriodEnd
+        Convert a quarterly financial statement (wide format, columns = dates)
+        into the tall/long format used by the `fundamentals` table.
         """
         if df is None or df.empty:
             return pd.DataFrame()
-        
-        # Convert columns to datetime if needed
+
+        # Ensure columns are Timestamps
         cols = []
         for c in df.columns:
             try:
                 cols.append(pd.to_datetime(c))
             except (ValueError, TypeError):
                 cols.append(pd.NaT)
+        df = df.copy()
         df.columns = cols
-        df = df.dropna(axis=1, how='all')
-        
+        df = df.dropna(axis=1, how="all")
+
         records = []
         for metric, row in df.iterrows():
             for period_end, value in row.items():
                 if pd.isna(period_end):
                     continue
-                
-                # Convert to quarter label (e.g., "2025Q1")
                 quarter = f"{period_end.year}Q{(period_end.month - 1) // 3 + 1}"
-                
-                records.append({
-                    'Ticker': ticker,
-                    'PeriodEnd': period_end.date() if isinstance(period_end, pd.Timestamp) else None,
-                    'FiscalPeriod': quarter,
-                    'Metric': metric,
-                    'Category': category,
-                    'Value': float(value) if pd.notna(value) else 0.0,
-                })
-        
+                records.append(
+                    {
+                        "ticker": str(ticker).upper(),
+                        "period_end": period_end.date()
+                        if isinstance(period_end, pd.Timestamp)
+                        else None,
+                        "fiscal_period": quarter,
+                        "metric": str(metric),
+                        "category": category,
+                        "value": float(value) if pd.notna(value) else None,
+                    }
+                )
         return pd.DataFrame(records)
-    
+
     async def fetch_ticker_quarterly(self, ticker: str) -> pd.DataFrame:
-        """
-        Fetch latest quarterly financial data for a ticker from Yahoo Finance
-        
-        Args:
-            ticker: Stock ticker symbol
-        
-        Returns:
-            DataFrame with quarterly data in long format
-        """
+        """Fetch latest quarterly financials from Yahoo Finance."""
         try:
-            stock = yf.Ticker(ticker)
-            
-            all_records = []
-            
-            # Fetch Income Statement
-            try:
-                income_stmt = stock.quarterly_financials
-                if income_stmt is not None and not income_stmt.empty:
-                    income_melted = self._melt_quarterly_data(income_stmt, ticker, 'IncomeStatement')
-                    all_records.append(income_melted)
-                    logger.info(f"Fetched {len(income_melted)} income statement records for {ticker}")
-            except Exception as e:
-                logger.warning(f"Error fetching income statement for {ticker}: {e}")
-            
-            # Fetch Balance Sheet
-            try:
-                balance_sheet = stock.quarterly_balance_sheet
-                if balance_sheet is not None and not balance_sheet.empty:
-                    balance_melted = self._melt_quarterly_data(balance_sheet, ticker, 'BalanceSheet')
-                    all_records.append(balance_melted)
-                    logger.info(f"Fetched {len(balance_melted)} balance sheet records for {ticker}")
-            except Exception as e:
-                logger.warning(f"Error fetching balance sheet for {ticker}: {e}")
-            
-            # Fetch Cash Flow
-            try:
-                cashflow = stock.quarterly_cashflow
-                if cashflow is not None and not cashflow.empty:
-                    cashflow_melted = self._melt_quarterly_data(cashflow, ticker, 'CashFlow')
-                    all_records.append(cashflow_melted)
-                    logger.info(f"Fetched {len(cashflow_melted)} cash flow records for {ticker}")
-            except Exception as e:
-                logger.warning(f"Error fetching cash flow for {ticker}: {e}")
-            
+            stock = yf.Ticker(ticker.upper())
+            all_records: list[pd.DataFrame] = []
+
+            for attr, cat in [
+                ("quarterly_financials", "IncomeStatement"),
+                ("quarterly_balance_sheet", "BalanceSheet"),
+                ("quarterly_cashflow", "CashFlow"),
+            ]:
+                try:
+                    raw = getattr(stock, attr)
+                    if raw is not None and not raw.empty:
+                        melted = self._melt_quarterly_data(raw, ticker, cat)
+                        all_records.append(melted)
+                        logger.info(
+                            f"Fetched {len(melted)} {cat} records for {ticker}"
+                        )
+                except Exception as exc:
+                    logger.warning(f"Error fetching {cat} for {ticker}: {exc}")
+
             if all_records:
                 result = pd.concat(all_records, ignore_index=True)
                 logger.info(f"Total records fetched for {ticker}: {len(result)}")
                 return result
-            else:
-                logger.warning(f"No data fetched for {ticker}")
-                return pd.DataFrame()
-                
-        except Exception as e:
-            logger.error(f"Error fetching quarterly data for {ticker}: {e}")
+
+            logger.warning(f"No data fetched for {ticker}")
             return pd.DataFrame()
-    
-    async def update_ticker_data(self, ticker: str, force_refresh: bool = False) -> Dict:
+
+        except Exception as exc:
+            logger.error(f"Error fetching quarterly data for {ticker}: {exc}")
+            return pd.DataFrame()
+
+    # ------------------------------------------------------------------
+    # Internal: upsert a DataFrame into the fundamentals table
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _upsert_to_db(df: pd.DataFrame) -> int:
         """
-        Update fundamentals data for a specific ticker
-        
-        Args:
-            ticker: Stock ticker symbol
-            force_refresh: If True, replace all data for this ticker. If False, merge new data.
-        
-        Returns:
-            Dict with update status and statistics
+        Bulk-upsert rows into the `fundamentals` table.
+        Returns the number of rows processed.
+        """
+        from app.database import engine  # import here to keep module-level clean
+
+        if df.empty:
+            return 0
+
+        rows = []
+        for _, row in df.iterrows():
+            ticker = str(row["ticker"]).strip().upper()
+            fiscal_period = str(row["fiscal_period"]).strip()
+            metric = str(row["metric"]).strip()
+            category = str(row["category"]).strip()
+            period_end = row.get("period_end")
+            value = row["value"] if pd.notna(row.get("value")) else None
+            row_id = _make_row_id(ticker, fiscal_period, metric, category)
+            rows.append(
+                {
+                    "id": row_id,
+                    "ticker": ticker,
+                    "period_end": period_end,
+                    "fiscal_period": fiscal_period,
+                    "metric": metric,
+                    "category": category,
+                    "value": value,
+                }
+            )
+
+        upsert_stmt = sa.text(
+            """
+            INSERT INTO fundamentals
+                (id, ticker, period_end, fiscal_period, metric, category, value)
+            VALUES
+                (:id, :ticker, :period_end, :fiscal_period, :metric, :category, :value)
+            ON CONFLICT (ticker, fiscal_period, metric, category)
+            DO UPDATE SET
+                value      = EXCLUDED.value,
+                period_end = EXCLUDED.period_end
+            """
+        )
+
+        with engine.begin() as conn:
+            conn.execute(upsert_stmt, rows)
+
+        return len(rows)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    async def update_ticker_data(
+        self, ticker: str, force_refresh: bool = False
+    ) -> Dict:
+        """
+        Fetch the latest quarterly data for *ticker* from Yahoo Finance and
+        upsert it into the `fundamentals` table.
+
+        `force_refresh=True` first deletes all existing rows for the ticker,
+        then inserts the freshly fetched data.
         """
         try:
-            # Load existing data
-            existing_df = self._get_existing_data()
-            
-            # Fetch new data
             new_data = await self.fetch_ticker_quarterly(ticker.upper())
-            
+
             if new_data.empty:
                 return {
-                    'success': False,
-                    'message': f'No data fetched for {ticker}',
-                    'ticker': ticker,
-                    'new_records': 0,
-                    'total_records': len(existing_df) if not existing_df.empty else 0
+                    "success": False,
+                    "message": f"No data fetched for {ticker}",
+                    "ticker": ticker,
+                    "new_records": 0,
                 }
-            
-            # Merge with existing data
-            if existing_df.empty:
-                updated_df = new_data
-            elif force_refresh:
-                # Remove old data for this ticker and add new
-                existing_df = existing_df[existing_df['Ticker'].str.upper() != ticker.upper()]
-                updated_df = pd.concat([existing_df, new_data], ignore_index=True)
-            else:
-                # Proper merge: remove stale rows for periods that have fresh data
-                # and for periods that are completely new, just append them.
-                new_periods_for_ticker = set(new_data['FiscalPeriod'].unique())
-                ticker_mask = (existing_df['Ticker'].str.upper() == ticker.upper())
-                period_mask = (existing_df['FiscalPeriod'].isin(new_periods_for_ticker))
-                
-                # Remove stale rows that will be replaced by new data
-                existing_df = existing_df[~(ticker_mask & period_mask)]
-                
-                # Add the fresh data
-                updated_df = pd.concat([existing_df, new_data], ignore_index=True)
-            
-            # Save updated data
-            if not self.fundamentals_path:
-                # Try to find or create file in appropriate location
-                # Priority: Railway volume > current directory > project root
-                possible_paths = [
-                    Path("/data/fundamentals_tall.parquet"),  # Railway volume
-                    Path("fundamentals_tall.parquet"),  # Current directory
-                    Path(__file__).parent.parent.parent.parent / "fundamentals_tall.parquet",
-                ]
-                
-                for path in possible_paths:
-                    # Use first path that exists (for parent directory) or current directory
-                    if path.parent.exists() or path == Path("fundamentals_tall.parquet"):
-                        self.fundamentals_path = path
-                        break
-                
-                # Fallback to current directory if nothing found
-                if not self.fundamentals_path:
-                    self.fundamentals_path = Path("fundamentals_tall.parquet")
-            
-            # Ensure parent directory exists
-            self.fundamentals_path.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save the updated data
-            updated_df.to_parquet(self.fundamentals_path, index=False)
-            logger.info(f"Saved {len(updated_df):,} records to {self.fundamentals_path}")
-            
-            new_count = len(new_data)
-            total_count = len(updated_df)
-            existing_count = len(existing_df) if not existing_df.empty else 0
-            
-            logger.info(f"Updated {ticker}: {new_count} new records, {total_count} total records")
-            
+
+            if force_refresh:
+                from app.database import engine
+                with engine.begin() as conn:
+                    conn.execute(
+                        sa.text(
+                            "DELETE FROM fundamentals WHERE ticker = :ticker"
+                        ),
+                        {"ticker": ticker.upper()},
+                    )
+                logger.info(f"Deleted existing rows for {ticker} (force_refresh)")
+
+            count = self._upsert_to_db(new_data)
+            logger.info(f"Upserted {count} rows for {ticker} into DB")
+
             return {
-                'success': True,
-                'message': f'Successfully updated data for {ticker}',
-                'ticker': ticker,
-                'new_records': new_count,
-                'existing_records': existing_count,
-                'total_records': total_count,
-                'file_path': str(self.fundamentals_path)
+                "success": True,
+                "message": f"Successfully updated data for {ticker}",
+                "ticker": ticker,
+                "new_records": count,
             }
-            
-        except Exception as e:
-            logger.error(f"Error updating data for {ticker}: {e}")
+
+        except Exception as exc:
+            logger.error(f"Error updating data for {ticker}: {exc}")
             return {
-                'success': False,
-                'message': f'Error updating {ticker}: {str(e)}',
-                'ticker': ticker,
-                'error': str(e)
+                "success": False,
+                "message": f"Error updating {ticker}: {exc}",
+                "ticker": ticker,
+                "error": str(exc),
             }
-    
-    async def update_all_tickers(self, tickers: Optional[List[str]] = None, 
-                                 batch_size: int = 10, 
-                                 delay: float = 0.5) -> Dict:
+
+    async def update_all_tickers(
+        self,
+        tickers: Optional[List[str]] = None,
+        batch_size: int = 10,
+        delay: float = 0.5,
+    ) -> Dict:
         """
-        Update fundamentals data for multiple tickers
-        
-        Args:
-            tickers: List of tickers to update. If None, uses available tickers.
-            batch_size: Number of tickers to process before saving
-            delay: Delay between requests (seconds)
-        
-        Returns:
-            Dict with update statistics
+        Update fundamentals for multiple tickers.
+        If *tickers* is None, reads the distinct ticker list from the DB.
         """
         if tickers is None:
-            # Get available tickers from existing data
-            existing_df = self._get_existing_data()
-            if not existing_df.empty and 'Ticker' in existing_df.columns:
-                tickers = sorted(existing_df['Ticker'].unique().tolist())
-            else:
-                # Fallback to common tickers
-                tickers = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'NVDA', 'META', 'TSLA']
-        
+            try:
+                from app.database import engine
+                with engine.connect() as conn:
+                    rows = conn.execute(
+                        sa.text(
+                            "SELECT DISTINCT ticker FROM fundamentals ORDER BY ticker"
+                        )
+                    ).fetchall()
+                tickers = [r[0] for r in rows] if rows else []
+            except Exception as exc:
+                logger.warning(f"Could not query tickers from DB: {exc}")
+                tickers = []
+
+            if not tickers:
+                # Sensible default when the table is still empty
+                tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "NVDA", "META", "TSLA"]
+
         results = []
         total_updated = 0
         total_failed = 0
-        
+
         logger.info(f"Starting batch update for {len(tickers)} tickers")
-        
+
         for i, ticker in enumerate(tickers, 1):
-            logger.info(f"[{i}/{len(tickers)}] Updating {ticker}...")
-            
+            logger.info(f"[{i}/{len(tickers)}] Updating {ticker} …")
             result = await self.update_ticker_data(ticker, force_refresh=False)
             results.append(result)
-            
-            if result['success']:
+
+            if result["success"]:
                 total_updated += 1
             else:
                 total_failed += 1
-            
-            # Delay to avoid rate limiting
+
             if i < len(tickers):
                 time.sleep(delay)
-        
+
         return {
-            'success': True,
-            'total_tickers': len(tickers),
-            'updated': total_updated,
-            'failed': total_failed,
-            'results': results,
-            'file_path': str(self.fundamentals_path) if self.fundamentals_path else None
-        }
-    
-    async def get_latest_periods(self, ticker: Optional[str] = None) -> Dict:
-        """
-        Get information about the latest periods in the data
-        
-        Args:
-            ticker: Optional ticker to filter by
-        
-        Returns:
-            Dict with latest period info
-        """
-        existing_df = self._get_existing_data()
-        
-        if existing_df.empty:
-            return {
-                'latest_period': None,
-                'ticker_periods': {},
-                'total_records': 0
-            }
-        
-        if ticker:
-            existing_df = existing_df[existing_df['Ticker'].str.upper() == ticker.upper()]
-        
-        if existing_df.empty:
-            return {
-                'latest_period': None,
-                'ticker_periods': {},
-                'total_records': 0
-            }
-        
-        # Get latest period per ticker
-        ticker_periods = {}
-        for t in existing_df['Ticker'].unique():
-            ticker_data = existing_df[existing_df['Ticker'] == t]
-            periods = sorted(ticker_data['FiscalPeriod'].unique())
-            ticker_periods[t] = {
-                'latest': periods[-1] if periods else None,
-                'all_periods': periods,
-                'count': len(periods)
-            }
-        
-        # Overall latest period
-        all_periods = sorted(existing_df['FiscalPeriod'].unique())
-        latest_period = all_periods[-1] if all_periods else None
-        
-        return {
-            'latest_period': latest_period,
-            'ticker_periods': ticker_periods,
-            'total_records': len(existing_df),
-            'total_tickers': len(existing_df['Ticker'].unique())
+            "success": True,
+            "total_tickers": len(tickers),
+            "updated": total_updated,
+            "failed": total_failed,
+            "results": results,
         }
 
+    async def get_latest_periods(self, ticker: Optional[str] = None) -> Dict:
+        """
+        Return info about the latest fiscal periods stored in the DB.
+        """
+        try:
+            from app.database import engine
+
+            with engine.connect() as conn:
+                if ticker:
+                    rows = conn.execute(
+                        sa.text(
+                            """
+                            SELECT ticker, fiscal_period, COUNT(*) as cnt
+                            FROM fundamentals
+                            WHERE ticker = :ticker
+                            GROUP BY ticker, fiscal_period
+                            ORDER BY fiscal_period DESC
+                            """
+                        ),
+                        {"ticker": ticker.upper()},
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        sa.text(
+                            """
+                            SELECT ticker, fiscal_period, COUNT(*) as cnt
+                            FROM fundamentals
+                            GROUP BY ticker, fiscal_period
+                            ORDER BY ticker, fiscal_period DESC
+                            """
+                        )
+                    ).fetchall()
+
+            if not rows:
+                return {
+                    "latest_period": None,
+                    "ticker_periods": {},
+                    "total_records": 0,
+                }
+
+            ticker_periods: dict = {}
+            for t, fp, cnt in rows:
+                if t not in ticker_periods:
+                    ticker_periods[t] = {"latest": fp, "all_periods": [], "count": 0}
+                ticker_periods[t]["all_periods"].append(fp)
+                ticker_periods[t]["count"] += 1
+
+            all_periods = sorted({fp for _, fp, _ in rows})
+            latest = all_periods[-1] if all_periods else None
+
+            return {
+                "latest_period": latest,
+                "ticker_periods": ticker_periods,
+                "total_records": sum(cnt for _, _, cnt in rows),
+                "total_tickers": len(ticker_periods),
+            }
+
+        except Exception as exc:
+            logger.error(f"Error getting latest periods: {exc}")
+            return {"latest_period": None, "ticker_periods": {}, "total_records": 0}

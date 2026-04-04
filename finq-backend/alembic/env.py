@@ -13,6 +13,7 @@ from app.models import (  # noqa: F401 — side-effect imports register metadata
     Friend, FriendStatus,
     User,
     ChatSession, ChatMessage,
+    Fundamental,
 )
 from app.config import settings
 

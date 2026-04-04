@@ -7,6 +7,7 @@ from app.models.post import Post, PostLike, PostComment
 from app.models.friend import Friend, FriendStatus
 from app.models.user import User
 from app.models.chat import ChatSession, ChatMessage
+from app.models.fundamentals import Fundamental
 
 __all__ = [
     "Base",
@@ -19,4 +20,5 @@ __all__ = [
     "User",
     "ChatSession",
     "ChatMessage",
+    "Fundamental",
 ]
